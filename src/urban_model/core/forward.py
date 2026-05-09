@@ -8,6 +8,8 @@
 
 from __future__ import annotations
 
+import math
+
 from urban_model.calculations import (
     balance,
     driveways,
@@ -41,10 +43,22 @@ def compute_tep_for_kit(
         "kit_limits", planning_doc="yes" if options.planning_doc else "no"
     )
 
-    # === Жильё ===
+    # === Жильё + ВПП ===
     gfa_v = housing.gfa_from_kit(kit, site.area_m2)
     apt_ratio = norms.resolve("building_params.apartments_to_gfa_ratio")
-    apartments_area_v = housing.apartments_area(gfa_v, options.vpp_share, apt_ratio)
+
+    # Если задан BuiltInArea — площадь ВПП вычитается из GFA до перевода в квартиры.
+    # Иначе используется legacy `vpp_share`.
+    if options.built_in is not None:
+        bi_area = min(options.built_in.area_m2, gfa_v)  # safety: ВПП не больше GFA
+        residential_gfa = gfa_v - bi_area
+        apartments_area_v = residential_gfa * apt_ratio
+        bi_vri = options.built_in.vri_code
+    else:
+        bi_area = 0.0
+        apartments_area_v = housing.apartments_area(gfa_v, options.vpp_share, apt_ratio)
+        bi_vri = None
+
     footprint_v = housing.housing_footprint(gfa_v, options.floors)
 
     # === Население ===
@@ -145,8 +159,22 @@ def compute_tep_for_kit(
         site.area_m2, kg_plot_total + sch_plot_total, quarter_share
     )
 
-    # === Парковки (разбивка по типам) ===
-    park = compute_parking_breakdown(apartments_area_v, options.parking, norms)
+    # === ВПП — парковки и озеленение по своему ВРИ ===
+    if bi_area > 0 and bi_vri:
+        bi_per_place = norms.resolve("parking.vpp.m2_per_place", vri_code=bi_vri)
+        bi_parking_places = math.ceil(bi_area / bi_per_place)
+        bi_greening_ratio = norms.resolve("greening.vpp_per_floor_area")
+        bi_greening_v = bi_area * bi_greening_ratio
+    else:
+        bi_per_place = None
+        bi_parking_places = 0
+        bi_greening_v = 0.0
+
+    # === Парковки (разбивка по типам, включая ВПП) ===
+    park = compute_parking_breakdown(
+        apartments_area_v, options.parking, norms,
+        additional_places=bi_parking_places,
+    )
 
     # === Проезды ===
     drive_intra_share = norms.resolve("driveways.intra_quarter_share")
@@ -155,8 +183,11 @@ def compute_tep_for_kit(
     drive_lot_v = driveways.housing_lot_driveways_area(footprint_v, drive_lot_share)
 
     # === Площадь жилого ЗУ ===
-    # ЗУ жилья = площадь застройки + проезды на ЗУ + озеленение жилого + открытые парковки
-    housing_lot_v = footprint_v + drive_lot_v + green_housing_v + park.open_area
+    # ЗУ жилья = площадь застройки + проезды на ЗУ + озеленение жилого
+    #            + озеленение ВПП + открытые парковки
+    housing_lot_v = (
+        footprint_v + drive_lot_v + green_housing_v + bi_greening_v + park.open_area
+    )
 
     # === Баланс квартала ===
     components = {
@@ -198,8 +229,41 @@ def compute_tep_for_kit(
         apartments_area=_F(
             apartments_area_v,
             unit="m2",
-            formula=f"GFA × (1 − ВПП={options.vpp_share}) × {apt_ratio}",
+            formula=(
+                f"(GFA − ВПП={bi_area:.0f}) × {apt_ratio}"
+                if bi_area > 0
+                else f"GFA × (1 − vpp_share={options.vpp_share}) × {apt_ratio}"
+            ),
             source=norms.source_of("building_params.apartments_to_gfa_ratio"),
+        ),
+        built_in_area=_F(
+            bi_area,
+            unit="m2",
+            formula=(
+                f"BuiltInArea(area_m2={bi_area:.0f}, vri={bi_vri})"
+                if bi_area > 0 else "ВПП не задано"
+            ),
+        ),
+        built_in_parking_places=_F(
+            bi_parking_places,
+            unit="м/м",
+            formula=(
+                f"ВПП {bi_area:.0f} м² / {bi_per_place} м²/м.м. (ВРИ {bi_vri}), вверх"
+                if bi_area > 0 else "—"
+            ),
+            source=(
+                norms.source_of("parking.vpp.m2_per_place", vri_code=bi_vri)
+                if bi_area > 0 else None
+            ),
+        ),
+        built_in_greening_area=_F(
+            bi_greening_v,
+            unit="m2",
+            formula=(
+                f"ВПП {bi_area:.0f} × {norms.resolve('greening.vpp_per_floor_area')}"
+                if bi_area > 0 else "—"
+            ),
+            source=norms.source_of("greening.vpp_per_floor_area") if bi_area > 0 else None,
         ),
         population=_F(
             pop_v, unit="чел", formula=f"S_квартир / {hp}", source=norms.source_of("housing_provision")
@@ -348,5 +412,6 @@ def compute_tep_for_kit(
             footprint_v, unit="m2", formula=f"GFA / этажность = {gfa_v:.0f} / {options.floors}"
         ),
         balance=bal,
+        built_in_vri_code=bi_vri,
         warnings=warnings,
     )

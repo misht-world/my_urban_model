@@ -45,13 +45,15 @@ def compute_parking_breakdown(
     apartments_area: float,
     config,          # ParkingConfig — импорт снизу, чтобы избежать циклов
     norms: Normatives,
+    additional_places: int = 0,
 ):
     """Рассчитать разбивку парковок по типам.
 
     Args:
-        apartments_area: площадь квартир, м².
-        config:          ParkingConfig — режим и доли.
-        norms:           нормативная база.
+        apartments_area:    площадь квартир, м².
+        config:             ParkingConfig — режим и доли.
+        norms:              нормативная база.
+        additional_places:  дополнительные м/м (например, для ВПП по своему ВРИ).
 
     Returns:
         ParkingBreakdown с открытыми, многоуровневыми и подземными м/м и площадями.
@@ -63,7 +65,8 @@ def compute_parking_breakdown(
     open_space_per_v = norms.resolve("parking.open_space_per_place")
     cap_max = norms.resolve("parking.multilevel_capacity_max")
 
-    total_required = math.ceil(apartments_area / per_place)
+    housing_required = math.ceil(apartments_area / per_place) if apartments_area > 0 else 0
+    total_required = housing_required + max(0, int(additional_places))
 
     if config.mode == "min_open":
         # Минимум открытых, остаток — подземные (текущее v0.1 поведение)

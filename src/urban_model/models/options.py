@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from urban_model.models.built_in import BuiltInArea
 from urban_model.models.parking import ParkingConfig
 from urban_model.models.social import KindergartenSpec, SchoolSpec
 
@@ -15,7 +16,12 @@ class CalculationOptions(BaseModel):
     floors: int = Field(default=10, ge=1, description="этажность жилья")
     planning_doc: bool = True  # ППТ → КИТ_max = 2.5; иначе 1.4
 
-    # Доля ВПП в общей площади (грубо, до v0.3+)
+    # Встроенно-пристроенные помещения. Если задано — площадь вычитается из GFA,
+    # для неё считаются собственные парковки (по ВРИ) и озеленение.
+    # Если None — используется legacy-параметр vpp_share.
+    built_in: BuiltInArea | None = None
+
+    # Legacy: плоская доля ВПП в GFA. Игнорируется при заданном built_in.
     vpp_share: float = Field(default=0.0, ge=0.0, le=0.5)
 
     # Соцобъекты — учитывать или нет

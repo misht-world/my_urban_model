@@ -60,6 +60,9 @@ class TEPResult(BaseModel):
     # Жильё
     gfa: TEPField                  # общая площадь жилых зданий
     apartments_area: TEPField      # площадь квартир
+    built_in_area: TEPField        # площадь ВПП (0, если ВПП не задано)
+    built_in_parking_places: TEPField   # м/м для ВПП по нормативу ВРИ
+    built_in_greening_area: TEPField    # озеленение, привязанное к ВПП, м²
     population: TEPField
     population_check_20: TEPField  # население по 20 м²/чел (для проверки плотности)
     density_chel_per_ga: TEPField
@@ -103,6 +106,9 @@ class TEPResult(BaseModel):
     # Баланс
     balance: BalanceCheck
 
+    # ВРИ-код ВПП (если задано) — строка, не TEPField, поскольку нечисловое значение
+    built_in_vri_code: str | None = None
+
     # Ограничивающий фактор (для обратного расчёта)
     limiting_factor: str | None = None
 
@@ -113,6 +119,13 @@ class TEPResult(BaseModel):
             f"Профиль: {self.profile}",
             f"КИТ:                     {self.kit.value:.3f} (норм. макс {self.kit_normative_max.value})",
             f"Площадь квартир:         {self.apartments_area.value:,.0f} м²",
+        ]
+        if self.built_in_area.value and self.built_in_area.value > 0:
+            lines.append(
+                f"ВПП:                     {self.built_in_area.value:,.0f} м² "
+                f"(ВРИ {self.built_in_vri_code}), парковки +{self.built_in_parking_places.value} м/м"
+            )
+        lines += [
             f"Население:               {self.population.value:,.0f} чел",
             f"Плотность:               {self.density_chel_per_ga.value:.1f} чел/га [{self.density_chel_per_ga.status.value}]",
             f"ДОО (мест):              требуется {self.kindergarten_places_required.value} → принято {self.kindergarten_places_accepted.value}",
