@@ -148,8 +148,15 @@ def compute_tep_for_kit(
         sch_buckets = []
 
     # === ЗНОП ===
-    znop_pp = znop.znop_per_person(kit, norms)
-    znop_area_v = znop.znop_total_area(pop_v, kit, norms)
+    if options.znop_per_person_override is not None:
+        # Ручной override (для режима solve_max_kit_with_znop)
+        znop_pp = options.znop_per_person_override
+        znop_area_v = pop_v * znop_pp
+        znop_source_label = f"override = {znop_pp} м²/чел (заменяет норматив)"
+    else:
+        znop_pp = znop.znop_per_person(kit, norms)
+        znop_area_v = znop.znop_total_area(pop_v, kit, norms)
+        znop_source_label = norms.source_of("znop_per_person", kit=kit)
 
     # === Озеленение жилого ЗУ ===
     green_ratio = norms.resolve("greening.housing_per_apartments")
@@ -331,8 +338,13 @@ def compute_tep_for_kit(
         znop_per_person=_F(
             znop_pp,
             unit="m2/чел",
-            formula=f"piecewise(КИТ={kit:.3f})",
-            source=norms.source_of("znop_per_person", kit=kit),
+            status=Status.MANUAL if options.znop_per_person_override is not None else Status.OK,
+            formula=(
+                f"override = {options.znop_per_person_override}"
+                if options.znop_per_person_override is not None
+                else f"piecewise(КИТ={kit:.3f})"
+            ),
+            source=znop_source_label,
         ),
         znop_area=_F(znop_area_v, unit="m2", formula=f"население × {znop_pp}"),
         greening_housing_area=_F(

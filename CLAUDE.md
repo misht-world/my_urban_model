@@ -101,8 +101,17 @@ TEPField(
 ## Публичный API
 
 ```python
-from urban_model import solve_max_kit, verify_kit, compare_scenarios, run_scenarios
-from urban_model.models import Site, CalculationOptions, Scenario, ParkingConfig
+from urban_model import (
+    solve_max_kit,
+    solve_max_kit_with_reserve,
+    solve_max_kit_with_znop,
+    verify_kit,
+    compare_scenarios,
+    run_scenarios,
+)
+from urban_model.models import (
+    Site, CalculationOptions, Scenario, ParkingConfig, BuiltInArea,
+)
 from urban_model.normatives import load_normatives
 from urban_model.export import to_xlsx, results_to_dataframe
 ```
@@ -114,12 +123,15 @@ from urban_model.export import to_xlsx, results_to_dataframe
 | **v0.1** | uv-скелет; нормативы (russia+spb) с piecewise/conditional/наследованием; `TEPField/TEPResult`; чистые расчёты ТЭП по ТЗ; `solve_max_kit` через бисекцию КИТ; ДОО (detached/built_in) + СОШ (флаги бассейна/ядра); тесты; demo-notebook. | ✅ |
 | **v0.2** | Проверочный режим `verify_kit`. | ✅ |
 |  | Сравнение вариантов → DataFrame → xlsx (`compare_scenarios`, `to_xlsx`). | ✅ |
-|  | Режимы «с резервом» и «с увеличенным ЗНОП». | ⏳ |
-|  | **ВПП как самостоятельная сущность** (формула Z = C·A/B и собственные нормативы парковок/озеленения по ВРИ). | ⏳ |
+|  | Режим «с резервом» (`solve_max_kit_with_reserve`). | ✅ |
+|  | Режим «с увеличенным ЗНОП» (`solve_max_kit_with_znop`). | ✅ |
+|  | **ВПП как самостоятельная сущность** (`BuiltInArea(area, vri_code)`; парковки по ВРИ из `parking.vpp`; озеленение по `greening.vpp_per_floor_area`). | ✅ |
 | **v0.3** | Парковочные сценарии (open/multilevel/underground). | ✅ |
 |  | WARNING при СОШ < нормативного минимума. | ✅ |
 |  | Расширение соцобъектов: поликлиники, ФОК, культура. | ⏳ |
 |  | Парковки соцобъектов на стоянках-спутниках. | ⏳ |
+|  | Список ВПП (несколько помещений с разными ВРИ в одном жилом доме — B3). | ⏳ |
+|  | Сверка значений `parking.vpp.m2_per_place` с актуальной редакцией ПЗЗ СПб. | ⏳ |
 | v0.4 | Экономика: себестоимость, выручка, прибыль. | — |
 | v0.5 | Optuna — одно-критериальная оптимизация поверх обратного расчёта. | — |
 | v0.6 | DEAP / NSGA-II — Парето-фронт. | — |

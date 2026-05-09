@@ -15,12 +15,18 @@
 
 __version__ = "0.2.0"
 
-from urban_model.core.inverse import solve_max_kit
+from urban_model.core.inverse import (
+    solve_max_kit,
+    solve_max_kit_with_reserve,
+    solve_max_kit_with_znop,
+)
 from urban_model.modes.verify import verify_kit
 from urban_model.modes.compare import compare_scenarios, run_scenarios
 
 __all__ = [
     "solve_max_kit",
+    "solve_max_kit_with_reserve",
+    "solve_max_kit_with_znop",
     "verify_kit",
     "compare_scenarios",
     "run_scenarios",

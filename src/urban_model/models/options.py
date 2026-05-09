@@ -44,3 +44,11 @@ class CalculationOptions(BaseModel):
     kit_search_min: float = 0.1
     kit_search_max: float | None = None  # если None — берём из норматива
     kit_tolerance: float = 0.001
+
+    # Override для ЗНОП (м²/чел). Если задано — заменяет нормативную piecewise(КИТ).
+    # Используется в режиме solve_max_kit_with_znop.
+    znop_per_person_override: float | None = Field(
+        default=None,
+        ge=0.0,
+        description="Принудительный ЗНОП в м²/чел; None = по нормативу (piecewise по КИТ)",
+    )
