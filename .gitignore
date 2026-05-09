@@ -12,3 +12,5 @@ build/
 *.tmp
 info/*.txt
 output/
+.claude/
+*.log
