@@ -19,7 +19,7 @@ from urban_model.calculations import (
     school,
     znop,
 )
-from urban_model.calculations.rounding import ceil_int
+from urban_model.calculations.parking import compute_parking_breakdown
 from urban_model.models.options import CalculationOptions
 from urban_model.models.result import Status, TEPField, TEPResult
 from urban_model.models.site import Site
@@ -100,7 +100,6 @@ def compute_tep_for_kit(
         sch_round = norms.resolve("social_objects.school.rounding")
         sch_required_raw = school.required_places(pop_v, sch_per_1000)
         sch_accepted = school.round_places(sch_required_raw, sch_round)
-        # одна СОШ (упрощение v0.1; разбивку добавим в v0.2)
         if options.school.num_objects and options.school.capacity_per_object:
             sch_buckets = [options.school.capacity_per_object] * options.school.num_objects
         else:
@@ -129,11 +128,8 @@ def compute_tep_for_kit(
         site.area_m2, kg_plot_total + sch_plot_total, quarter_share
     )
 
-    # === Парковки ===
-    park_required = parking.required_places_for_apartments(apartments_area_v, norms)
-    park_required_int = ceil_int(park_required)
-    park_open_places = parking.open_places_min(park_required, norms)
-    park_open_area_v = parking.open_parking_area(park_open_places, norms)
+    # === Парковки (разбивка по типам) ===
+    park = compute_parking_breakdown(apartments_area_v, options.parking, norms)
 
     # === Проезды ===
     drive_intra_share = norms.resolve("driveways.intra_quarter_share")
@@ -143,7 +139,7 @@ def compute_tep_for_kit(
 
     # === Площадь жилого ЗУ ===
     # ЗУ жилья = площадь застройки + проезды на ЗУ + озеленение жилого + открытые парковки
-    housing_lot_v = footprint_v + drive_lot_v + green_housing_v + park_open_area_v
+    housing_lot_v = footprint_v + drive_lot_v + green_housing_v + park.open_area
 
     # === Баланс квартала ===
     components = {
@@ -152,8 +148,23 @@ def compute_tep_for_kit(
         "school_plot": sch_plot_total,
         "znop": znop_area_v,
         "intra_quarter_driveways": drive_intra_v,
+        "parking_multilevel": park.multilevel_footprint,
     }
     bal = balance.compute_balance(site.area_m2, components)
+
+    # === Формула парковки для аудит-трейла ===
+    park_mode_label = {
+        "min_open": f"≥{norms.resolve('parking.open_share_min')*100:.1f}% открытых, остаток подземные",
+        "all_open": "100% открытые",
+        "custom": (
+            f"открытые {options.parking.open_share*100:.0f}% / "
+            f"многоуровневые {options.parking.multilevel_share*100:.0f}% / "
+            f"подземные {options.parking.underground_share*100:.0f}%"
+        ),
+    }.get(options.parking.mode, options.parking.mode)
+
+    park_source = norms.source_of("parking.housing.m2_apartments_per_place")
+    per_place = norms.resolve("parking.housing.m2_apartments_per_place")
 
     # === Сборка TEPResult ===
     return TEPResult(
@@ -254,23 +265,56 @@ def compute_tep_for_kit(
             formula=f"(S_квартала − S_ДОО − S_СОШ) × {quarter_share}",
             source=norms.source_of("greening.quarter_min_share"),
         ),
+        # --- Парковки ---
         parking_required_places=_F(
-            park_required_int,
+            park.total_required,
             unit="м/м",
-            formula=f"S_квартир / {norms.resolve('parking.housing.m2_apartments_per_place')}, вверх",
-            source=norms.source_of("parking.housing.m2_apartments_per_place"),
+            formula=f"S_квартир / {per_place} = {apartments_area_v:.0f} / {per_place}, вверх",
+            source=park_source,
         ),
         parking_open_places=_F(
-            park_open_places,
+            park.open_places,
             unit="м/м",
-            formula=f"≥ {norms.resolve('parking.open_share_min')*100:.1f}% от {park_required_int}",
+            formula=f"сценарий '{options.parking.mode}': {park_mode_label}",
             source=norms.source_of("parking.open_share_min"),
         ),
         parking_open_area=_F(
-            park_open_area_v,
+            park.open_area,
             unit="m2",
-            formula=f"{park_open_places} × {norms.resolve('parking.open_space_per_place')}",
+            formula=f"{park.open_places} × {norms.resolve('parking.open_space_per_place')} м²/м.м.",
         ),
+        parking_multilevel_places=_F(
+            park.multilevel_places,
+            unit="м/м",
+            formula=f"сценарий '{options.parking.mode}'",
+        ),
+        parking_multilevel_objects=_F(
+            park.multilevel_objects,
+            unit="шт",
+            formula=(
+                f"{park.multilevel_places} м/м / {norms.resolve('parking.multilevel_capacity_max')} макс."
+                if park.multilevel_places > 0 else "—"
+            ),
+            source=norms.source_of("parking.multilevel_capacity_max") if park.multilevel_places > 0 else None,
+        ),
+        parking_multilevel_area=_F(
+            park.multilevel_footprint,
+            unit="m2",
+            formula=(
+                f"{park.multilevel_places} м/м × "
+                f"{norms.resolve('parking.multilevel_area_per_place', levels=park.multilevel_levels) if park.multilevel_levels > 0 else '—'} "
+                f"м²/м.м. ({park.multilevel_levels} уровн.)"
+                if park.multilevel_places > 0 else "—"
+            ),
+            source=norms.source_of("parking.multilevel_area_per_place", levels=park.multilevel_levels)
+            if park.multilevel_levels > 0 else None,
+        ),
+        parking_underground_places=_F(
+            park.underground_places,
+            unit="м/м",
+            formula="не занимают поверхностную площадь квартала",
+        ),
+        # --- Проезды ---
         driveways_intra_quarter_area=_F(
             drive_intra_v, unit="m2", formula=f"S_квартала × {drive_intra_share}"
         ),

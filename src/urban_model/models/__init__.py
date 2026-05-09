@@ -3,6 +3,7 @@ from urban_model.models.site import Site
 from urban_model.models.options import CalculationOptions
 from urban_model.models.social import KindergartenSpec, SchoolSpec
 from urban_model.models.scenario import Scenario
+from urban_model.models.parking import ParkingConfig, ParkingBreakdown
 
 __all__ = [
     "TEPField",
@@ -14,4 +15,6 @@ __all__ = [
     "KindergartenSpec",
     "SchoolSpec",
     "Scenario",
+    "ParkingConfig",
+    "ParkingBreakdown",
 ]

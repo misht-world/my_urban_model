@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from urban_model.models.parking import ParkingConfig
 from urban_model.models.social import KindergartenSpec, SchoolSpec
 
 
@@ -14,7 +15,7 @@ class CalculationOptions(BaseModel):
     floors: int = Field(default=10, ge=1, description="этажность жилья")
     planning_doc: bool = True  # ППТ → КИТ_max = 2.5; иначе 1.4
 
-    # Доля ВПП в общей площади (грубо, до v0.2)
+    # Доля ВПП в общей площади (грубо, до v0.3+)
     vpp_share: float = Field(default=0.0, ge=0.0, le=0.5)
 
     # Соцобъекты — учитывать или нет
@@ -24,9 +25,14 @@ class CalculationOptions(BaseModel):
     kindergarten: KindergartenSpec = Field(default_factory=KindergartenSpec)
     school: SchoolSpec = Field(default_factory=SchoolSpec)
 
-    # Парковки — в v0.1 только открытые в уровне земли (минимум 12.5%) +
-    # отсутствует подземная/многоуровневая разбивка (это v0.2/v0.3).
-    # Пока считаем, что подземные парковки покрывают весь остаток и не занимают площадь.
+    # Парковочный сценарий
+    parking: ParkingConfig = Field(
+        default_factory=ParkingConfig,
+        description=(
+            "Конфигурация парковок: mode='min_open' (по умолчанию) / "
+            "'all_open' / 'custom' с долями open/multilevel/underground"
+        ),
+    )
 
     # Бисекция КИТ
     kit_search_min: float = 0.1

@@ -38,9 +38,13 @@ _KPI_ROWS: list[tuple[str, str]] = [
     ("СОШ участок, м²", "school_plot_area"),
     ("ЗНОП, м²/чел", "znop_per_person"),
     ("ЗНОП итого, м²", "znop_area"),
-    ("Парковки, м/м", "parking_required_places"),
+    ("Парковки всего, м/м", "parking_required_places"),
     ("Откр. парковки, м/м", "parking_open_places"),
     ("Откр. парковки, м²", "parking_open_area"),
+    ("Многоуровн. парковки, м/м", "parking_multilevel_places"),
+    ("Многоуровн. паркинги, шт", "parking_multilevel_objects"),
+    ("Многоуровн. паркинги, м²", "parking_multilevel_area"),
+    ("Подземные парковки, м/м", "parking_underground_places"),
     ("Баланс территории, м²", "_balance_surplus"),  # специальный случай
     ("Баланс статус", "_balance_status"),            # специальный случай
     ("Ограничивающий фактор", "_limiting_factor"),  # специальный случай

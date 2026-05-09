@@ -1,6 +1,6 @@
 """TEPField и TEPResult — структурированный результат расчёта.
 
-Каждое поле несёт ауди-трейл: значение, нормативное, пользовательское,
+Каждое поле несёт аудит-трейл: значение, нормативное, пользовательское,
 статус, источник и формулу. См. CLAUDE.md → "TEPResult — структура".
 """
 
@@ -83,10 +83,14 @@ class TEPResult(BaseModel):
     greening_housing_area: TEPField
     greening_quarter_required: TEPField
 
-    # Парковки
-    parking_required_places: TEPField
-    parking_open_places: TEPField
-    parking_open_area: TEPField
+    # Парковки — итого и разбивка по типам
+    parking_required_places: TEPField   # всего м/м по нормативу
+    parking_open_places: TEPField       # открытые в уровне земли
+    parking_open_area: TEPField         # площадь открытых, м²
+    parking_multilevel_places: TEPField # многоуровневые
+    parking_multilevel_objects: TEPField# число объектов МП
+    parking_multilevel_area: TEPField   # пятно МП, м²
+    parking_underground_places: TEPField# подземные (не занимают surface-площадь)
 
     # Проезды
     driveways_intra_quarter_area: TEPField
@@ -114,8 +118,21 @@ class TEPResult(BaseModel):
             f"ДОО (мест):              требуется {self.kindergarten_places_required.value} → принято {self.kindergarten_places_accepted.value}",
             f"СОШ (мест):              требуется {self.school_places_required.value} → принято {self.school_places_accepted.value}",
             f"ЗНОП (м²/чел):           {self.znop_per_person.value} → итого {self.znop_area.value:,.0f} м²",
-            f"Парковки требуется:      {self.parking_required_places.value} м/м",
-            f"Открытые парковки:       {self.parking_open_places.value} м/м, {self.parking_open_area.value:,.0f} м²",
+            "Парковки (м/м):",
+            f"  всего требуется        {self.parking_required_places.value}",
+            f"  открытые               {self.parking_open_places.value} м/м, {self.parking_open_area.value:,.0f} м²",
+        ]
+        if self.parking_multilevel_places.value and self.parking_multilevel_places.value > 0:
+            lines.append(
+                f"  многоуровневые         {self.parking_multilevel_places.value} м/м "
+                f"в {self.parking_multilevel_objects.value} объект(ах), "
+                f"пятно {self.parking_multilevel_area.value:,.0f} м²"
+            )
+        if self.parking_underground_places.value and self.parking_underground_places.value > 0:
+            lines.append(
+                f"  подземные              {self.parking_underground_places.value} м/м (без поверхностной площади)"
+            )
+        lines += [
             f"Баланс:                  {'OK' if self.balance.is_feasible else 'ДЕФИЦИТ'} ({self.balance.surplus:+,.0f} м²)",
         ]
         if self.limiting_factor:
