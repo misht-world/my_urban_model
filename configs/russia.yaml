@@ -1,0 +1,84 @@
+# Базовые (общероссийские) нормативы.
+# Источник большинства параметров: СП 42.13330.2016.
+
+# Плотность населения и жилищная обеспеченность
+population_density_max:
+  type: scalar
+  value: 450
+  unit: "чел/га"
+  note: "для многоэтажной застройки при формальной обеспеченности 20 м²/чел"
+  source: "СП 42.13330.2016"
+
+housing_provision_check:
+  type: scalar
+  value: 20
+  unit: "m2_apartments_per_person"
+  note: "формальная обеспеченность для проверки плотности"
+  source: "СП 42.13330.2016"
+
+# Озеленение квартала
+greening:
+  quarter_min_share:
+    type: scalar
+    value: 0.25
+    note: "не менее 25% площади квартала, без учёта участков ДОО и СОШ"
+    source: "СП 42.13330.2016"
+
+# ДОО — общероссийские параметры
+social_objects:
+  kindergarten:
+    plot_area_per_place:
+      type: piecewise
+      argument: capacity
+      breakpoints:
+        - { up_to: 100, value: 44 }
+        - { up_to: .inf, value: 38 }
+      unit: "m2_per_place"
+      source: "СП 42.13330.2016"
+
+  school:
+    plot_area_per_place:
+      type: piecewise
+      argument: capacity
+      breakpoints:
+        - { up_to: 170, value: 80 }
+        - { up_to: 340, value: 55 }
+        - { up_to: 510, value: 40 }
+        - { up_to: 660, value: 35 }
+        - { up_to: 1000, value: 28 }
+        - { up_to: 1500, value: 24 }
+        - { up_to: .inf, value: 22 }
+      unit: "m2_per_place"
+      note: "св. 30 мест"
+      source: "СП 42.13330.2016"
+    pool_extra_area:
+      type: scalar
+      value: 2000
+      unit: "m2"
+      note: "+0.2 га при наличии бассейна"
+      source: "СП 42.13330.2016"
+    sport_core_extra_area:
+      type: scalar
+      value: 7000
+      unit: "m2"
+      note: "+0.7 га при наличии спортивного ядра"
+      source: "СП 42.13330.2016"
+
+# Многоуровневые наземные паркинги: площадь по этажности
+parking:
+  multilevel_area_per_place:
+    type: piecewise
+    argument: levels
+    breakpoints:
+      - { up_to: 1, value: 30 }
+      - { up_to: 2, value: 20 }
+      - { up_to: 3, value: 14 }
+      - { up_to: 4, value: 12 }
+      - { up_to: .inf, value: 10 }
+    unit: "m2_per_place"
+    source: "СП 42.13330.2016"
+  multilevel_capacity_max_default:
+    type: scalar
+    value: 500
+    unit: "places"
+    source: "СанПиН 2.2.1/2.1.1.1200-03"

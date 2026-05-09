@@ -1,0 +1,204 @@
+# Нормативы Санкт-Петербурга.
+# Параметры, отсутствующие здесь, наследуются из russia.yaml.
+parent: russia
+
+# Семантические алиасы поверх ВРИ.
+# В v0.1 жилая многоэтажная — ВРИ 2.6; ДОО/СОШ хранятся в social_objects (не по ВРИ).
+aliases:
+  housing: "vri.2.6"
+
+# === Жильё ===
+
+housing_provision:
+  type: scalar
+  value: 28
+  unit: "m2_apartments_per_person"
+  note: "региональная жилищная обеспеченность"
+  source: "НГП СПб"
+
+# КИТ: с/без ППТ
+kit_limits:
+  type: conditional
+  argument: planning_doc
+  cases:
+    "yes": 2.5
+    "no": 1.4
+  source: "ПЗЗ СПб"
+
+# Параметры жилых зданий (приняты условно)
+building_params:
+  apartments_to_gfa_ratio:
+    type: scalar
+    value: 0.75
+    note: "коэффициент приведения общей площади к площади квартир (без ВПП)"
+    source: "принято условно"
+  residential_floor_height:
+    type: scalar
+    value: 3.0
+    unit: "m"
+    source: "принято условно"
+  vpp_floor_height:
+    type: scalar
+    value: 4.0
+    unit: "m"
+    source: "принято условно"
+  non_residential_floor_height:
+    type: scalar
+    value: 3.2
+    unit: "m"
+    source: "принято условно"
+
+# === ЗНОП — кусочно-постоянная функция от КИТ ===
+znop_per_person:
+  type: piecewise
+  argument: kit
+  breakpoints:
+    - { up_to: 1.59, value: 0 }
+    - { up_to: 1.79, value: 3 }
+    - { up_to: 1.99, value: 4 }
+    - { up_to: 2.50, value: 6 }
+  unit: "m2_per_person"
+  source: "ПЗЗ СПб"
+
+# === Озеленение ===
+greening:
+  housing_per_apartments:
+    type: scalar
+    value: 0.23
+    note: "23 м² озеленения на 100 м² площади квартир (доля)"
+    source: "ПЗЗ СПб"
+  vpp_per_floor_area:
+    type: scalar
+    value: 0.15
+    note: "15 м² на 100 м² встроенно-пристроенных помещений"
+    source: "ПЗЗ СПб"
+
+# === ДОО ===
+social_objects:
+  kindergarten:
+    places_per_1000:
+      type: scalar
+      value: 61
+      unit: "places_per_1000_people"
+      source: "НГП СПб"
+    rounding:
+      type: scalar
+      value: 5
+      note: "округление вместимости вверх кратно 5"
+      source: "НГП СПб"
+    plot_area_per_place:   # переопределяет russia
+      type: piecewise
+      argument: capacity
+      breakpoints:
+        - { up_to: 100, value: 45 }
+        - { up_to: .inf, value: 40 }
+      unit: "m2_per_place"
+      source: "РМД 31-07-2009"
+    building_area_per_place:
+      type: piecewise
+      argument: capacity
+      breakpoints:
+        - { up_to: 160, value: 30 }
+        - { up_to: 220, value: 28 }
+        - { up_to: .inf, value: 25 }
+      unit: "m2_per_place"
+      source: "РМД 15-26-2017"
+    capacity_min:
+      type: conditional
+      argument: building_type
+      cases:
+        detached: 160
+      source: "Письмо К.Обр №03-28-3794/21-0-0 от 29.04.2021"
+    capacity_max:
+      type: conditional
+      argument: building_type
+      cases:
+        detached: 350
+        built_in: 120
+      sources:
+        detached: "РМД 15-26-2017"
+        built_in: "Письмо К.Обр №03-28-3794/21-0-0 от 29.04.2021"
+
+  school:
+    places_per_1000:
+      type: scalar
+      value: 120
+      unit: "places_per_1000_people"
+      source: "НГП СПб"
+    rounding:
+      type: scalar
+      value: 10
+      note: "округление вместимости вверх кратно 10"
+      source: "НГП СПб"
+    building_area_per_place:
+      type: piecewise
+      argument: capacity
+      breakpoints:
+        - { up_to: 600, value: 30 }
+        - { up_to: 825, value: 28 }
+        - { up_to: .inf, value: 25 }
+      unit: "m2_per_place"
+      note: "от 450 мест"
+      source: "РМД 15-26-2017"
+    capacity_min:
+      type: conditional
+      argument: building_type
+      cases:
+        detached: 550
+      source: "Письмо К.Обр №03-28-3794/21-0-0 от 29.04.2021"
+
+# === Парковки ===
+parking:
+  housing:
+    m2_apartments_per_place:
+      type: scalar
+      value: 80
+      unit: "m2_apartments_per_place"
+      note: "1 машино-место на 80 м² общей площади квартир (ВРИ 2.1.1, 2.5, 2.6)"
+      source: "ПЗЗ СПб"
+  open_share_min:
+    type: scalar
+    value: 0.125
+    note: "не менее 12,5% от требуемого количества м/м — открытые в уровне земли"
+    source: "ПЗЗ СПб"
+  open_space_per_place:
+    type: scalar
+    value: 20.75
+    unit: "m2"
+    note: "стандартное открытое м/м с частью проезда"
+    source: "принято условно"
+  mgn_space_per_place:
+    type: scalar
+    value: 32.4
+    unit: "m2"
+    note: "м/м МГН с частью проезда"
+    source: "принято условно"
+  multilevel_capacity_max:
+    type: scalar
+    value: 300
+    unit: "places"
+    note: "СПб; уточнить норматив"
+    source: "СПб (уточнить)"
+  metro_proximity_discount:
+    type: scalar
+    value: 0.5
+    note: "уменьшение на 50% в пределах 500 м от метрополитена"
+    source: "ПЗЗ СПб <3>"
+
+# === Проезды (приняты условно) ===
+driveways:
+  intra_quarter_share:
+    type: scalar
+    value: 0.10
+    note: "доля от площади квартала"
+    source: "принято условно"
+  housing_lot_share:
+    type: scalar
+    value: 1.20
+    note: "120% от площади застройки на жилом ЗУ"
+    source: "принято условно"
+  non_housing_lot_share:
+    type: scalar
+    value: 1.00
+    note: "100% от площади застройки на нежилом ЗУ"
+    source: "принято условно"
