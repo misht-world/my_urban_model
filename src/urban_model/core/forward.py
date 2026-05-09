@@ -95,6 +95,7 @@ def compute_tep_for_kit(
         kg_buckets = []
 
     # === СОШ ===
+    sch_status = Status.OK
     if options.include_school and pop_v > 0:
         sch_per_1000 = norms.resolve("social_objects.school.places_per_1000")
         sch_round = norms.resolve("social_objects.school.rounding")
@@ -111,6 +112,22 @@ def compute_tep_for_kit(
             for c in sch_buckets
         )
         sch_bld_total = sum(school.building_area_for_capacity(c, norms) for c in sch_buckets)
+        # Проверка минимальной вместимости: расчёт даёт меньше норматива.
+        # Для СПб нет «built_in» школ → минимум распространяется на любую СОШ.
+        try:
+            sch_cap_min = norms.resolve(
+                "social_objects.school.capacity_min",
+                building_type=options.school.building_type,
+            )
+        except (KeyError, TypeError):
+            sch_cap_min = None
+        if sch_cap_min and sch_buckets and any(c < sch_cap_min for c in sch_buckets):
+            sch_status = Status.WARNING
+            warnings.append(
+                f"СОШ: расчётная вместимость {sch_buckets} < нормативного минимума "
+                f"{sch_cap_min} мест — стандартная отдельно стоящая СОШ невозможна, "
+                "нужна стоянка-спутник или ВПП-школа (учтётся в v0.2)."
+            )
     else:
         sch_required_raw = sch_accepted = 0
         sch_plot_total = sch_bld_total = 0.0
@@ -236,6 +253,7 @@ def compute_tep_for_kit(
             sch_accepted,
             unit="мест",
             normative=sch_required_raw if options.include_school else None,
+            status=sch_status,
             formula=f"вверх кратно 10 → объекты {sch_buckets}"
             if options.include_school
             else None,

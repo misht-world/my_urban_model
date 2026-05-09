@@ -82,3 +82,29 @@ parking:
     value: 500
     unit: "places"
     source: "СанПиН 2.2.1/2.1.1.1200-03"
+  # Базовый максимум вместимости одного многоуровневого паркинга.
+  # Регионы могут переопределять (СПб → 300).
+  multilevel_capacity_max:
+    type: scalar
+    value: 500
+    unit: "places"
+    source: "СанПиН 2.2.1/2.1.1.1200-03"
+  # Минимальная доля открытых м/м (общероссийского норматива нет — fallback 0).
+  open_share_min:
+    type: scalar
+    value: 0.0
+    note: "общероссийского обязательства нет; регионы переопределяют"
+    source: "СП 42.13330.2016 (отсутствует требование)"
+  open_space_per_place:
+    type: scalar
+    value: 22.5
+    unit: "m2"
+    note: "усл., ~стандартное открытое м/м с проездом"
+    source: "СП 42.13330.2016"
+  housing:
+    m2_apartments_per_place:
+      type: scalar
+      value: 80
+      unit: "m2_apartments_per_place"
+      note: "общероссийский ориентир; регионы (ПЗЗ) переопределяют"
+      source: "СП 42.13330.2016"
