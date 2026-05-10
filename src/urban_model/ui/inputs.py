@@ -71,16 +71,16 @@ def render_sidebar() -> UserInputs:
             key="floors",
         )
         planning_doc = st.checkbox(
-            "Документ планировки (ПД) → КИТ_max=2.5",
+            "Документация по планировке территории (ДПТ) → КИТ_max=2.5",
             value=True,
             key="planning_doc",
-            help="Без ПД нормативный потолок КИТ = 1.4",
+            help="Без ДПТ нормативный потолок КИТ = 1.4",
         )
 
     # ------------------------------------------------------------------
-    # 3. ЗНОП
+    # 3. ЗНОП (зелёные насаждения общего пользования)
     # ------------------------------------------------------------------
-    with st.sidebar.expander("🌳 ЗНОП", expanded=False):
+    with st.sidebar.expander("🌳 ЗНОП — зелёные насаждения общего пользования", expanded=False):
         znop_include = st.checkbox(
             "Учитывать ЗНОП",
             value=True,
@@ -93,11 +93,14 @@ def render_sidebar() -> UserInputs:
         )
         if znop_include:
             znop_mode = st.radio(
-                "Источник",
-                ["По нормативу (piecewise по КИТ)", "Вручную"],
+                "Источник значения",
+                [
+                    "По нормативу (зависит от КИТ ступенями: 0/3/4/6 м²/чел)",
+                    "Задать вручную",
+                ],
                 key="znop_mode",
             )
-            if znop_mode == "Вручную":
+            if znop_mode == "Задать вручную":
                 znop_value = st.number_input(
                     "ЗНОП, м²/чел",
                     min_value=0.0,
@@ -121,14 +124,18 @@ def render_sidebar() -> UserInputs:
             value=True,
             key="include_kg",
         )
-        kg_btype = st.selectbox(
+        kg_btype_label = st.selectbox(
             "Тип здания ДОО",
-            ["detached", "built_in"],
+            ["Отдельно стоящее", "Встроенно-пристроенное"],
             index=0,
             disabled=not include_kg,
-            help="detached = отдельно стоящее; built_in = встроенно-пристроенное",
-            key="kg_btype",
+            help=(
+                "Отдельно стоящее: вместимость 160-350 мест по РМД. "
+                "Встроенно-пристроенное: до 120 мест, размещается на 1-м этаже жилого дома."
+            ),
+            key="kg_btype_label",
         )
+        kg_btype = "detached" if kg_btype_label == "Отдельно стоящее" else "built_in"
         kg_override = st.checkbox(
             "Задать число ДОО вручную",
             value=False,
@@ -222,33 +229,49 @@ def render_sidebar() -> UserInputs:
     # ------------------------------------------------------------------
     # 5. Парковки
     # ------------------------------------------------------------------
+    PARK_MODE_LABELS = {
+        "Минимум открытых, остальное подземные (по умолчанию)": "min_open",
+        "Все парковки открытые наземные": "all_open",
+        "Задать доли вручную": "custom",
+    }
     with st.sidebar.expander("🅿️ Парковки", expanded=False):
-        park_mode = st.radio(
-            "Режим",
-            [
-                "min_open — мин. открытых, остаток подземные",
-                "all_open — 100% открытые",
-                "custom — задать доли вручную",
-            ],
+        park_label = st.radio(
+            "Размещение машино-мест",
+            list(PARK_MODE_LABELS.keys()),
             index=0,
-            key="park_mode",
+            key="park_mode_label",
+            help=(
+                "Минимум открытых: 12.5% обязательно открытыми, "
+                "остаток размещается под землёй (не отнимает поверхностной "
+                "площади квартала). Все открытые: 100% м/м на поверхности — "
+                "максимальная нагрузка на квартал. Вручную: задать доли каждого типа."
+            ),
         )
-        if park_mode.startswith("min_open"):
+        park_mode = PARK_MODE_LABELS[park_label]
+        if park_mode == "min_open":
             parking = ParkingConfig(mode="min_open")
-        elif park_mode.startswith("all_open"):
+        elif park_mode == "all_open":
             parking = ParkingConfig(mode="all_open")
         else:
-            st.caption("Сумма долей должна равняться 100%")
-            open_pct = st.slider("Открытые, %", 0, 100, 30, key="park_open_pct")
-            ml_pct = st.slider("Многоуровневые, %", 0, 100, 30, key="park_ml_pct")
+            st.caption("Сумма долей должна равняться 100%. Подземные считаются автоматически.")
+            open_pct = st.slider(
+                "Открытые наземные, %", 0, 100, 30, key="park_open_pct",
+                help="Парковки на поверхности — отнимают площадь квартала.",
+            )
+            ml_pct = st.slider(
+                "Многоуровневые наземные, %", 0, 100, 30, key="park_ml_pct",
+                help="Многоуровневые наземные паркинги — занимают пятно, но компактнее открытых.",
+            )
             ug_pct = max(0, 100 - open_pct - ml_pct)
-            st.metric("Подземные, %", ug_pct)
+            st.metric("Подземные (автоматически), %", ug_pct,
+                      help="Подземные паркинги не занимают поверхностной площади квартала.")
             ml_levels = st.number_input(
                 "Этажность многоуровневого паркинга",
                 min_value=1,
                 max_value=10,
                 value=3,
                 key="park_ml_levels",
+                help="При 3 этажах площадь пятна в 3 раза меньше, чем у открытой стоянки.",
             )
             try:
                 parking = ParkingConfig(
