@@ -61,3 +61,19 @@ class CalculationOptions(BaseModel):
         default_factory=list,
         description="Список произвольных объектов на территории квартала",
     )
+
+    # Override долей проездов. None = по нормативу (значения из YAML).
+    # Используется когда пользователь хочет проверить «что если бы доля
+    # проездов была другая» на конкретном проекте.
+    driveways_intra_share_override: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=0.5,
+        description="Доля внутриквартальных проездов от S_квартала. None = норматив (0.10 СПб)",
+    )
+    driveways_lot_share_override: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=3.0,
+        description="Доля проездов на ЗУ жилой застройки от S_застройки. None = норматив (1.20 СПб)",
+    )

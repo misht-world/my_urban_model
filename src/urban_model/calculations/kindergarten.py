@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+from urban_model.calculations.distribute import (
+    choose_n_objects,
+    distribute_places_evenly,
+)
 from urban_model.calculations.rounding import round_up_to_multiple
 from urban_model.normatives import Normatives
 
@@ -16,13 +20,17 @@ def split_into_objects(
     spec_count: int | None,
     capacity_min: int | None,
     capacity_max: int,
+    multiple: int = 5,
 ) -> list[int]:
-    """Разбить общее число мест на отдельные ДОО.
+    """Разбить общее число мест на отдельные ДОО максимально равномерно.
 
-    Если задано конкретное `spec_count` и `spec_capacity` — используем их
-    (предполагая, что итог покрывает потребность).
-    Иначе делим на максимальное количество объектов вместимости `capacity_max`,
-    остаток — последний объект (но не меньше `capacity_min`, если задан).
+    Если задано `spec_count` и `spec_capacity` — используем их (ручной режим).
+    Иначе:
+      1. Определяем минимальное число объектов (`n`), при котором каждый
+         помещается в `[capacity_min, capacity_max]`.
+      2. Распределяем места между `n` объектами максимально равномерно,
+         сохраняя кратность `multiple` (5 для ДОО / 10 для СОШ).
+      3. Между объектами разница либо 0, либо ровно `multiple` мест.
     """
     if spec_count and spec_capacity:
         return [spec_capacity] * spec_count
@@ -30,21 +38,8 @@ def split_into_objects(
     if total_places <= 0:
         return []
 
-    n_full = total_places // capacity_max
-    remainder = total_places - n_full * capacity_max
-    out = [capacity_max] * n_full
-    if remainder > 0:
-        if capacity_min and remainder < capacity_min:
-            # доводим до минимума за счёт перераспределения
-            if not out:
-                out.append(capacity_min)
-            else:
-                # подкидываем последний бакет
-                out.append(remainder)
-                # будет провалидировано вызывающим как warning
-        else:
-            out.append(remainder)
-    return out
+    n = choose_n_objects(total_places, capacity_min, capacity_max)
+    return distribute_places_evenly(total_places, n, multiple)
 
 
 def plot_area_for_capacity(capacity: int, norms: Normatives) -> float:

@@ -118,6 +118,7 @@ def compute_tep_for_kit(
             spec_count=options.kindergarten.num_objects,
             capacity_min=kg_cap_min,
             capacity_max=kg_cap_max,
+            multiple=int(kg_round),
         )
         kg_plot_total, kg_bld_total = kindergarten.total_areas(kg_buckets, norms)
     else:
@@ -132,10 +133,28 @@ def compute_tep_for_kit(
         sch_round = norms.resolve("social_objects.school.rounding")
         sch_required_raw = school.required_places(pop_v, sch_per_1000)
         sch_accepted = school.round_places(sch_required_raw, sch_round)
-        if options.school.num_objects and options.school.capacity_per_object:
-            sch_buckets = [options.school.capacity_per_object] * options.school.num_objects
-        else:
-            sch_buckets = [sch_accepted] if sch_accepted > 0 else []
+        try:
+            sch_cap_min = norms.resolve(
+                "social_objects.school.capacity_min",
+                building_type=options.school.building_type,
+            )
+        except (KeyError, TypeError):
+            sch_cap_min = None
+        try:
+            sch_cap_max = norms.resolve(
+                "social_objects.school.capacity_max",
+                building_type=options.school.building_type,
+            )
+        except (KeyError, TypeError):
+            sch_cap_max = None
+        sch_buckets = school.split_into_objects(
+            total_places=sch_accepted,
+            spec_capacity=options.school.capacity_per_object,
+            spec_count=options.school.num_objects,
+            capacity_min=sch_cap_min,
+            capacity_max=sch_cap_max,
+            multiple=int(sch_round),
+        )
         sch_plot_total = sum(
             school.plot_area_with_extras(
                 c, norms, options.school.has_pool, options.school.has_sport_core
@@ -145,13 +164,6 @@ def compute_tep_for_kit(
         sch_bld_total = sum(school.building_area_for_capacity(c, norms) for c in sch_buckets)
         # Проверка минимальной вместимости: расчёт даёт меньше норматива.
         # Для СПб нет «built_in» школ → минимум распространяется на любую СОШ.
-        try:
-            sch_cap_min = norms.resolve(
-                "social_objects.school.capacity_min",
-                building_type=options.school.building_type,
-            )
-        except (KeyError, TypeError):
-            sch_cap_min = None
         if sch_cap_min and sch_buckets and any(c < sch_cap_min for c in sch_buckets):
             sch_status = Status.WARNING
             warnings.append(
@@ -225,8 +237,16 @@ def compute_tep_for_kit(
     )
 
     # === Проезды ===
-    drive_intra_share = norms.resolve("driveways.intra_quarter_share")
-    drive_lot_share = norms.resolve("driveways.housing_lot_share")
+    drive_intra_share = (
+        options.driveways_intra_share_override
+        if options.driveways_intra_share_override is not None
+        else norms.resolve("driveways.intra_quarter_share")
+    )
+    drive_lot_share = (
+        options.driveways_lot_share_override
+        if options.driveways_lot_share_override is not None
+        else norms.resolve("driveways.housing_lot_share")
+    )
     drive_intra_v = driveways.intra_quarter_area(site.area_m2, drive_intra_share)
     drive_lot_v = driveways.housing_lot_driveways_area(footprint_v, drive_lot_share)
 

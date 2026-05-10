@@ -50,47 +50,67 @@ def _render_search_space_form(base_options: CalculationOptions) -> SearchSpace:
             floors_range = (int(lo), int(hi))
 
     # --- Парковки ---
+    PARK_MODE_OPTIM_LABELS = {
+        "Минимум открытых, остальное подземные": "min_open",
+        "Все парковки открытые наземные": "all_open",
+        "Задать доли вручную (custom)": "custom",
+    }
     with c2:
         vary_parking = st.checkbox(
             "🅿️ Режим парковок",
             value=False,
             key="opt_vary_parking_mode",
+            help=(
+                "Если отмечено, оптимизатор перебирает разные режимы размещения "
+                "парковок и выбирает тот, где площадь квартир максимальна. "
+                "Иначе используется режим из настроек слева."
+            ),
         )
         parking_modes = None
         if vary_parking:
-            parking_modes = st.multiselect(
+            picked_labels = st.multiselect(
                 "Какие режимы перебирать",
-                ["min_open", "all_open", "custom"],
-                default=["min_open", "all_open"],
-                key="opt_parking_modes",
+                list(PARK_MODE_OPTIM_LABELS.keys()),
+                default=[
+                    "Минимум открытых, остальное подземные",
+                    "Все парковки открытые наземные",
+                ],
+                key="opt_parking_modes_labels",
+                help="Можно выбрать любое подмножество. Custom активирует слайдеры долей ниже.",
             )
-            if not parking_modes:
-                parking_modes = None
+            parking_modes = [PARK_MODE_OPTIM_LABELS[lbl] for lbl in picked_labels] or None
 
     # --- Парковки: подробности custom ---
     parking_open_range = None
     parking_ml_range = None
     multilevel_levels_range = None
     if vary_parking and parking_modes and "custom" in parking_modes:
-        with st.expander("Детали custom-парковок", expanded=False):
+        with st.expander("⚙️ Детали custom-парковок", expanded=True):
+            st.caption(
+                "При custom-режиме оптимизатор подбирает доли каждого типа "
+                "из заданных диапазонов. Подземные = остаток до 100%."
+            )
             open_lo, open_hi = st.slider(
-                "Доля открытых, %",
+                "Диапазон доли открытых наземных, %",
                 0, 100, (10, 50),
                 key="opt_parking_open",
+                help="Открытые м/м занимают площадь квартала пропорционально количеству.",
             )
             parking_open_range = (open_lo / 100, open_hi / 100)
 
             ml_lo, ml_hi = st.slider(
-                "Доля многоуровневых, %",
+                "Диапазон доли многоуровневых наземных, %",
                 0, 100, (0, 40),
                 key="opt_parking_ml",
+                help="Многоуровневые компактнее открытых: пятно делится на число этажей.",
             )
             parking_ml_range = (ml_lo / 100, ml_hi / 100)
 
             ll_lo, ll_hi = st.slider(
-                "Этажность многоуровневых",
+                "Диапазон этажности многоуровневого паркинга",
                 1, 6, (1, 4),
                 key="opt_ml_levels",
+                help="Чем выше — тем компактнее пятно, но дороже строительство.",
             )
             multilevel_levels_range = (int(ll_lo), int(ll_hi))
 
@@ -168,6 +188,11 @@ def _render_search_space_form(base_options: CalculationOptions) -> SearchSpace:
 # ---------------------------------------------------------------------------
 
 def _report_to_dataframe(report: OptimizationReport) -> pd.DataFrame:
+    PARK_MODE_RU = {
+        "min_open": "минимум открытых",
+        "all_open": "все открытые",
+        "custom": "вручную",
+    }
     rows = []
     for r in report.top_n:
         row = {
@@ -179,17 +204,24 @@ def _report_to_dataframe(report: OptimizationReport) -> pd.DataFrame:
         # Параметры — каждый своим столбцом
         for k, v in r.params.items():
             label = {
-                "floors": "Этажей",
-                "parking_mode": "Парковки",
-                "parking_open_share": "Открытых",
-                "parking_ml_share": "Многоур.",
-                "parking_ug_share": "Подзем.",
+                "floors": "Этажность",
+                "parking_mode": "Режим парковок",
+                "parking_open_share": "% открытых",
+                "parking_ml_share": "% многоуровневых",
+                "parking_ug_share": "% подземных",
                 "multilevel_levels": "Этажей МП",
-                "kg_num_objects": "ДОО",
-                "school_num_objects": "СОШ",
+                "kg_num_objects": "ДОО, шт",
+                "school_num_objects": "СОШ, шт",
                 "use_vpp": "ВПП",
                 "vpp_vri": "ВРИ ВПП",
             }.get(k, k)
+            # Преобразование значений для удобочитаемости
+            if k == "parking_mode":
+                v = PARK_MODE_RU.get(v, v)
+            elif k.startswith("parking_") and k.endswith("_share"):
+                v = f"{v * 100:.0f}%"
+            elif k == "use_vpp":
+                v = "да" if v else "нет"
             row[label] = v
         row["Резерв, м²"] = int(r.tep.balance.surplus)
         rows.append(row)

@@ -100,24 +100,27 @@ def _build_options_for_trial(
         else:
             ml_share = opts.parking.multilevel_share
 
-        ug_share = max(0.0, 1.0 - open_share - ml_share)
-
         if space.multilevel_levels_range:
             lo, hi = space.multilevel_levels_range
             ml_levels = trial.suggest_int("multilevel_levels", lo, hi)
         else:
             ml_levels = opts.parking.multilevel_levels
 
+        # Округляем open и ml до 4 знаков, ug вычисляем как остаток
+        # (без отдельного округления — сумма гарантированно = 1.0).
+        open_r = round(open_share, 4)
+        ml_r = round(ml_share, 4)
+        ug_r = max(0.0, 1.0 - open_r - ml_r)
         opts.parking = ParkingConfig(
             mode="custom",
-            open_share=round(open_share, 6),
-            multilevel_share=round(ml_share, 6),
-            underground_share=round(ug_share, 6),
+            open_share=open_r,
+            multilevel_share=ml_r,
+            underground_share=ug_r,
             multilevel_levels=int(ml_levels),
         )
-        sampled["parking_open_share"] = round(open_share, 3)
-        sampled["parking_ml_share"] = round(ml_share, 3)
-        sampled["parking_ug_share"] = round(ug_share, 3)
+        sampled["parking_open_share"] = round(open_r, 3)
+        sampled["parking_ml_share"] = round(ml_r, 3)
+        sampled["parking_ug_share"] = round(ug_r, 3)
         sampled["multilevel_levels"] = int(ml_levels)
     else:
         opts.parking = ParkingConfig(mode=parking_mode)

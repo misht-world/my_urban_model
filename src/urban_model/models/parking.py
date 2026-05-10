@@ -58,12 +58,19 @@ class ParkingConfig(BaseModel):
         if self.mode not in valid_modes:
             raise ValueError(f"mode должен быть одним из {valid_modes}")
         if self.mode == "custom":
-            total = round(self.open_share + self.multilevel_share + self.underground_share, 9)
-            if abs(total - 1.0) > 1e-6:
+            total = self.open_share + self.multilevel_share + self.underground_share
+            # Tolerance 1e-3 (0.1% доли) — практичная точность; жёсткое 1e-6
+            # ловило артефакты fp-арифметики в Optuna-сэмплере.
+            if abs(total - 1.0) > 1e-3:
                 raise ValueError(
                     f"open_share + multilevel_share + underground_share = {total:.4f},"
-                    " ожидается 1.0"
+                    " ожидается 1.0 (допуск 0.1%)"
                 )
+            # Нормализуем, чтобы сумма точно = 1.0 (для дальнейших расчётов)
+            scale = 1.0 / total
+            self.open_share *= scale
+            self.multilevel_share *= scale
+            self.underground_share *= scale
         return self
 
 
