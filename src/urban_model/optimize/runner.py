@@ -50,6 +50,9 @@ class OptimizationReport:
     n_trials_total: int
     n_trials_feasible: int
     base_apartments_area: float | None = None  # для сравнения «было vs стало»
+    n_trials_exception: int = 0          # сколько trials упало с исключением
+    exceptions: list[str] = field(default_factory=list)  # сводка ошибок (top-5 уникальных)
+    warnings: list[str] = field(default_factory=list)    # предупреждения о пространстве поиска
 
 
 # ---------------------------------------------------------------------------
@@ -162,13 +165,16 @@ def _make_objective(
     norms: Normatives,
     space: SearchSpace,
     storage: list[OptimizationResult],
+    exception_log: list[str],
 ) -> Callable[[optuna.Trial], float]:
     def objective(trial: optuna.Trial) -> float:
         try:
             opts, sampled = _build_options_for_trial(trial, base_options, space)
             tep = solve_max_kit(site, opts, norms)
         except Exception as e:
-            logging.debug("Trial %d failed: %s", trial.number, e)
+            msg = f"{type(e).__name__}: {e}"
+            logging.warning("Optuna trial %d failed: %s", trial.number, msg)
+            exception_log.append(msg)
             return -1e9  # инфисимально плохая оценка
 
         # Жёсткие ограничения:
@@ -220,6 +226,18 @@ def optimize_max_apartments(
     Returns:
         OptimizationReport с топ-N результатов.
     """
+    # ---- Предполётные проверки пространства поиска ----
+    space_warnings: list[str] = []
+    if space.try_built_in and base_options.built_in is None:
+        # Без базового built_in оптимизатор не знает площадь ВПП — варианты
+        # `use_vpp=True` молча выродятся в `built_in=None` и не дадут
+        # отличий. Это ловушка для пользователя.
+        space_warnings.append(
+            "try_built_in=True, но base_options.built_in is None — "
+            "варианты с ВПП будут проигнорированы. Задайте built_in в "
+            "base_options как шаблон (хотя бы примерную площадь)."
+        )
+
     if space.is_empty():
         # Нечего оптимизировать — просто возвращаем базовый результат
         base_tep = solve_max_kit(site, base_options, norms)
@@ -237,6 +255,7 @@ def optimize_max_apartments(
             n_trials_total=1,
             n_trials_feasible=1 if base_res.feasible else 0,
             base_apartments_area=base_res.apartments_area,
+            warnings=space_warnings,
         )
 
     # Базовый расчёт — для сравнения «было vs стало»
@@ -247,10 +266,11 @@ def optimize_max_apartments(
         base_apt = None
 
     storage: list[OptimizationResult] = []
+    exception_log: list[str] = []
     sampler = optuna.samplers.TPESampler(seed=seed)
     study = optuna.create_study(direction="maximize", sampler=sampler)
 
-    obj = _make_objective(site, base_options, norms, space, storage)
+    obj = _make_objective(site, base_options, norms, space, storage, exception_log)
 
     if progress_callback is not None:
         def _cb(study: optuna.Study, trial: optuna.FrozenTrial) -> None:
@@ -269,10 +289,22 @@ def optimize_max_apartments(
     top = feasible[:top_n]
     best = top[0] if top else None
 
+    # Сводка по уникальным исключениям (top-5)
+    unique_excs: dict[str, int] = {}
+    for msg in exception_log:
+        unique_excs[msg] = unique_excs.get(msg, 0) + 1
+    summary = [
+        f"{count}× {msg}"
+        for msg, count in sorted(unique_excs.items(), key=lambda kv: -kv[1])[:5]
+    ]
+
     return OptimizationReport(
         best=best,
         top_n=top,
-        n_trials_total=len(storage),
+        n_trials_total=len(storage) + len(exception_log),
         n_trials_feasible=len(feasible),
+        n_trials_exception=len(exception_log),
+        exceptions=summary,
         base_apartments_area=base_apt,
+        warnings=space_warnings,
     )

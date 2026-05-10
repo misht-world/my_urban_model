@@ -286,6 +286,10 @@ def render_optimizer_tab(
 
     st.markdown("---")
 
+    # Предупреждения о пространстве поиска (например, ВПП-ловушка)
+    for w in report.warnings:
+        st.warning(f"⚠️ {w}")
+
     # Сводка
     c1, c2, c3 = st.columns(3)
     if report.best:
@@ -301,6 +305,14 @@ def render_optimizer_tab(
             delta=f"{delta_abs:+,.0f} м² ({delta_rel:+.1f}%)".replace(",", " "),
         )
     c3.metric("Допустимых испытаний", f"{report.n_trials_feasible} / {report.n_trials_total}")
+    if report.n_trials_exception > 0:
+        c3.caption(f"⚠️ {report.n_trials_exception} испытаний упали с ошибкой")
+
+    # Подробности об ошибках, если были
+    if report.exceptions:
+        with st.expander(f"🔥 Ошибки в испытаниях ({report.n_trials_exception})", expanded=False):
+            for line in report.exceptions:
+                st.code(line, language=None)
 
     # Таблица топ-N
     if not report.top_n:

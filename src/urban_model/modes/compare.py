@@ -22,7 +22,11 @@ from __future__ import annotations
 import pandas as pd
 
 from urban_model.core.forward import compute_tep_for_kit
-from urban_model.core.inverse import solve_max_kit
+from urban_model.core.inverse import (
+    solve_max_kit,
+    solve_max_kit_with_reserve,
+    solve_max_kit_with_znop,
+)
 from urban_model.export.table import results_to_dataframe
 from urban_model.models.result import TEPResult
 from urban_model.models.scenario import Scenario
@@ -35,16 +39,31 @@ def run_scenarios(
 ) -> list[tuple[str, TEPResult]]:
     """Запустить расчёт по каждому сценарию и вернуть список (name, TEPResult).
 
-    - mode='inverse' → solve_max_kit (подбор максимального КИТ)
-    - mode='verify'  → compute_tep_for_kit (проверка заданного КИТ)
+    Поддерживаемые режимы (см. Scenario.mode):
+      - `inverse`      → solve_max_kit (подбор максимального КИТ)
+      - `verify`       → compute_tep_for_kit (проверка заданного КИТ)
+      - `with_reserve` → solve_max_kit_with_reserve (КИТ с целевым резервом)
+      - `with_znop`    → solve_max_kit_with_znop (КИТ при заданном ЗНОП)
     """
     results: list[tuple[str, TEPResult]] = []
     for sc in scenarios:
         if sc.mode == "inverse":
             res = solve_max_kit(sc.site, sc.options, norms)
-        else:  # verify
+        elif sc.mode == "verify":
             assert sc.kit is not None  # validator гарантирует
             res = compute_tep_for_kit(sc.kit, sc.site, sc.options, norms)
+        elif sc.mode == "with_reserve":
+            assert sc.target_surplus_m2 is not None
+            res = solve_max_kit_with_reserve(
+                sc.site, sc.target_surplus_m2, sc.options, norms
+            )
+        elif sc.mode == "with_znop":
+            assert sc.target_znop_per_person is not None
+            res = solve_max_kit_with_znop(
+                sc.site, sc.target_znop_per_person, sc.options, norms
+            )
+        else:
+            raise ValueError(f"Неизвестный режим сценария: {sc.mode}")
         results.append((sc.name, res))
     return results
 
