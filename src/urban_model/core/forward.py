@@ -184,10 +184,44 @@ def compute_tep_for_kit(
         bi_parking_places = 0
         bi_greening_v = 0.0
 
-    # === Парковки (разбивка по типам, включая ВПП) ===
+    # === Произвольные объекты (офис, ФОК, поликлиника и т.п.) ===
+    # Каждый занимает свой ЗУ (вычитается из квартала), требует парковок
+    # и даёт озеленение по своему ВРИ-коду.
+    custom_total_plot = 0.0
+    custom_total_parking_places = 0
+    custom_total_greening = 0.0
+    custom_objects_summary: list[dict] = []
+    if options.custom_objects:
+        green_ratio_vpp = norms.resolve("greening.vpp_per_floor_area")
+        for obj in options.custom_objects:
+            floor_area = obj.floor_area_m2 or obj.plot_area_m2
+            try:
+                per_place = norms.resolve("parking.vpp.m2_per_place", vri_code=obj.vri_code)
+                obj_parking = math.ceil(floor_area / per_place)
+            except (KeyError, TypeError):
+                # Если для ВРИ нет норматива парковок — считаем 0 + warning
+                obj_parking = 0
+                warnings.append(
+                    f"Объект «{obj.name}» (ВРИ {obj.vri_code}): нет норматива "
+                    "парковки — м/м не учтены"
+                )
+            obj_greening = floor_area * green_ratio_vpp
+            custom_total_plot += obj.plot_area_m2
+            custom_total_parking_places += obj_parking
+            custom_total_greening += obj_greening
+            custom_objects_summary.append({
+                "name": obj.name,
+                "plot": obj.plot_area_m2,
+                "floor": floor_area,
+                "vri": obj.vri_code,
+                "parking_places": obj_parking,
+                "greening": obj_greening,
+            })
+
+    # === Парковки (разбивка по типам, включая ВПП и пользовательские объекты) ===
     park = compute_parking_breakdown(
         apartments_area_v, options.parking, norms,
-        additional_places=bi_parking_places,
+        additional_places=bi_parking_places + custom_total_parking_places,
     )
 
     # === Проезды ===
@@ -230,9 +264,13 @@ def compute_tep_for_kit(
         "intra_quarter_driveways": drive_intra_v,
         "parking_multilevel": park.multilevel_footprint,
     }
-    # Фактическое озеленение квартала: ЗНОП + озеленение жилого ЗУ + озеленение ВПП.
+    if custom_total_plot > 0:
+        components["custom_objects"] = custom_total_plot
+    # Фактическое озеленение квартала: ЗНОП + озеленение жилого ЗУ + ВПП + кастомные.
     # Норматив (25% площади квартала за вычетом ДОО/СОШ) — обязательная проверка.
-    greening_actual_total = znop_area_v + green_housing_v + bi_greening_v
+    greening_actual_total = (
+        znop_area_v + green_housing_v + bi_greening_v + custom_total_greening
+    )
     bal = balance.compute_balance(
         site.area_m2,
         components,

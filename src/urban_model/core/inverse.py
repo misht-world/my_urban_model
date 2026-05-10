@@ -122,6 +122,7 @@ def _identify_limiting_factor(result: TEPResult) -> str:
         "znop": "ЗНОП",
         "intra_quarter_driveways": "внутриквартальные проезды",
         "parking_multilevel": "многоуровневые паркинги",
+        "custom_objects": "пользовательские объекты",
     }.get(name, name)
     return f"{pretty} ({val:,.0f} м², {pct:.1f}% квартала)"
 

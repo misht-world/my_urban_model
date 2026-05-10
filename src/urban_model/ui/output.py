@@ -197,6 +197,7 @@ def render_details(result: TEPResult) -> None:
                 "intra_quarter_driveways": "Внутриквартальные проезды",
                 "parking_multilevel": "Многоуровневые паркинги",
                 "built_in_greening": "Озеленение ВПП",
+                "custom_objects": "Пользовательские объекты",
             }.get(name, name)
             comp_rows.append({
                 "Компонент": pretty,

@@ -8,6 +8,7 @@ import streamlit as st
 
 from urban_model.models import CalculationOptions, Site
 from urban_model.models.built_in import BuiltInArea
+from urban_model.models.custom_object import CustomObject
 from urban_model.models.parking import ParkingConfig
 from urban_model.models.social import KindergartenSpec, SchoolSpec
 
@@ -331,7 +332,84 @@ def render_sidebar() -> UserInputs:
                 built_in = BuiltInArea(area_m2=float(vpp_area), vri_code=vri_code)
 
     # ------------------------------------------------------------------
-    # 7. Режим расчёта
+    # 7. Произвольные объекты (офис, ФОК, поликлиника и т.п.)
+    # ------------------------------------------------------------------
+    if "custom_objects" not in st.session_state:
+        st.session_state.custom_objects = []
+
+    with st.sidebar.expander(
+        f"📦 Свои объекты ({len(st.session_state.custom_objects)})",
+        expanded=False,
+    ):
+        st.caption(
+            "Размещение объектов вне базовых классов (офис, ФОК, поликлиника, "
+            "торговля и пр.). Каждый занимает свой ЗУ — он вычитается из "
+            "квартала. Парковки и озеленение считаются по ВРИ-коду."
+        )
+
+        # Список текущих объектов (с возможностью удалить)
+        for i, obj in enumerate(list(st.session_state.custom_objects)):
+            with st.container(border=True):
+                c1, c2 = st.columns([10, 1])
+                c1.markdown(
+                    f"**{obj.get('name', 'Объект')}** — "
+                    f"ЗУ {obj.get('plot_area_m2', 0):,.0f} м², "
+                    f"ВРИ {obj.get('vri_code', '?')}"
+                )
+                if c2.button("🗑️", key=f"co_del_{i}"):
+                    st.session_state.custom_objects.pop(i)
+                    st.rerun()
+
+        # Форма добавления нового объекта
+        st.markdown("**Добавить объект**")
+        new_name = st.text_input("Название", value="Офис", key="co_new_name")
+        col1, col2 = st.columns(2)
+        new_plot = col1.number_input(
+            "Площадь ЗУ, м²", min_value=50.0, max_value=200_000.0,
+            value=2_000.0, step=100.0, key="co_new_plot",
+        )
+        VRI_OPTIONS = [
+            "3.4 — здравоохранение",
+            "3.5 — образование (доп.)",
+            "3.6 — культура",
+            "4.0 — обслуживание (общее)",
+            "4.1 — деловое управление (офисы)",
+            "4.4 — магазины",
+            "4.6 — общепит",
+            "5.1 — спорт (ФОК)",
+        ]
+        new_vri_label = col2.selectbox(
+            "ВРИ-код", VRI_OPTIONS, index=4, key="co_new_vri",
+        )
+        new_vri = new_vri_label.split(" ")[0]
+        same_floor_area = st.checkbox(
+            "Площадь объекта = площадь ЗУ (одноэтажный)",
+            value=True,
+            key="co_new_same_floor",
+        )
+        new_floor = None
+        if not same_floor_area:
+            new_floor = st.number_input(
+                "Общая площадь объекта, м² (этажные перекрытия)",
+                min_value=10.0, max_value=500_000.0,
+                value=float(new_plot), step=100.0, key="co_new_floor",
+            )
+        if st.button("➕ Добавить объект", use_container_width=True):
+            st.session_state.custom_objects.append({
+                "name": new_name,
+                "plot_area_m2": float(new_plot),
+                "vri_code": new_vri,
+                "floor_area_m2": float(new_floor) if new_floor else None,
+            })
+            st.rerun()
+
+    # Преобразуем session_state в список Pydantic-объектов
+    custom_objects_list = [
+        CustomObject(**obj) for obj in st.session_state.custom_objects
+    ]
+
+    # ------------------------------------------------------------------
+    # 8. Режим расчёта
     # ------------------------------------------------------------------
     st.sidebar.markdown("---")
     mode_label = st.sidebar.radio(
@@ -386,6 +464,7 @@ def render_sidebar() -> UserInputs:
         parking=parking,
         built_in=built_in,
         znop_per_person_override=znop_override,
+        custom_objects=custom_objects_list,
     )
 
     return UserInputs(

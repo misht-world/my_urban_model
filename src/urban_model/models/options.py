@@ -5,6 +5,7 @@ from __future__ import annotations
 from pydantic import BaseModel, ConfigDict, Field
 
 from urban_model.models.built_in import BuiltInArea
+from urban_model.models.custom_object import CustomObject
 from urban_model.models.parking import ParkingConfig
 from urban_model.models.social import KindergartenSpec, SchoolSpec
 
@@ -51,4 +52,12 @@ class CalculationOptions(BaseModel):
         default=None,
         ge=0.0,
         description="Принудительный ЗНОП в м²/чел; None = по нормативу (piecewise по КИТ)",
+    )
+
+    # Кастомные объекты на территории (офис, ФОК, поликлиника и т.п.).
+    # Каждый занимает свою площадь (вычитается из доступной территории),
+    # требует парковок и даёт озеленение по ВРИ-коду.
+    custom_objects: list[CustomObject] = Field(
+        default_factory=list,
+        description="Список произвольных объектов на территории квартала",
     )
