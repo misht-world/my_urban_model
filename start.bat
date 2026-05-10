@@ -1,69 +1,65 @@
 @echo off
-chcp 65001 >nul
-title Модель застройки территории
+title Urban Model
 
 echo.
 echo  ================================================================
-echo     Модель застройки территории  v0.3
-echo     Обратный расчёт КИТ / ТЭП  -  Санкт-Петербург
+echo     Urban Model v0.3  /  TEP inverse calculator  /  SPb norms
 echo  ================================================================
 echo.
 
-REM --- Проверяем наличие uv -----------------------------------------
+REM --- Check uv -------------------------------------------------------
 where uv >nul 2>&1
 if %errorlevel% neq 0 (
-    echo  [1/3] uv не найден. Устанавливаем...
+    echo  [1/3] uv not found. Installing...
     powershell -NoProfile -ExecutionPolicy Bypass -Command ^
         "irm https://astral.sh/uv/install.ps1 | iex"
     if %errorlevel% neq 0 (
         echo.
-        echo  ОШИБКА: не удалось установить uv.
-        echo  Установите вручную: https://docs.astral.sh/uv/getting-started/installation/
+        echo  ERROR: failed to install uv.
+        echo  Install manually: https://docs.astral.sh/uv/getting-started/installation/
         pause
         exit /b 1
     )
-    echo  [1/3] uv установлен.
+    echo  [1/3] uv installed.
 ) else (
-    echo  [1/3] uv найден.
+    echo  [1/3] uv found.
 )
 
-REM --- Синхронизируем зависимости ------------------------------------
-echo  [2/3] Устанавливаем зависимости (только первый раз)...
+REM --- Sync dependencies ----------------------------------------------
+echo  [2/3] Installing dependencies (first time only)...
 cd /d "%~dp0"
 uv sync --extra dev --quiet
 if %errorlevel% neq 0 (
     echo.
-    echo  ОШИБКА при установке зависимостей.
+    echo  ERROR: dependency installation failed.
     pause
     exit /b 1
 )
-echo  [2/3] Зависимости готовы.
+echo  [2/3] Dependencies ready.
 
-REM --- Форсируем UTF-8 -----------------------------------------------
+REM --- Force UTF-8 for Python output ----------------------------------
 set PYTHONIOENCODING=utf-8
 
-REM --- Запускаем -----------------------------------------------------
-echo  [3/3] Запуск...
+REM --- Launch ---------------------------------------------------------
+echo  [3/3] Choose mode:
 echo.
-echo  Выберите режим:
-echo    1  Веб-приложение (Streamlit, откроется в браузере)   [по умолчанию]
-echo    2  Демо-ноутбук (Jupyter)
-echo    3  Интерактивный расчёт (консоль)
-echo    4  Тесты
+echo    1  Web UI - Streamlit  (opens in browser)    [DEFAULT]
+echo    2  Demo notebook       (Jupyter)
+echo    3  Interactive CLI     (console)
+echo    4  Run tests
 echo.
 set "MODE=1"
-set /p MODE="  Введите 1, 2, 3 или 4 [1]: "
+set /p MODE="  Enter 1, 2, 3 or 4 [1]: "
 
 if "%MODE%"=="1" (
     echo.
-    echo  Открываем Streamlit-приложение в браузере...
-    echo  Для остановки: нажмите Ctrl+C в этом окне.
+    echo  Starting Streamlit... open http://localhost:8501 in browser.
+    echo  To stop: press Ctrl+C in this window.
     echo.
     uv run streamlit run src\urban_model\ui\app.py
 ) else if "%MODE%"=="2" (
     echo.
-    echo  Открываем Jupyter...
-    echo  Для остановки: нажмите Ctrl+C в этом окне.
+    echo  Starting Jupyter...
     echo.
     uv run jupyter notebook notebooks\demo_v0_4.ipynb
 ) else if "%MODE%"=="3" (
@@ -74,6 +70,6 @@ if "%MODE%"=="1" (
     uv run pytest tests\ -v
     pause
 ) else (
-    echo  Неверный выбор.
+    echo  Invalid choice.
     pause
 )
