@@ -67,7 +67,16 @@ def choose_n_objects(
     - вместимость каждого объекта ≥ `capacity_min` (если задан)
 
     Если `capacity_min` мешает (total_places < capacity_min), возвращает 1.
+
+    Raises:
+        ValueError: если `capacity_min > capacity_max` — нормативы
+            противоречат друг другу.
     """
+    if capacity_min is not None and capacity_max is not None and capacity_min > capacity_max:
+        raise ValueError(
+            f"capacity_min ({capacity_min}) > capacity_max ({capacity_max}) — "
+            "нормативы противоречат друг другу. Проверьте YAML."
+        )
     if total_places <= 0:
         return 1
     # Минимальное число объектов, чтобы влезть в capacity_max

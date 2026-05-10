@@ -97,9 +97,11 @@ def compute_tep_for_kit(
         )
 
     # === ДОО ===
+    # Резолвим нормативы заранее, чтобы они были доступны для formula-строк
+    # даже когда include_kindergarten=False (важно для аудит-трейла).
+    kg_per_1000 = norms.resolve("social_objects.kindergarten.places_per_1000")
+    kg_round = norms.resolve("social_objects.kindergarten.rounding")
     if options.include_kindergarten and pop_v > 0:
-        kg_per_1000 = norms.resolve("social_objects.kindergarten.places_per_1000")
-        kg_round = norms.resolve("social_objects.kindergarten.rounding")
         kg_required_raw = kindergarten.required_places(pop_v, kg_per_1000)
         kg_accepted = kindergarten.round_places(kg_required_raw, kg_round)
         kg_btype = options.kindergarten.building_type
@@ -127,10 +129,11 @@ def compute_tep_for_kit(
         kg_buckets = []
 
     # === СОШ ===
+    # Резолвим нормативы заранее (см. ДОО выше).
+    sch_per_1000 = norms.resolve("social_objects.school.places_per_1000")
+    sch_round = norms.resolve("social_objects.school.rounding")
     sch_status = Status.OK
     if options.include_school and pop_v > 0:
-        sch_per_1000 = norms.resolve("social_objects.school.places_per_1000")
-        sch_round = norms.resolve("social_objects.school.rounding")
         sch_required_raw = school.required_places(pop_v, sch_per_1000)
         sch_accepted = school.round_places(sch_required_raw, sch_round)
         try:
@@ -231,6 +234,13 @@ def compute_tep_for_kit(
             })
 
     # === Парковки (разбивка по типам, включая ВПП и пользовательские объекты) ===
+    # ВНИМАНИЕ: парковки ВПП и кастомных объектов «вливаются» в общий пул
+    # м/м и распределяются в выбранном пользователем режиме (min_open / all_open
+    # / custom). По нормативам ПЗЗ парковки нежилых объектов могут размещаться
+    # на собственном ЗУ объекта, либо на стоянках-спутниках. Текущая модель —
+    # упрощение: считаем суммарную нагрузку. Раздельный учёт парковок по
+    # объектам — TODO (см. дорожную карту: «парковки соцобъектов на стоянках-
+    # спутниках»).
     park = compute_parking_breakdown(
         apartments_area_v, options.parking, norms,
         additional_places=bi_parking_places + custom_total_parking_places,
@@ -407,7 +417,7 @@ def compute_tep_for_kit(
         kindergarten_places_required=_F(
             kg_required_raw,
             unit="мест",
-            formula=f"население × {61 if options.include_kindergarten else 0} / 1000"
+            formula=f"население × {kg_per_1000} / 1000"
             if options.include_kindergarten
             else "ДОО отключены",
             source=norms.source_of("social_objects.kindergarten.places_per_1000")
@@ -418,7 +428,7 @@ def compute_tep_for_kit(
             kg_accepted,
             unit="мест",
             normative=kg_required_raw if options.include_kindergarten else None,
-            formula=f"вверх кратно {5} → разбивка по объектам {kg_buckets}"
+            formula=f"вверх кратно {kg_round} → разбивка по объектам {kg_buckets}"
             if options.include_kindergarten
             else None,
         ),
@@ -433,14 +443,19 @@ def compute_tep_for_kit(
         school_places_required=_F(
             sch_required_raw,
             unit="мест",
-            formula="население × 120 / 1000" if options.include_school else "СОШ отключены",
+            formula=f"население × {sch_per_1000} / 1000"
+            if options.include_school
+            else "СОШ отключены",
+            source=norms.source_of("social_objects.school.places_per_1000")
+            if options.include_school
+            else None,
         ),
         school_places_accepted=_F(
             sch_accepted,
             unit="мест",
             normative=sch_required_raw if options.include_school else None,
             status=sch_status,
-            formula=f"вверх кратно 10 → объекты {sch_buckets}"
+            formula=f"вверх кратно {sch_round} → объекты {sch_buckets}"
             if options.include_school
             else None,
         ),

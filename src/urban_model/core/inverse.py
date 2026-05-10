@@ -177,12 +177,15 @@ def solve_max_kit(
     result = compute_tep_for_kit(best, site, options, norms)
     if reason == "ceiling":
         result.limiting_factor = (
-            f"внутренняя плотность застройки = {hi:.2f} (потолок поиска); "
-            + _identify_limiting_factor(result)
+            f"квартальная плотность достигла верхней границы поиска "
+            f"({hi:.2f}, GFA/S_кв); фактический КИТ ПЗЗ = "
+            f"{result.kit.value:.3f}. Ограничителя нет — все нормативы выполняются "
+            "с запасом. " + _identify_limiting_factor(result)
         )
     elif reason == "lo_infeasible":
         result.limiting_factor = (
-            f"даже минимальная плотность {lo} не проходит — "
+            f"при минимальной квартальной плотности ({lo}, GFA/S_кв) "
+            "ни один норматив не проходит — "
             + _identify_limiting_factor(result)
         )
     else:

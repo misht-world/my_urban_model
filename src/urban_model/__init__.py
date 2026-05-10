@@ -1,11 +1,30 @@
 """Математическая модель застройки территории — обратный расчёт ТЭП.
 
-Публичный API v0.2:
+Публичный API (v0.5.x):
 
-    from urban_model import solve_max_kit, verify_kit, compare_scenarios, run_scenarios
-    from urban_model.models import Site, CalculationOptions, Scenario
+    # Расчёты
+    from urban_model import (
+        solve_max_kit,
+        solve_max_kit_with_reserve,
+        solve_max_kit_with_znop,
+        verify_kit,
+        compare_scenarios,
+        run_scenarios,
+    )
+
+    # Модели
+    from urban_model.models import (
+        Site, CalculationOptions, Scenario,
+        BuiltInArea, CustomObject,
+        ParkingConfig, KindergartenSpec, SchoolSpec,
+    )
+
+    # Нормативы и экспорт
     from urban_model.normatives import load_normatives
     from urban_model.export import to_xlsx, results_to_dataframe
+
+    # Оптимизатор (v0.5)
+    from urban_model.optimize import SearchSpace, optimize_max_apartments
 
 Пример:
     norms = load_normatives("spb")
@@ -13,7 +32,7 @@
     print(res.summary())
 """
 
-__version__ = "0.5.6"
+__version__ = "0.5.7"
 
 from urban_model.core.inverse import (
     solve_max_kit,
