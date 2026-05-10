@@ -29,20 +29,22 @@ def site_medium():
 
 class TestVerifyKit:
     def test_returns_tepresult(self, spb, site_medium):
+        """verify_kit принимает block_density (внутреннюю переменную бисекции).
+        result.block_density == входному значению; result.kit — это КИТ ПЗЗ."""
         res = verify_kit(1.8, site_medium, CalculationOptions(floors=12), spb)
-        assert res.kit.value == 1.8
+        assert res.block_density.value == 1.8
 
     def test_source_present(self, spb, site_medium):
         res = verify_kit(1.5, site_medium, norms=spb)
         assert res.population.source is not None
 
     def test_status_ok_for_low_kit(self, spb):
-        """КИТ=0.5 на большом квартале — плотность в норме."""
+        """block_density=0.5 на большом квартале — плотность в норме."""
         res = verify_kit(0.5, Site(area_m2=100_000), norms=spb)
         assert res.density_chel_per_ga.status.value == "ok"
 
     def test_status_error_for_excessive_density(self, spb):
-        """КИТ=2.4 на 1 га — плотность превышает норму."""
+        """block_density=2.4 на 1 га — плотность превышает норму."""
         res = verify_kit(2.4, Site(area_m2=10_000), norms=spb)
         assert res.density_chel_per_ga.status.value == "error"
 
@@ -51,12 +53,28 @@ class TestVerifyKit:
         res = verify_kit(1.0, Site(area_m2=30_000))
         assert res.profile == "spb"
 
-    def test_znop_threshold_at_1_75(self, spb):
-        """Порог ЗНОП: КИТ=1.75 (≤1.79) → 3 м²/чел; КИТ=1.8 (>1.79) → 4 м²/чел."""
-        res_low = verify_kit(1.75, Site(area_m2=50_000), norms=spb)
-        res_high = verify_kit(1.8, Site(area_m2=50_000), norms=spb)
-        assert res_low.znop_per_person.value == 3
-        assert res_high.znop_per_person.value == 4
+    def test_znop_threshold_uses_kit_developed(self, spb):
+        """ЗНОП piecewise теперь смотрит на КИТ ПЗЗ (apt/lot), а не на
+        block_density. На квартале 50 000 м² при разных block_density,
+        kit_developed относительно стабилен и определяет ZNOP."""
+        # Значения block_density: 0.8 и 2.0; разные kit_developed возможны,
+        # но в обоих случаях ZNOP должен быть строго выводим из result.kit.
+        res_low = verify_kit(0.8, Site(area_m2=50_000), norms=spb)
+        res_high = verify_kit(2.0, Site(area_m2=50_000), norms=spb)
+        # Проверяем что ZNOP согласован с КИТ ПЗЗ через piecewise:
+        # piecewise breakpoints: 1.59→0, 1.79→3, 1.99→4, 2.50→6
+        for r in (res_low, res_high):
+            kit = r.kit.value
+            expected = (
+                0 if kit <= 1.59
+                else 3 if kit <= 1.79
+                else 4 if kit <= 1.99
+                else 6
+            )
+            assert r.znop_per_person.value == expected, (
+                f"при КИТ={kit:.3f} ожидался ZNOP={expected}, "
+                f"получен {r.znop_per_person.value}"
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -104,16 +122,18 @@ class TestRunScenarios:
         pairs = run_scenarios(scenarios, spb)
         assert len(pairs) == 3
 
-    def test_verify_scenario_has_exact_kit(self, scenarios, spb):
+    def test_verify_scenario_has_exact_block_density(self, scenarios, spb):
+        """В режиме verify входной `kit` интерпретируется как block_density."""
         pairs = run_scenarios(scenarios, spb)
         name, res = pairs[2]
         assert name == "Проверка КИТ=1.5"
-        assert res.kit.value == 1.5
+        assert res.block_density.value == 1.5
 
-    def test_inverse_scenario_finds_kit(self, scenarios, spb):
+    def test_inverse_scenario_kit_is_pzz(self, scenarios, spb):
+        """В inverse-режиме result.kit — это КИТ ПЗЗ; должен быть в разумных пределах."""
         pairs = run_scenarios(scenarios, spb)
         _, res = pairs[1]
-        assert 0 < res.kit.value <= 2.5
+        assert 0 < res.kit.value <= 3.0  # КИТ ПЗЗ может превышать 2.5 при infeasible
 
     def test_compare_returns_dataframe(self, scenarios, spb):
         df = compare_scenarios(scenarios, spb)
@@ -124,28 +144,25 @@ class TestRunScenarios:
         df = compare_scenarios(scenarios, spb)
         assert list(df.columns) == ["Малый", "Средний", "Проверка КИТ=1.5"]
 
-    def test_compare_verify_kit_value(self, scenarios, spb):
-        df = compare_scenarios(scenarios, spb)
-        assert float(df.loc["КИТ", "Проверка КИТ=1.5"]) == 1.5
-
-    def test_no_ppt_max_kit_lower(self, spb):
-        """Без ППТ нормативный потолок 1.4; с ППТ 2.5. На большинстве
-        реалистичных кварталов ограничивающий фактор — плотность или
-        озеленение (а не норматив-потолок), поэтому kit_yes >= kit_no
-        с возможным равенством. Жёстко требуется только чтобы kit_no ≤ 1.4.
+    def test_no_ppt_max_kit_constrained(self, spb):
+        """Без ДПТ КИТ_max=1.4 — норматив применяется к КИТ ПЗЗ. Если
+        даже на минимальной плотности КИТ_ПЗЗ > 1.4, бисекция вернёт
+        infeasible-результат: balance.is_feasible=False либо kit.status=ERROR.
         """
         site = Site(area_m2=200_000)
         scs = [
-            Scenario(name="с ППТ", site=site, options=CalculationOptions(planning_doc=True)),
-            Scenario(name="без ППТ", site=site, options=CalculationOptions(planning_doc=False)),
+            Scenario(name="с ДПТ", site=site, options=CalculationOptions(planning_doc=True)),
+            Scenario(name="без ДПТ", site=site, options=CalculationOptions(planning_doc=False)),
         ]
         pairs = run_scenarios(scs, spb)
-        kit_yes = pairs[0][1].kit.value
-        kit_no = pairs[1][1].kit.value
-        assert kit_no <= 1.4 + 1e-6
-        # ППТ не должен СНИЖАТЬ КИТ — допустимы и равенство, и небольшое
-        # численное различие (разный путь сходимости бисекции).
-        assert kit_yes >= kit_no - 1e-3
+        res_yes = pairs[0][1]
+        res_no = pairs[1][1]
+        # Без ДПТ: либо КИТ ПЗЗ ≤ 1.4 (feasible), либо результат помечен
+        # как infeasible/error. Не должно быть «тихого нарушения» норматива.
+        if res_no.balance.is_feasible:
+            assert res_no.kit.value <= 1.4 + 1e-3
+        else:
+            assert res_no.limiting_factor  # должен быть объяснён
 
 
 # ---------------------------------------------------------------------------

@@ -48,7 +48,12 @@ def render_header(result: TEPResult) -> None:
 
 def render_kpi(result: TEPResult) -> None:
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("КИТ", f"{result.kit.value:.3f}", help=f"Норм. макс {result.kit_normative_max.value}")
+    kit_help = (
+        "КИТ по ПЗЗ СПб = площадь квартир / ЗУ жилой застройки. "
+        f"Норматив. потолок: {result.kit_normative_max.value} "
+        f"(ДПТ: {'да' if result.kit_normative_max.value == 2.5 else 'нет'})"
+    )
+    c1.metric("КИТ (ПЗЗ)", f"{result.kit.value:.3f}", help=kit_help)
     c2.metric("Население", fmt_int(result.population.value), help="чел.")
     c3.metric("Площадь квартир", fmt_m2(result.apartments_area.value))
     surplus = result.balance.surplus
@@ -99,6 +104,9 @@ def render_details(result: TEPResult) -> None:
     # 🏠 Жильё
     with st.expander("🏠 Жильё", expanded=False):
         rows = [
+            _row("КИТ ПЗЗ (площадь квартир / ЗУ жилой застройки)", result.kit, fmt_float),
+            _row("Плотность квартала (GFA / S_квартала, внутр.)",
+                 result.block_density, fmt_float),
             _row("Общая площадь жилых зданий (GFA)", result.gfa, fmt_m2),
             _row("Площадь квартир", result.apartments_area, fmt_m2),
         ]

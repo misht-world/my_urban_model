@@ -1,7 +1,14 @@
-"""Прямой расчёт ТЭП по заданному КИТ.
+"""Прямой расчёт ТЭП по заданной плотности квартала (block_density = GFA/S_кв).
 
-Чистая функция: на вход — Site, Options, Normatives и сам KIT.
+Чистая функция: на вход — Site, Options, Normatives и block_density.
 На выход — TEPResult со структурированными полями (TEPField).
+
+Важно про КИТ:
+    КИТ по ПЗЗ СПб = площадь квартир / площадь ЗУ жилой застройки.
+    Это и есть `result.kit`. Внутренняя переменная функции (`block_density`)
+    — это GFA / S_квартала; ей бисектится inverse-задача, и она НЕ совпадает
+    с КИТ ПЗЗ. Все нормативные пороги (kit_max=2.5/1.4, ЗНОП piecewise)
+    применяются к КИТ ПЗЗ, не к block_density.
 
 Эта функция — фундамент. `solve_max_kit` (inverse.py) вызывает её много раз.
 """
@@ -33,12 +40,22 @@ def _F(value, **kw) -> TEPField:
 
 
 def compute_tep_for_kit(
-    kit: float,
+    block_density: float,
     site: Site,
     options: CalculationOptions,
     norms: Normatives,
 ) -> TEPResult:
-    # === Нормативный максимум КИТ ===
+    """Расчёт всех ТЭП при заданной `block_density` = GFA / S_квартала.
+
+    Обратите внимание: входной аргумент — НЕ КИТ ПЗЗ. Это техническая
+    переменная плотности квартала (для бисекции). КИТ ПЗЗ = площадь
+    квартир / ЗУ жилой застройки — вычисляется внутри по результатам.
+    """
+    # Сохраняем под старым именем для обратной совместимости read-only:
+    # многие подстроки formula/source ссылаются на "КИТ".
+    kit = block_density
+
+    # === Нормативный максимум КИТ ПЗЗ ===
     kit_norm_max = norms.resolve(
         "kit_limits", planning_doc="yes" if options.planning_doc else "no"
     )
@@ -148,18 +165,7 @@ def compute_tep_for_kit(
         sch_plot_total = sch_bld_total = 0.0
         sch_buckets = []
 
-    # === ЗНОП ===
-    if options.znop_per_person_override is not None:
-        # Ручной override (для режима solve_max_kit_with_znop)
-        znop_pp = options.znop_per_person_override
-        znop_area_v = pop_v * znop_pp
-        znop_source_label = f"override = {znop_pp} м²/чел (заменяет норматив)"
-    else:
-        znop_pp = znop.znop_per_person(kit, norms)
-        znop_area_v = znop.znop_total_area(pop_v, kit, norms)
-        znop_source_label = norms.source_of("znop_per_person", kit=kit)
-
-    # === Озеленение жилого ЗУ ===
+    # === Озеленение жилого ЗУ (нужно до housing_lot) ===
     green_ratio = norms.resolve("greening.housing_per_apartments")
     green_housing_v = greening.housing_greening_area(apartments_area_v, green_ratio)
     quarter_share = norms.resolve("greening.quarter_min_share")
@@ -190,12 +196,30 @@ def compute_tep_for_kit(
     drive_intra_v = driveways.intra_quarter_area(site.area_m2, drive_intra_share)
     drive_lot_v = driveways.housing_lot_driveways_area(footprint_v, drive_lot_share)
 
-    # === Площадь жилого ЗУ ===
+    # === Площадь жилого ЗУ (ЗУ жилой застройки) ===
     # ЗУ жилья = площадь застройки + проезды на ЗУ + озеленение жилого
     #            + озеленение ВПП + открытые парковки
     housing_lot_v = (
         footprint_v + drive_lot_v + green_housing_v + bi_greening_v + park.open_area
     )
+
+    # === КИТ ПЗЗ = площадь квартир / ЗУ жилой застройки ===
+    # Это и есть «правильный» КИТ по нормативам ПЗЗ СПб. ИМЕННО ОН сравнивается
+    # с пороговыми значениями ЗНОП (1.6/1.8/2.0) и нормативным максимумом
+    # КИТ_max (1.4 без ДПТ; 2.5 с ДПТ). Внутренний block_density (gfa/site)
+    # — лишь техническая переменная бисекции.
+    kit_developed = (apartments_area_v / housing_lot_v) if housing_lot_v > 0 else 0.0
+
+    # === ЗНОП — теперь по КИТ ПЗЗ, а не по block_density ===
+    if options.znop_per_person_override is not None:
+        # Ручной override (для режима solve_max_kit_with_znop)
+        znop_pp = options.znop_per_person_override
+        znop_area_v = pop_v * znop_pp
+        znop_source_label = f"override = {znop_pp} м²/чел (заменяет норматив)"
+    else:
+        znop_pp = znop.znop_per_person(kit_developed, norms)
+        znop_area_v = znop.znop_total_area(pop_v, kit_developed, norms)
+        znop_source_label = norms.source_of("znop_per_person", kit=kit_developed)
 
     # === Баланс квартала ===
     components = {
@@ -231,17 +255,41 @@ def compute_tep_for_kit(
     per_place = norms.resolve("parking.housing.m2_apartments_per_place")
 
     # === Сборка TEPResult ===
+    # Статус КИТ: ERROR, если он превышает нормативный потолок (1.4 без ДПТ; 2.5 с ДПТ)
+    kit_status = Status.ERROR if kit_developed > kit_norm_max + 1e-6 else Status.OK
+    if kit_status == Status.ERROR:
+        warnings.append(
+            f"КИТ {kit_developed:.3f} превышает нормативный максимум "
+            f"{kit_norm_max} (ПЗЗ СПб, ДПТ={'да' if options.planning_doc else 'нет'})"
+        )
+
     return TEPResult(
         profile=norms.profile,
-        kit=_F(kit, formula="вход в compute_tep_for_kit"),
+        kit=_F(
+            kit_developed,
+            status=kit_status,
+            normative=kit_norm_max,
+            formula=(
+                f"S_квартир / S_ЗУ_жилой = {apartments_area_v:.0f} / {housing_lot_v:.0f}"
+            ),
+            source="ПЗЗ СПб",
+        ),
+        block_density=_F(
+            kit,
+            formula=f"GFA / S_квартала = {gfa_v:.0f} / {site.area_m2:.0f} (внутр. бисекция)",
+        ),
         kit_normative_max=_F(
             kit_norm_max,
             source=norms.source_of(
                 "kit_limits", planning_doc="yes" if options.planning_doc else "no"
             ),
-            formula=f"ПЗЗ СПб, ППТ={'да' if options.planning_doc else 'нет'}",
+            formula=f"ПЗЗ СПб, ДПТ={'да' if options.planning_doc else 'нет'}",
         ),
-        gfa=_F(gfa_v, unit="m2", formula=f"КИТ × S_квартала = {kit:.3f} × {site.area_m2}"),
+        gfa=_F(
+            gfa_v,
+            unit="m2",
+            formula=f"плотность × S_квартала = {kit:.3f} × {site.area_m2}",
+        ),
         apartments_area=_F(
             apartments_area_v,
             unit="m2",
@@ -351,7 +399,7 @@ def compute_tep_for_kit(
             formula=(
                 f"override = {options.znop_per_person_override}"
                 if options.znop_per_person_override is not None
-                else f"piecewise(КИТ={kit:.3f})"
+                else f"норматив(КИТ={kit_developed:.3f}) — ступени 0/3/4/6 м²/чел"
             ),
             source=znop_source_label,
         ),

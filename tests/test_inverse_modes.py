@@ -84,17 +84,20 @@ class TestSolveMaxKitWithZnop:
         r_high = solve_max_kit_with_znop(site, 6, opts, spb)
         assert r_high.kit.value <= r_norm.kit.value + 1e-3
 
-    def test_zero_znop_equals_or_above_normative(self, spb):
-        """Override=0 даёт КИТ ≥ нормативного (нет нагрузки от ЗНОП)."""
-        # Сравнение для квартала, где норматив дал бы ненулевой ЗНОП
-        # Берём такой, чтобы solve_max_kit натурально вышел в КИТ ≥ 1.6
+    def test_zero_znop_yields_zero_znop_area(self, spb):
+        """Override=0 принудительно обнуляет ЗНОП.
+
+        Замечание: после введения нормативного контроля 25% озеленения
+        квартала, обнуление ЗНОП не обязательно «облегчает» баланс — наоборот,
+        ЗНОП был основным источником озеленения при высоком КИТ. Поэтому
+        block_density при znop=0 может оказаться меньше, чем при нормативе.
+        Главное — znop_area реально становится 0.
+        """
         site = Site(area_m2=300_000)
         opts = CalculationOptions(floors=15, planning_doc=True)
-        r_norm = solve_max_kit(site, opts, spb)
         r_zero = solve_max_kit_with_znop(site, 0, opts, spb)
-        # Без ЗНОП балансу проще → КИТ ≥
-        assert r_zero.kit.value >= r_norm.kit.value - 1e-3
         assert r_zero.znop_area.value == 0
+        assert r_zero.znop_per_person.value == 0
 
     def test_does_not_mutate_input_options(self, spb):
         """solve_max_kit_with_znop не меняет переданный options."""

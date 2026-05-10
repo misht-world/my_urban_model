@@ -48,13 +48,15 @@ class TestScenarioValidation:
 
 class TestRunScenariosAllModes:
     def test_run_inverse_and_verify(self, spb, site):
+        """В режиме verify входной `kit` интерпретируется как block_density."""
         scs = [
             Scenario(name="макс", site=site, mode="inverse"),
             Scenario(name="фикс 1.0", site=site, mode="verify", kit=1.0),
         ]
         pairs = run_scenarios(scs, spb)
         assert len(pairs) == 2
-        assert pairs[1][1].kit.value == 1.0
+        # В verify-режиме block_density фиксируется на входном значении.
+        assert pairs[1][1].block_density.value == 1.0
 
     def test_run_with_reserve(self, spb, site):
         sc = Scenario(

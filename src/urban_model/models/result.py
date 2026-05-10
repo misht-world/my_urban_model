@@ -65,7 +65,12 @@ class TEPResult(BaseModel):
     profile: str
 
     # Решения
+    # `kit` — это КИТ по ПЗЗ СПб = площадь квартир / площадь ЗУ жилой застройки.
+    # Этот же КИТ применяется к нормативам (kit_max, ЗНОП piecewise).
     kit: TEPField
+    # `block_density` — внутренняя «плотность квартала» = GFA / S_квартала.
+    # Используется как переменная бисекции; не путать с КИТ ПЗЗ.
+    block_density: TEPField
     kit_normative_max: TEPField
 
     # Жильё
@@ -128,7 +133,8 @@ class TEPResult(BaseModel):
     def summary(self) -> str:
         lines = [
             f"Профиль: {self.profile}",
-            f"КИТ:                     {self.kit.value:.3f} (норм. макс {self.kit_normative_max.value})",
+            f"КИТ (ПЗЗ):               {self.kit.value:.3f} (норм. макс {self.kit_normative_max.value})",
+            f"Плотность квартала:      {self.block_density.value:.3f} (внутр., GFA/S_кв)",
             f"Площадь квартир:         {self.apartments_area.value:,.0f} м²",
         ]
         if self.built_in_area.value and self.built_in_area.value > 0:

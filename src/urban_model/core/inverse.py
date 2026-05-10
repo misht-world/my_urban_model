@@ -130,13 +130,16 @@ def _resolve_search_range(
     options: CalculationOptions,
     norms: Normatives,
 ) -> tuple[float, float]:
-    """Диапазон бисекции [lo, hi]."""
-    kit_max = options.kit_search_max
-    if kit_max is None:
-        kit_max = norms.resolve(
-            "kit_limits", planning_doc="yes" if options.planning_doc else "no"
-        )
-    return options.kit_search_min, float(kit_max)
+    """Диапазон бисекции [lo, hi] по `block_density` (внутренней переменной).
+
+    block_density = GFA / S_квартала. Это НЕ КИТ ПЗЗ — последний вычисляется
+    как apt/ЗУ_жилой и проверяется отдельно в `feasible()` (`r.kit.value
+    ≤ kit_norm_max`). Поэтому здесь верхняя граница — большое число
+    (5.0 по умолчанию), а нормативный потолок КИТ работает как мягкое
+    ограничение в feasibility-проверке.
+    """
+    hi = options.kit_search_max if options.kit_search_max is not None else 5.0
+    return options.kit_search_min, float(hi)
 
 
 # ---------------------------------------------------------------------------
@@ -163,18 +166,22 @@ def solve_max_kit(
 
     def feasible(k: float) -> bool:
         r = compute_tep_for_kit(k, site, options, norms)
-        return r.balance.is_feasible and r.density_chel_per_ga.status != Status.ERROR
+        return (
+            r.balance.is_feasible
+            and r.density_chel_per_ga.status != Status.ERROR
+            and r.kit.status != Status.ERROR  # КИТ ПЗЗ ≤ kit_norm_max
+        )
 
     best, reason = _bisect_max_feasible(feasible, lo, hi, options.kit_tolerance)
     result = compute_tep_for_kit(best, site, options, norms)
     if reason == "ceiling":
         result.limiting_factor = (
-            f"нормативный потолок КИТ = {hi}; "
+            f"внутренняя плотность застройки = {hi:.2f} (потолок поиска); "
             + _identify_limiting_factor(result)
         )
     elif reason == "lo_infeasible":
         result.limiting_factor = (
-            f"даже минимальный КИТ {lo} не проходит — "
+            f"даже минимальная плотность {lo} не проходит — "
             + _identify_limiting_factor(result)
         )
     else:
@@ -216,9 +223,12 @@ def solve_max_kit_with_reserve(
 
     def feasible(k: float) -> bool:
         r = compute_tep_for_kit(k, site, options, norms)
+        # Резерв ≥ target. Также проверяем плотность и КИТ ПЗЗ ≤ норматива.
         return (
             r.balance.surplus >= target_surplus_m2
+            and r.balance.greening_actual >= r.balance.greening_required - 1e-3
             and r.density_chel_per_ga.status != Status.ERROR
+            and r.kit.status != Status.ERROR
         )
 
     best, reason = _bisect_max_feasible(feasible, lo, hi, options.kit_tolerance)

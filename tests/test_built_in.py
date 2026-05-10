@@ -184,19 +184,19 @@ class TestBuiltInImpactOnInverse:
 
     def test_vpp_can_relax_balance_when_social_is_bottleneck(self, spb):
         """Когда ограничитель — соцблок (ДОО/СОШ), ВПП «разбавляет» население
-        и позволяет повысить КИТ. Это корректное поведение."""
+        и позволяет повысить квартальную плотность. Это корректное поведение."""
         site = Site(area_m2=100_000)
-        kit_no = solve_max_kit(
+        density_no = solve_max_kit(
             site, CalculationOptions(floors=15, planning_doc=True), spb
-        ).kit.value
-        kit_yes = solve_max_kit(
+        ).block_density.value
+        density_yes = solve_max_kit(
             site,
             CalculationOptions(
                 floors=15, planning_doc=True,
                 built_in=BuiltInArea(area_m2=10_000, vri_code="4.4"),
             ),
             spb,
-        ).kit.value
-        # При этом параметре сценария соцблок — ограничитель,
-        # поэтому КИТ с ВПП ≥ КИТ без ВПП.
-        assert kit_yes >= kit_no - 1e-6
+        ).block_density.value
+        # Сравниваем по block_density — внутренней плотности квартала.
+        # КИТ ПЗЗ (apt/lot) от ВПП меняется иначе и не годится для этого инварианта.
+        assert density_yes >= density_no - 1e-6
