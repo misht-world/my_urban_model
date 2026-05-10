@@ -205,7 +205,15 @@ def compute_tep_for_kit(
         "intra_quarter_driveways": drive_intra_v,
         "parking_multilevel": park.multilevel_footprint,
     }
-    bal = balance.compute_balance(site.area_m2, components)
+    # Фактическое озеленение квартала: ЗНОП + озеленение жилого ЗУ + озеленение ВПП.
+    # Норматив (25% площади квартала за вычетом ДОО/СОШ) — обязательная проверка.
+    greening_actual_total = znop_area_v + green_housing_v + bi_greening_v
+    bal = balance.compute_balance(
+        site.area_m2,
+        components,
+        greening_actual=greening_actual_total,
+        greening_required=green_quarter_req_v,
+    )
 
     # === Формула парковки для аудит-трейла ===
     park_mode_label = {

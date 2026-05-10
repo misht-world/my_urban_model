@@ -149,21 +149,27 @@ class TestParkingBreakdown:
 
 class TestParkingInBalance:
     def test_all_open_lowers_max_kit_vs_min_open(self, spb):
-        """all_open даёт меньший макс. КИТ, потому что отъедает поверхность."""
-        site = Site(area_m2=20_000)  # тесный квартал, разница заметна
+        """all_open даёт меньший (или равный) макс. КИТ, потому что
+        отъедает поверхность. На квартале 50 000 м² оба режима feasible,
+        и эффект чётко виден (open_places в all_open в разы больше)."""
+        site = Site(area_m2=50_000)
         opts_min = CalculationOptions(
-            floors=10, planning_doc=True,
+            floors=15, planning_doc=True,
             parking=ParkingConfig(mode="min_open"),
         )
         opts_all = CalculationOptions(
-            floors=10, planning_doc=True,
+            floors=15, planning_doc=True,
             parking=ParkingConfig(mode="all_open"),
         )
         r_min = solve_max_kit(site, opts_min, spb)
         r_all = solve_max_kit(site, opts_all, spb)
-        assert r_all.kit.value <= r_min.kit.value
-        # Открытых м/м больше при all_open
-        assert r_all.parking_open_places.value >= r_min.parking_open_places.value
+        # Оба сценария должны быть feasible (иначе тест не показателен).
+        assert r_min.balance.is_feasible
+        assert r_all.balance.is_feasible
+        # КИТ в all_open ≤ min_open (parking-нагрузка съедает территорию).
+        assert r_all.kit.value <= r_min.kit.value + 1e-3
+        # Открытых м/м в all_open строго больше — это инвариант режимов.
+        assert r_all.parking_open_places.value > r_min.parking_open_places.value
 
     def test_multilevel_appears_in_balance_components(self, spb):
         site = Site(area_m2=100_000)

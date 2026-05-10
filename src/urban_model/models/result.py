@@ -45,6 +45,17 @@ class BalanceCheck(BaseModel):
     components: dict[str, float] = Field(default_factory=dict)
     is_feasible: bool
 
+    # Контроль норматива озеленения квартала: фактическое vs требуемое
+    # (норматив 25% от площади квартала без участков ДОО/СОШ — СП 42.13330).
+    # is_feasible учитывает оба ограничения: территориальный баланс И озеленение.
+    greening_actual: float = 0.0      # фактическое озеленение, м² (ЗНОП + жильё + ВПП)
+    greening_required: float = 0.0    # минимально требуемое, м²
+
+    @property
+    def greening_deficit(self) -> float:
+        """Сколько м² озеленения не хватает; 0 если норматив выполнен."""
+        return max(0.0, self.greening_required - self.greening_actual)
+
 
 class TEPResult(BaseModel):
     """Полный результат расчёта ТЭП по кварталу."""

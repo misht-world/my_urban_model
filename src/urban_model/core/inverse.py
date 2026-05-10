@@ -32,30 +32,87 @@ def _bisect_max_feasible(
     lo: float,
     hi: float,
     tol: float,
+    scan_steps: int = 30,
 ) -> tuple[float, str]:
     """Найти максимальный kit в [lo, hi], при котором feasible(kit) = True.
 
-    Возвращает (best_kit, reason), где reason ∈ {"ceiling", "lo_infeasible", "ok"}.
+    Допускает один из трёх сценариев:
+      1. feasible(hi) = True  → возвращаем hi (ceiling).
+      2. feasible(lo) = True  → стандартная бисекция вниз от hi (область
+         feasible непрерывна и упирается в верхнюю границу).
+      3. feasible(lo) = feasible(hi) = False  → область feasible — окно в
+         середине (норматив озеленения нарушен на низких КИТ, баланс
+         территории — на высоких). Сканируем сетку, чтобы найти одну точку
+         внутри окна, и бисектим вверх.
+
+    Возвращает (best_kit, reason), где reason ∈ {
+        "ceiling", "ok", "ok_after_scan", "lo_infeasible"
+    }.
     """
     if feasible(hi):
         return hi, "ceiling"
-    if not feasible(lo):
-        return lo, "lo_infeasible"
-    while hi - lo > tol:
-        mid = (lo + hi) / 2
-        if feasible(mid):
-            lo = mid
-        else:
-            hi = mid
-    return lo, "ok"
+
+    if feasible(lo):
+        # Случай 2: монотонно убывающая feasibility — стандартная бисекция
+        while hi - lo > tol:
+            mid = (lo + hi) / 2
+            if feasible(mid):
+                lo = mid
+            else:
+                hi = mid
+        return lo, "ok"
+
+    # Случай 3: оба конца infeasible. Окно feasible — где-то в середине.
+    # Сканируем СПРАВА НАЛЕВО: первая feasible-точка близка к правому краю
+    # окна. Используем multi-pass с прогрессивно более мелким шагом, чтобы
+    # надёжно ловить узкие окна (могут возникать, когда один норматив
+    # «прижимает» снизу, другой — сверху, как density vs greening).
+    for n_steps in (scan_steps, scan_steps * 4, scan_steps * 16):
+        step = (hi - lo) / n_steps
+        if step < tol:  # глубже бессмысленно — равно бисекции по точкам
+            break
+        for i in range(n_steps - 1, 0, -1):
+            candidate = lo + i * step
+            if feasible(candidate):
+                # Найдена точка в окне. Бисектим [candidate, candidate+step]
+                # для точного верхнего края.
+                new_lo = candidate
+                new_hi = min(hi, candidate + step)
+                while new_hi - new_lo > tol:
+                    mid = (new_lo + new_hi) / 2
+                    if feasible(mid):
+                        new_lo = mid
+                    else:
+                        new_hi = mid
+                return new_lo, "ok_after_scan"
+
+    # Окно feasible не найдено — ограничения противоречивы.
+    return lo, "lo_infeasible"
 
 
 def _identify_limiting_factor(result: TEPResult) -> str:
-    """Какая компонента съела больше всего территории относительно квартала."""
-    site_area = result.balance.site_area
-    if not result.balance.components:
+    """Что ограничивает дальнейший рост КИТ.
+
+    Сначала проверяем норматив озеленения квартала (25%): если
+    фактическое озеленение вплотную упирается в требуемое — это
+    ограничитель. Иначе — самый крупный территориальный компонент.
+    """
+    bal = result.balance
+    site_area = bal.site_area
+
+    if bal.greening_required > 0:
+        slack = bal.greening_actual - bal.greening_required
+        # «Прижатие» к нормативу: запас < 1% от требуемого
+        if 0 <= slack < bal.greening_required * 0.01:
+            return (
+                f"норматив озеленения квартала "
+                f"(требуется ≥{bal.greening_required:,.0f} м², "
+                f"факт {bal.greening_actual:,.0f} м²)"
+            )
+
+    if not bal.components:
         return "—"
-    biggest = max(result.balance.components.items(), key=lambda kv: kv[1])
+    biggest = max(bal.components.items(), key=lambda kv: kv[1])
     name, val = biggest
     pct = val / site_area * 100
     pretty = {

@@ -18,7 +18,7 @@ if sys.platform == "win32":
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "src"))
 
 from urban_model import solve_max_kit, solve_max_kit_with_reserve, solve_max_kit_with_znop, verify_kit
-from urban_model.models import Site, CalculationOptions
+from urban_model.models import Site, CalculationOptions, SchoolSpec
 from urban_model.models.built_in import BuiltInArea
 from urban_model.normatives import load_normatives
 
@@ -101,8 +101,7 @@ def input_options() -> CalculationOptions:
     return CalculationOptions(
         floors=floors,
         planning_doc=planning_doc,
-        school_has_pool=has_pool,
-        school_has_sport_core=has_sport,
+        school=SchoolSpec(has_pool=has_pool, has_sport_core=has_sport),
         built_in=built_in,
     )
 
