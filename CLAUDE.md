@@ -114,7 +114,30 @@ from urban_model.models import (
 )
 from urban_model.normatives import load_normatives
 from urban_model.export import to_xlsx, results_to_dataframe
+from urban_model.optimize import SearchSpace, optimize_max_apartments  # v0.5
 ```
+
+## Оптимизатор (v0.5)
+
+Galapagos-аналог на Optuna. Цель — максимизация площади квартир при выполнении всех ограничений (балансовый surplus ≥ 0, плотность в норме). Декрейшн-переменные: этажность, режим парковок и доли open/multilevel/underground, этажность многоуровневых паркингов, число ДОО, число СОШ, ВПП on/off.
+
+Каждое испытание Optuna строит `CalculationOptions` поверх базового шаблона и вызывает `solve_max_kit` — то есть оптимизатор работает **поверх обратного расчёта**, а не вместо него. Это держит ядро вычислений простым: оптимизация — отдельный слой.
+
+```python
+from urban_model.optimize import SearchSpace, optimize_max_apartments
+
+space = SearchSpace(
+    floors_range=(8, 25),
+    parking_modes=["min_open", "all_open", "custom"],
+    parking_open_share_range=(0.1, 0.5),
+)
+report = optimize_max_apartments(site, base_options, norms, space, n_trials=100)
+print(report.best.apartments_area, report.best.params)
+for r in report.top_n[:5]:
+    print(r.rank, r.kit, r.params)
+```
+
+В UI (вкладка «🧬 Оптимизация») — форма выбора варьируемых параметров + слайдер trials + таблица топ-N + кнопки «Добавить в сравнение».
 
 ## Дорожная карта (актуализирована 2026-05-09)
 
@@ -134,10 +157,10 @@ from urban_model.export import to_xlsx, results_to_dataframe
 |  | Список ВПП (несколько помещений с разными ВРИ в одном жилом доме — B3). | ⏳ |
 |  | Override количества ДОО/СОШ вручную (расширение `KindergartenSpec/SchoolSpec`). | ⏳ |
 |  | Сверка значений `parking.vpp.m2_per_place` с актуальной редакцией ПЗЗ СПб. | ⏳ |
-| v0.4 | Экономика: себестоимость, выручка, прибыль. | — |
-| v0.5 | Optuna — одно-критериальная оптимизация поверх обратного расчёта (Galapagos-аналог: max площадь квартир / прибыль при фиксированных ограничениях, кнопка «Оптимизировать» в UI). | — |
-| v0.6 | DEAP / NSGA-II — Парето-фронт. | — |
-| v0.7+ | Новые региональные профили; CLI. | — |
+| **v0.5** | **Optuna-оптимизатор** (`src/urban_model/optimize/`): `SearchSpace` + `optimize_max_apartments`. Целевая функция — площадь квартир при feasible-балансе. Поверх существующего `solve_max_kit`. Вкладка «🧬 Оптимизация» в UI с прогресс-баром и топ-N таблицей. Override количества ДОО/СОШ в UI. | ✅ |
+| v0.4 / v0.6 | Экономика: себестоимость, выручка, прибыль (когда понадобится для multi-objective). | ⏳ |
+| v0.7 | DEAP / NSGA-II — Парето-фронт (площадь × резерв × этажность). | ⏳ |
+| v0.8+ | Новые региональные профили; CLI. | — |
 
 ⏳ — запланировано; ✅ — реализовано.
 

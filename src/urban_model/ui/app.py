@@ -8,6 +8,7 @@ from __future__ import annotations
 import streamlit as st
 
 from urban_model.ui.inputs import render_sidebar
+from urban_model.ui.optimizer import render_optimizer_tab
 from urban_model.ui.output import (
     render_actions,
     render_comparison_tab,
@@ -54,7 +55,11 @@ inputs = render_sidebar()
 # Главная область — две вкладки: Расчёт + Сравнение
 # ---------------------------------------------------------------------------
 
-tab_calc, tab_compare = st.tabs(["📊 Расчёт", f"🔀 Сравнение ({len(st.session_state.scenarios)})"])
+tab_calc, tab_optimize, tab_compare = st.tabs([
+    "📊 Расчёт",
+    "🧬 Оптимизация",
+    f"🔀 Сравнение ({len(st.session_state.scenarios)})",
+])
 
 with tab_calc:
     try:
@@ -86,6 +91,13 @@ with tab_calc:
             target_surplus_m2=inputs.target_surplus_m2,
             verify_kit_value=inputs.verify_kit_value,
         ),
+    )
+
+with tab_optimize:
+    render_optimizer_tab(
+        site=inputs.site,
+        base_options=inputs.options,
+        norms=norms,
     )
 
 with tab_compare:

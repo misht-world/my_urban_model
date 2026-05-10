@@ -129,6 +129,38 @@ def render_sidebar() -> UserInputs:
             help="detached = отдельно стоящее; built_in = встроенно-пристроенное",
             key="kg_btype",
         )
+        kg_override = st.checkbox(
+            "Задать число ДОО вручную",
+            value=False,
+            disabled=not include_kg,
+            key="kg_override",
+            help=(
+                "Если выключено — число объектов и вместимость подбираются "
+                "автоматически по нормативу. Включите для оптимизации или "
+                "при заданном проекте."
+            ),
+        )
+        kg_num_objects = None
+        kg_capacity = None
+        if include_kg and kg_override:
+            c1, c2 = st.columns(2)
+            kg_num_objects = c1.number_input(
+                "Кол-во ДОО",
+                min_value=1,
+                max_value=20,
+                value=2,
+                step=1,
+                key="kg_num_objects",
+            )
+            kg_capacity = c2.number_input(
+                "Мест в каждом",
+                min_value=40,
+                max_value=400,
+                value=160,
+                step=10,
+                key="kg_capacity",
+                help="Если оставить по умолчанию — будет скорректировано под нагрузку",
+            )
 
         st.markdown("---")
         include_school = st.checkbox(
@@ -148,9 +180,44 @@ def render_sidebar() -> UserInputs:
             disabled=not include_school,
             key="school_sport",
         )
+        sch_override = st.checkbox(
+            "Задать число СОШ вручную",
+            value=False,
+            disabled=not include_school,
+            key="sch_override",
+        )
+        sch_num_objects = None
+        sch_capacity = None
+        if include_school and sch_override:
+            c1, c2 = st.columns(2)
+            sch_num_objects = c1.number_input(
+                "Кол-во СОШ",
+                min_value=1,
+                max_value=10,
+                value=1,
+                step=1,
+                key="sch_num_objects",
+            )
+            sch_capacity = c2.number_input(
+                "Мест в каждой",
+                min_value=200,
+                max_value=2000,
+                value=550,
+                step=10,
+                key="sch_capacity",
+            )
 
-    kg_spec = KindergartenSpec(building_type=kg_btype)
-    school_spec = SchoolSpec(has_pool=school_pool, has_sport_core=school_sport)
+    kg_spec = KindergartenSpec(
+        building_type=kg_btype,
+        num_objects=int(kg_num_objects) if kg_num_objects else None,
+        capacity_per_object=int(kg_capacity) if kg_capacity else None,
+    )
+    school_spec = SchoolSpec(
+        has_pool=school_pool,
+        has_sport_core=school_sport,
+        num_objects=int(sch_num_objects) if sch_num_objects else None,
+        capacity_per_object=int(sch_capacity) if sch_capacity else None,
+    )
 
     # ------------------------------------------------------------------
     # 5. Парковки
