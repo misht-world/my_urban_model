@@ -545,29 +545,32 @@ def _render_share_slider(
     """
     pct_key = _PCT_KEY[type_key]
     lock_key = _LOCK_KEY[type_key]
+    is_locked = st.session_state.get(lock_key, False)
 
-    c1, c2 = st.columns([1, 4])
-    with c1:
-        st.checkbox(
-            "🔒 Зафиксировать",
-            key=lock_key,
-            help="Если включено — доля закреплена; меняются только остальные.",
-        )
-
-    is_locked = st.session_state[lock_key]
+    # В режиме count×cap для multilevel — open и ug делят остаток.
+    # Слайдер показывает долю В ОСТАТКЕ (не от общего числа м/м).
     slider_label = (
-        "Доля от остатка после многоуровневых, %"
+        "Доля в остатке, %"
         if is_remainder_mode
         else "Доля, %"
     )
 
-    if not interactive:
-        # Единственный незалоченный — показываем как metric (значение
-        # вычислено как остаток до 100%)
-        with c2:
+    # Узкий замок-чекбокс слева + слайдер справа.
+    c_lock, c_slider = st.columns([1, 14])
+    with c_lock:
+        # Эмодзи как label: ✅ блокирует, ⚪ — нет. Стандартный checkbox
+        # без длинного текста — компактнее, чем «🔒 Зафиксировать».
+        st.checkbox(
+            "🔒",
+            key=lock_key,
+            help="Зафиксировать долю — двигаться будут только остальные.",
+        )
+
+    with c_slider:
+        if not interactive:
+            # Единственный незалоченный — показываем как metric
             st.metric(slider_label, f"{st.session_state[pct_key]:.1f}%")
-    else:
-        with c2:
+        else:
             st.slider(
                 slider_label,
                 min_value=0.0, max_value=100.0, step=0.5,
@@ -674,13 +677,24 @@ def _render_parking_custom() -> ParkingConfig:
                     help="По нормативу СПб — макс. 300 м/м в одном паркинге.",
                 )
                 ml_explicit_places = int(ml_n) * int(ml_cap)
-                st.info(
-                    f"Многоуровневые: **{ml_explicit_places} м/м** "
-                    f"({ml_n} × {ml_cap}). Это абсолютное число — оно "
-                    f"«забирается» из общей потребности **в первую очередь**. "
-                    f"Открытые и подземные затем делят оставшиеся м/м "
-                    f"в указанных ниже долях."
-                )
+                # Если есть последний расчёт — покажем оценку остатка
+                last_total = st.session_state.get("_last_total_required")
+                if last_total and last_total > 0:
+                    est_remainder = max(0, last_total - ml_explicit_places)
+                    st.info(
+                        f"Многоуровневые: **{ml_explicit_places} м/м** "
+                        f"({ml_n} × {ml_cap}). По последнему расчёту общая "
+                        f"потребность ≈ **{last_total} м/м**; на открытые и "
+                        f"подземные остаётся ≈ **{est_remainder} м/м** — их "
+                        f"и распределяют доли ниже."
+                    )
+                else:
+                    st.info(
+                        f"Многоуровневые: **{ml_explicit_places} м/м** "
+                        f"({ml_n} × {ml_cap}). Это абсолютное число — оно "
+                        f"«забирается» из общей потребности **в первую очередь**. "
+                        f"Открытые и подземные затем делят остаток в долях ниже."
+                    )
             ml_levels = st.number_input(
                 "Этажность многоуровневого паркинга",
                 min_value=1, max_value=10, value=3, step=1,
@@ -772,18 +786,20 @@ def _render_vpp() -> tuple[BuiltInArea | None, bool]:
 
 
 def _render_custom_objects() -> list[CustomObject]:
-    """Табличный редактор для произвольных объектов (бывшая вкладка)."""
+    """Табличный редактор для дополнительных объектов на территории."""
     with st.container(border=True):
-        st.markdown("##### Произвольные объекты на территории квартала")
+        st.markdown("##### Дополнительные объекты на территории квартала")
         st.caption(
             "Объекты вне базовых классов (офис, ФОК, поликлиника, "
-            "торговля). Каждый занимает свой ЗУ и считается по ВРИ-коду."
+            "торговля). Каждый занимает свой ЗУ и считается по ВРИ-коду. "
+            "Чтобы добавить — нажмите «+» в таблице, заполните строку и "
+            "нажмите «Применить»."
         )
 
         if "custom_objects" not in st.session_state:
             st.session_state.custom_objects = []
 
-        # Готовим DataFrame для редактора
+        # DataFrame только из реально применённых объектов; пусто = пусто
         rows = []
         for obj in st.session_state.custom_objects:
             rows.append({
@@ -796,19 +812,11 @@ def _render_custom_objects() -> list[CustomObject]:
                     else float(obj.get("plot_area_m2", 1000.0))
                 ),
             })
-        if not rows:
-            rows = [{
-                "Название": "Офис",
-                "Площадь ЗУ, м²": 2_000.0,
-                "ВРИ-код": "4.1",
-                "Общая площадь, м²": 2_000.0,
-            }]
-            # Дефолтная строка — это шаблон, не сохраняем сразу
-            default_template = True
-        else:
-            default_template = False
+        df = pd.DataFrame(
+            rows,
+            columns=["Название", "Площадь ЗУ, м²", "ВРИ-код", "Общая площадь, м²"],
+        )
 
-        df = pd.DataFrame(rows)
         edited_df = st.data_editor(
             df,
             num_rows="dynamic",
@@ -838,16 +846,21 @@ def _render_custom_objects() -> list[CustomObject]:
             key="objects_editor_inline",
         )
 
-        col1, col2, col3 = st.columns([1, 1, 3])
+        col1, col2, _ = st.columns([1, 1, 3])
         with col1:
             if st.button("Применить", type="primary", use_container_width=True):
                 new_list = []
                 for _, row in edited_df.iterrows():
                     try:
+                        name = str(row["Название"]).strip()
+                        plot = float(row["Площадь ЗУ, м²"])
+                        vri = str(row["ВРИ-код"])
+                        if not name or plot <= 0:
+                            continue
                         new_list.append({
-                            "name": str(row["Название"]).strip() or "Объект",
-                            "plot_area_m2": float(row["Площадь ЗУ, м²"]),
-                            "vri_code": str(row["ВРИ-код"]),
+                            "name": name,
+                            "plot_area_m2": plot,
+                            "vri_code": vri,
                             "floor_area_m2": (
                                 float(row["Общая площадь, м²"])
                                 if pd.notna(row["Общая площадь, м²"]) else None
@@ -859,15 +872,10 @@ def _render_custom_objects() -> list[CustomObject]:
                 st.toast(f"Применено: {len(new_list)} объект(а/ов)", icon="📦")
                 st.rerun()
         with col2:
-            if st.button("Очистить", use_container_width=True):
+            if st.button("Очистить", use_container_width=True,
+                         disabled=not st.session_state.custom_objects):
                 st.session_state.custom_objects = []
                 st.rerun()
-        with col3:
-            if default_template and st.session_state.custom_objects == []:
-                st.caption(
-                    "👆 Это шаблон-пример. Отредактируйте строку и нажмите "
-                    "«Применить», или добавьте новые строки."
-                )
 
     return [CustomObject(**obj) for obj in st.session_state.custom_objects]
 

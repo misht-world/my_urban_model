@@ -79,13 +79,19 @@ def run_calculation(
         options = opts_step2
 
     if mode == "max_kit":
-        return solve_max_kit(site, options, norms)
+        result = solve_max_kit(site, options, norms)
     elif mode == "with_reserve":
-        return solve_max_kit_with_reserve(site, target_surplus_m2, options, norms)
+        result = solve_max_kit_with_reserve(site, target_surplus_m2, options, norms)
     elif mode == "verify":
-        return verify_kit(verify_kit_value, site, options, norms)
+        result = verify_kit(verify_kit_value, site, options, norms)
     else:
         raise ValueError(f"Неизвестный режим: {mode}")
+
+    # Сохраняем оценку общей потребности в м/м — для подсказок в UI
+    # парковок (count×cap режим показывает примерную раскладку).
+    if result.parking_required_places.value is not None:
+        st.session_state["_last_total_required"] = int(result.parking_required_places.value)
+    return result
 
 
 # ---------------------------------------------------------------------------
