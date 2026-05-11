@@ -52,6 +52,19 @@ class ParkingConfig(BaseModel):
         description="Число уровней многоуровневого паркинга",
     )
 
+    # v0.6: альтернативный способ задать многоуровневые парковки —
+    # абсолютным числом мест (через количество объектов × вместимость).
+    # Если задано, переопределяет multilevel_share при расчёте.
+    multilevel_explicit_places: int | None = Field(
+        default=None,
+        ge=0,
+        description=(
+            "Абсолютное число м/м в многоуровневых паркингах "
+            "(обычно = количество_паркингов × вместимость_каждого). "
+            "Если None — используется multilevel_share."
+        ),
+    )
+
     @model_validator(mode="after")
     def _validate(self) -> "ParkingConfig":
         valid_modes = {"min_open", "all_open", "custom"}

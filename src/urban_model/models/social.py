@@ -24,10 +24,10 @@ class SchoolSpec(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     building_type: Literal["detached"] = "detached"
-    # Базовая конфигурация СОШ — без бассейна и спортивного ядра.
-    # Включение каждого даёт +0.2 / +0.7 га к участку. Включайте только если
-    # вы реально планируете соответствующее благоустройство.
-    has_pool: bool = False
-    has_sport_core: bool = False
+    # По умолчанию — стандартная СОШ СПб с бассейном (+0.2 га к участку) и
+    # спортивным ядром (+0.7 га). Это типовое благоустройство в современных
+    # проектах СПб. Если у проекта другая комплектация — отключите явно.
+    has_pool: bool = True
+    has_sport_core: bool = True
     num_objects: int | None = None
     capacity_per_object: int | None = None

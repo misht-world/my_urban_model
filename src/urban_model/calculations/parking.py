@@ -83,13 +83,28 @@ def compute_parking_breakdown(
         ml_levels = 0
 
     else:  # custom
-        # open_share уже проверен валидатором ≥ open_share_min
-        # Но гарантируем жёсткий минимум
-        open_raw = math.ceil(total_required * config.open_share)
-        open_min = math.ceil(total_required * open_share_min_v)
-        open_pl = max(open_raw, open_min)
+        # Если задано абсолютное количество многоуровневых м/м (v0.6) —
+        # используем его. Иначе — доля.
+        if config.multilevel_explicit_places is not None:
+            multilevel_pl = min(int(config.multilevel_explicit_places), total_required)
+            # Открытые и подземные делят остаток по своим относительным долям
+            remaining = max(0, total_required - multilevel_pl)
+            open_un_sum = config.open_share + config.underground_share
+            if open_un_sum > 0:
+                open_rel = config.open_share / open_un_sum
+            else:
+                open_rel = open_share_min_v
+            open_pl = math.ceil(remaining * open_rel)
+        else:
+            open_pl = math.ceil(total_required * config.open_share)
+            multilevel_pl = math.floor(total_required * config.multilevel_share)
 
-        multilevel_pl = math.floor(total_required * config.multilevel_share)
+        # Гарантируем жёсткий минимум открытых (12.5% по нормативу СПб)
+        open_min = math.ceil(total_required * open_share_min_v)
+        open_pl = max(open_pl, open_min)
+        # Если из-за минимума суммарно > total — урезаем многоуровневые
+        if open_pl + multilevel_pl > total_required:
+            multilevel_pl = max(0, total_required - open_pl)
         underground_pl = max(0, total_required - open_pl - multilevel_pl)
         ml_levels = config.multilevel_levels
 

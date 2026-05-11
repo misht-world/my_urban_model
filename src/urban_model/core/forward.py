@@ -275,8 +275,16 @@ def compute_tep_for_kit(
     kit_developed = (apartments_area_v / housing_lot_v) if housing_lot_v > 0 else 0.0
 
     # === ЗНОП — теперь по КИТ ПЗЗ, а не по block_density ===
-    if options.znop_per_person_override is not None:
-        # Ручной override (для режима solve_max_kit_with_znop)
+    # Приоритет источника: фиксированная площадь > м²/чел > норматив piecewise.
+    if options.znop_total_area_override is not None:
+        # Пользователь задал общую площадь ЗНОП напрямую (м²)
+        znop_area_v = float(options.znop_total_area_override)
+        znop_pp = znop_area_v / pop_v if pop_v > 0 else 0.0
+        znop_source_label = (
+            f"override = {znop_area_v:,.0f} м² (общая площадь, заменяет норматив)"
+        )
+    elif options.znop_per_person_override is not None:
+        # Ручной override м²/чел (для режима solve_max_kit_with_znop)
         znop_pp = options.znop_per_person_override
         znop_area_v = pop_v * znop_pp
         znop_source_label = f"override = {znop_pp} м²/чел (заменяет норматив)"
@@ -468,9 +476,16 @@ def compute_tep_for_kit(
         znop_per_person=_F(
             znop_pp,
             unit="m2/чел",
-            status=Status.MANUAL if options.znop_per_person_override is not None else Status.OK,
+            status=(
+                Status.MANUAL
+                if (options.znop_per_person_override is not None
+                    or options.znop_total_area_override is not None)
+                else Status.OK
+            ),
             formula=(
-                f"override = {options.znop_per_person_override}"
+                f"S_ЗНОП / население = {options.znop_total_area_override:.0f} / {pop_v:.0f}"
+                if options.znop_total_area_override is not None
+                else f"override = {options.znop_per_person_override}"
                 if options.znop_per_person_override is not None
                 else f"норматив(КИТ={kit_developed:.3f}) — ступени 0/3/4/6 м²/чел"
             ),

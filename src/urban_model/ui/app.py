@@ -11,7 +11,6 @@ from __future__ import annotations
 import streamlit as st
 
 from urban_model.ui.inputs import render_params_tab
-from urban_model.ui.objects_tab import render_objects_tab
 from urban_model.ui.optimizer import render_optimizer_tab
 from urban_model.ui.output import (
     render_actions,
@@ -85,13 +84,11 @@ with st.sidebar:
 # Вкладки
 # ---------------------------------------------------------------------------
 
-_n_objects = len(st.session_state.get("custom_objects", []))
 _n_scenarios = len(st.session_state.scenarios)
 
-tab_params, tab_calc, tab_objects, tab_optimize, tab_compare = st.tabs([
+tab_params, tab_calc, tab_optimize, tab_compare = st.tabs([
     "Параметры",
     "Расчёт",
-    f"Объекты ({_n_objects})" if _n_objects else "Объекты",
     "Оптимизация",
     f"Сравнение ({_n_scenarios})" if _n_scenarios else "Сравнение",
 ])
@@ -132,9 +129,6 @@ with tab_calc:
             verify_kit_value=inputs.verify_kit_value,
         ),
     )
-
-with tab_objects:
-    render_objects_tab()
 
 with tab_optimize:
     render_optimizer_tab(
