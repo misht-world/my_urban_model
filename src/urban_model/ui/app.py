@@ -1,13 +1,16 @@
 """Streamlit-приложение: обратный расчёт ТЭП.
 
 Запуск:  uv run streamlit run src/urban_model/ui/app.py
+
+С v0.5.8 — деловой светлый дизайн: параметры на отдельной вкладке,
+sidebar свёрнут по умолчанию.
 """
 
 from __future__ import annotations
 
 import streamlit as st
 
-from urban_model.ui.inputs import render_sidebar
+from urban_model.ui.inputs import render_params_tab
 from urban_model.ui.objects_tab import render_objects_tab
 from urban_model.ui.optimizer import render_optimizer_tab
 from urban_model.ui.output import (
@@ -29,41 +32,75 @@ from urban_model.ui.state import (
 # ---------------------------------------------------------------------------
 
 st.set_page_config(
-    page_title="Модель застройки — обратный расчёт ТЭП",
-    page_icon="🏙️",
+    page_title="Модель застройки территории",
+    page_icon="🏙",
     layout="wide",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="collapsed",
 )
 
-st.title("🏙️ Модель застройки территории")
-st.caption(
-    "Обратный расчёт КИТ по площади квартала.  "
-    "Профиль нормативов: **Санкт-Петербург**."
-)
+# Заголовок и краткая подпись
+col_title, col_meta = st.columns([3, 1])
+with col_title:
+    st.title("Модель застройки территории")
+    st.caption(
+        "Обратный расчёт КИТ по площади квартала. "
+        "Профиль нормативов — Санкт-Петербург."
+    )
+with col_meta:
+    from urban_model import __version__
+    st.markdown(
+        f"<div style='text-align:right;padding-top:1.5rem;color:#6B7280;'>"
+        f"<small>v{__version__}</small></div>",
+        unsafe_allow_html=True,
+    )
 
 init_session()
 norms = get_norms("spb")
 
 
 # ---------------------------------------------------------------------------
-# Sidebar — параметры
+# Sidebar — минимальный (можно развернуть для статуса/сброса)
 # ---------------------------------------------------------------------------
 
-inputs = render_sidebar()
+with st.sidebar:
+    st.markdown("### Управление")
+    st.caption(
+        "Параметры — на вкладке «Параметры». Здесь — служебные действия."
+    )
+    if st.button("Сбросить сравнение", use_container_width=True):
+        st.session_state.scenarios = []
+        st.toast("Сценарии очищены", icon="🗑")
+    if st.button("Сбросить объекты", use_container_width=True):
+        st.session_state.custom_objects = []
+        st.toast("Объекты очищены", icon="📦")
+
+    st.markdown("---")
+    st.caption(
+        f"Сценариев в сравнении: **{len(st.session_state.scenarios)}**  \n"
+        f"Объектов: **{len(st.session_state.get('custom_objects', []))}**"
+    )
 
 
 # ---------------------------------------------------------------------------
-# Главная область — две вкладки: Расчёт + Сравнение
+# Вкладки
 # ---------------------------------------------------------------------------
 
 _n_objects = len(st.session_state.get("custom_objects", []))
-tab_calc, tab_objects, tab_optimize, tab_compare = st.tabs([
-    "📊 Расчёт",
-    f"📦 Объекты ({_n_objects})" if _n_objects else "📦 Объекты",
-    "🧬 Оптимизация",
-    f"🔀 Сравнение ({len(st.session_state.scenarios)})",
+_n_scenarios = len(st.session_state.scenarios)
+
+tab_params, tab_calc, tab_objects, tab_optimize, tab_compare = st.tabs([
+    "Параметры",
+    "Расчёт",
+    f"Объекты ({_n_objects})" if _n_objects else "Объекты",
+    "Оптимизация",
+    f"Сравнение ({_n_scenarios})" if _n_scenarios else "Сравнение",
 ])
 
+# --- Параметры (новая вкладка с полной формой) ---
+with tab_params:
+    inputs = render_params_tab()
+
+# --- Расчёт (только результаты) ---
 with tab_calc:
     try:
         result = run_calculation(
@@ -116,7 +153,7 @@ with tab_compare:
 
 st.markdown("---")
 st.caption(
-    "Источник истины: `info/ТЗ_обратный_расчет_ТЭП.docx`.  "
-    "Нормативы: `configs/spb.yaml` (parent: `russia.yaml`).  "
-    "Все цифры в YAML — никаких magic numbers в коде."
+    "Источник истины: `info/ТЗ_обратный_расчет_ТЭП.docx`. "
+    "Нормативы: `configs/spb.yaml` (parent: `russia.yaml`). "
+    "Все цифры — в YAML, никаких magic numbers в коде."
 )

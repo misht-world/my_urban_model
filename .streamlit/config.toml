@@ -1,0 +1,17 @@
+# Светлая деловая тема для Streamlit-приложения urban_model.
+# Синий primary, нейтральные серые фоны, чёткая типографика.
+
+[theme]
+base = "light"
+primaryColor = "#1565C0"               # тёмно-синий — акценты (кнопки, ссылки)
+backgroundColor = "#FFFFFF"            # белый — основной фон
+secondaryBackgroundColor = "#F4F6F8"   # светло-серый — карточки, expanders
+textColor = "#1F2937"                  # графитовый — основной текст
+font = "sans serif"
+
+[server]
+headless = false
+runOnSave = true
+
+[browser]
+gatherUsageStats = false
