@@ -394,18 +394,139 @@ def _render_parking() -> ParkingConfig:
         return _render_parking_custom()
 
 
-def _render_parking_custom() -> ParkingConfig:
-    """Расширенный custom-режим (v0.6):
-       - чекбоксы на каждый тип
-       - открытые подсвечиваются красным при <12.5%
-       - многоуровневые: альтернативный режим «кол-во × вместимость»
-       - подземные с ползунком для наглядности
+NORM_MIN_OPEN = 12.5  # % — норматив СПб (parking.open_share_min)
+
+
+# ---------------------------------------------------------------------------
+# Callbacks для зависимых слайдеров парковок
+# ---------------------------------------------------------------------------
+# Streamlit's on_change-механизм: коллбэк может менять session_state ДРУГИХ
+# виджетов (не своего собственного key). Используем это для перераспределения
+# остатка между не-двинутыми долями, сохраняя их относительное соотношение.
+
+def _redistribute(moved_key: str, other_keys: list[str]) -> None:
+    """Сохранить сумму = 100%. moved_key только что изменился; распределить
+    оставшиеся 100 − moved_value между other_keys пропорционально их текущим
+    значениям. Если все остальные = 0, делим поровну.
     """
+    moved_value = float(st.session_state.get(moved_key, 0.0))
+    target = max(0.0, 100.0 - moved_value)
+    olds = [float(st.session_state.get(k, 0.0)) for k in other_keys]
+    s = sum(olds)
+    if s > 0:
+        new_vals = [target * v / s for v in olds]
+    else:
+        n = max(len(other_keys), 1)
+        new_vals = [target / n] * len(other_keys)
+    # Округление до 0.5% — соответствует step ползунков
+    new_vals = [round(v * 2) / 2 for v in new_vals]
+    # Поправка остатка из-за округления — добавляем разницу в первый
+    diff = target - sum(new_vals)
+    if new_vals:
+        new_vals[0] = round((new_vals[0] + diff) * 2) / 2
+        new_vals[0] = max(0.0, min(100.0, new_vals[0]))
+    for k, v in zip(other_keys, new_vals):
+        st.session_state[k] = max(0.0, min(100.0, v))
+
+
+def _on_open_change_3():
+    _redistribute("park_open_pct", ["park_ml_pct", "park_ug_pct"])
+
+
+def _on_ml_change_3():
+    _redistribute("park_ml_pct", ["park_open_pct", "park_ug_pct"])
+
+
+def _on_ug_change_3():
+    _redistribute("park_ug_pct", ["park_open_pct", "park_ml_pct"])
+
+
+def _on_open_change_open_ug():
+    _redistribute("park_open_pct", ["park_ug_pct"])
+
+
+def _on_ug_change_open_ug():
+    _redistribute("park_ug_pct", ["park_open_pct"])
+
+
+def _on_open_change_open_ml():
+    _redistribute("park_open_pct", ["park_ml_pct"])
+
+
+def _on_ml_change_open_ml():
+    _redistribute("park_ml_pct", ["park_open_pct"])
+
+
+def _on_ml_change_ml_ug():
+    _redistribute("park_ml_pct", ["park_ug_pct"])
+
+
+def _on_ug_change_ml_ug():
+    _redistribute("park_ug_pct", ["park_ml_pct"])
+
+
+def _init_parking_state() -> None:
+    """Инициализация дефолтных значений долей при первом рендере."""
+    defaults = {
+        "park_open_pct": 12.5,
+        "park_ml_pct": 0.0,
+        "park_ug_pct": 87.5,
+    }
+    for k, v in defaults.items():
+        if k not in st.session_state:
+            st.session_state[k] = v
+
+
+def _rebalance_on_toggle(use_open: bool, use_ml: bool, use_ug: bool) -> None:
+    """Когда пользователь включает/выключает тип, сумма может сбиться.
+    Перенормируем доли так, чтобы сумма по активным = 100%, а выключенные = 0.
+    """
+    active = []
+    if use_open: active.append("park_open_pct")
+    if use_ml:   active.append("park_ml_pct")
+    if use_ug:   active.append("park_ug_pct")
+
+    # Обнуляем неактивные
+    all_keys = ["park_open_pct", "park_ml_pct", "park_ug_pct"]
+    for k in all_keys:
+        if k not in active:
+            st.session_state[k] = 0.0
+
+    if not active:
+        return
+    cur_sum = sum(st.session_state[k] for k in active)
+    if abs(cur_sum - 100.0) < 0.1:
+        return  # уже нормализовано
+
+    if cur_sum == 0:
+        # Распределяем поровну, но первый — не меньше 12.5%
+        share = 100.0 / len(active)
+        for k in active:
+            st.session_state[k] = round(share * 2) / 2
+    else:
+        # Нормируем пропорционально
+        for k in active:
+            st.session_state[k] = round(st.session_state[k] * 100.0 / cur_sum * 2) / 2
+        # Поправка разницы из-за округления
+        s = sum(st.session_state[k] for k in active)
+        st.session_state[active[0]] = round((st.session_state[active[0]] + (100.0 - s)) * 2) / 2
+
+
+def _render_parking_custom() -> ParkingConfig:
+    """Custom-режим парковок (v0.6.1):
+       - чекбоксы на каждый тип;
+       - **зависимые слайдеры**: меняешь один — остальные авто-подстраиваются
+         с сохранением их относительного соотношения; сумма всегда 100%;
+       - открытые подсвечиваются красным при <12.5%;
+       - многоуровневые: альтернативный режим «кол-во × вместимость».
+    """
+    _init_parking_state()
+
     st.caption(
-        "Выберите типы парковок и задайте доли. Сумма всех долей "
-        "должна равняться 100%. Подземные не занимают поверхностной "
-        "площади квартала."
+        "Выберите типы парковок. Слайдеры зависимы: меняешь один — остальные "
+        "автоматически перераспределятся. Сумма всегда 100%."
     )
+
     c1, c2, c3 = st.columns(3)
     with c1:
         use_open = st.checkbox("Открытые наземные", value=True, key="park_use_open")
@@ -418,11 +539,30 @@ def _render_parking_custom() -> ParkingConfig:
         st.error("Выберите хотя бы один тип парковок.")
         return ParkingConfig(mode="min_open")
 
-    NORM_MIN_OPEN = 12.5  # % — норматив СПб
+    # Выбираем колбэки в зависимости от активных типов
+    if use_open and use_ml and use_ug:
+        cb_open, cb_ml, cb_ug = _on_open_change_3, _on_ml_change_3, _on_ug_change_3
+    elif use_open and use_ug and not use_ml:
+        cb_open, cb_ml, cb_ug = _on_open_change_open_ug, None, _on_ug_change_open_ug
+    elif use_open and use_ml and not use_ug:
+        cb_open, cb_ml, cb_ug = _on_open_change_open_ml, _on_ml_change_open_ml, None
+    elif use_ml and use_ug and not use_open:
+        cb_open, cb_ml, cb_ug = None, _on_ml_change_ml_ug, _on_ug_change_ml_ug
+    else:
+        cb_open = cb_ml = cb_ug = None
 
-    open_pct = 0.0
-    ml_pct = 0.0
-    ug_pct = 0.0
+    # Если включён режим «кол-во × вместимость» для многоуровневых — ml-слайдера нет
+    # (multilevel задаётся абсолютным числом, share=0). Перенормируем при необходимости.
+    ml_use_explicit = False
+    if use_ml:
+        ml_mode_label = st.session_state.get("park_ml_mode", "Доля от общей потребности, %")
+        ml_use_explicit = ml_mode_label.startswith("Количество")
+
+    # Перенормируем при изменении флагов или при переключении ml в explicit-режим
+    # (если ml уйдёт из общих долей, нужно перераспределить его % на open и ug)
+    effective_use_ml_share = use_ml and not ml_use_explicit
+    _rebalance_on_toggle(use_open, effective_use_ml_share, use_ug)
+
     ml_explicit_places: int | None = None
     ml_levels = 3
 
@@ -430,11 +570,14 @@ def _render_parking_custom() -> ParkingConfig:
     if use_open:
         with st.container(border=True):
             st.markdown("**Открытые наземные**")
-            open_pct = st.slider(
-                "Доля, %", min_value=0.0, max_value=100.0, value=12.5, step=0.5,
+            st.slider(
+                "Доля, %",
+                min_value=0.0, max_value=100.0,
+                step=0.5,
                 key="park_open_pct",
+                on_change=cb_open,
             )
-            if open_pct < NORM_MIN_OPEN:
+            if st.session_state.park_open_pct < NORM_MIN_OPEN:
                 st.markdown(
                     f"<div style='color:#A4262C;font-size:0.85em;'>"
                     f"⚠ Ниже норматива СПб ({NORM_MIN_OPEN}%) — расчёт "
@@ -453,9 +596,12 @@ def _render_parking_custom() -> ParkingConfig:
                 key="park_ml_mode",
             )
             if ml_mode.startswith("Доля"):
-                ml_pct = st.slider(
-                    "Доля, %", min_value=0.0, max_value=100.0, value=30.0, step=0.5,
+                st.slider(
+                    "Доля, %",
+                    min_value=0.0, max_value=100.0,
+                    step=0.5,
                     key="park_ml_pct",
+                    on_change=cb_ml,
                 )
             else:
                 cc1, cc2 = st.columns(2)
@@ -483,46 +629,22 @@ def _render_parking_custom() -> ParkingConfig:
     if use_ug:
         with st.container(border=True):
             st.markdown("**Подземные**")
-            # Если 2 типа включены, подземные считаются как остаток
-            n_active_share_inputs = sum([
-                use_open,
-                use_ml and ml_explicit_places is None,
-                use_ug,
-            ])
-            if n_active_share_inputs >= 3 or (use_open and not use_ml):
-                # Подземные — обычный слайдер
-                ug_pct = st.slider(
-                    "Доля, %", min_value=0.0, max_value=100.0,
-                    value=100.0 - open_pct - ml_pct, step=0.5,
-                    key="park_ug_pct",
-                )
-            else:
-                # Подземные = остаток
-                ug_pct = max(0.0, 100.0 - open_pct - ml_pct)
-                st.metric("Доля (автоматически), %", f"{ug_pct:.1f}")
+            st.slider(
+                "Доля, %",
+                min_value=0.0, max_value=100.0,
+                step=0.5,
+                key="park_ug_pct",
+                on_change=cb_ug,
+            )
 
-    # === Проверка суммы ===
-    if ml_explicit_places is not None:
-        # open + underground делят остаток после многоуровневых; их сумма должна = 100% между собой
-        sum_ou = open_pct + ug_pct
-        if abs(sum_ou - 100.0) > 1.0 and use_open and use_ug:
-            st.warning(
-                f"При явном кол-ве многоуровневых паркингов открытые + "
-                f"подземные = {sum_ou:.1f}% (должно быть 100%). Доли "
-                f"будут нормализованы автоматически."
-            )
-    else:
-        total = open_pct + ml_pct + ug_pct
-        if abs(total - 100.0) > 0.5:
-            st.warning(
-                f"Сумма долей = {total:.1f}% (должно быть 100%). "
-                "Расчёт нормализует доли автоматически, но проверьте ввод."
-            )
+    # === Текущие значения из state ===
+    open_pct = st.session_state.park_open_pct if use_open else 0.0
+    ml_pct = st.session_state.park_ml_pct if (use_ml and not ml_use_explicit) else 0.0
+    ug_pct = st.session_state.park_ug_pct if use_ug else 0.0
 
     # === Сборка ParkingConfig ===
-    # Гарантируем сумму=1.0 для валидатора
-    if ml_explicit_places is not None:
-        # multilevel_share формально 0; open и underground нормализуются к 100%
+    if ml_use_explicit:
+        # multilevel — абсолютным числом. Open и Ug делят остаток.
         sum_ou = max(open_pct + ug_pct, 0.01)
         open_share = open_pct / sum_ou
         ug_share = ug_pct / sum_ou
