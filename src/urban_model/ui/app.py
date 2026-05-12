@@ -44,14 +44,32 @@ st.markdown("""
   div.block-container {padding-top: 1.5rem; padding-bottom: 1rem;}
   /* Плотнее интервалы между виджетами */
   div[data-testid="stVerticalBlock"] {gap: 0.5rem;}
-  /* Крупнее лейблы вкладок */
+  /* Вкладки — более выразительные */
+  div[data-baseweb="tab-list"] {
+      gap: 0.25rem;
+      border-bottom: 2px solid #CBD5E1;
+  }
   button[data-baseweb="tab"] {
-      font-size: 1.05rem !important;
-      padding: 0.5rem 1.25rem !important;
+      font-size: 1.1rem !important;
+      padding: 0.65rem 1.6rem !important;
       font-weight: 500;
+      border-radius: 6px 6px 0 0 !important;
+      border: 1px solid transparent !important;
+      border-bottom: none !important;
+      background: transparent;
+      color: #475569;
+  }
+  button[data-baseweb="tab"]:hover {
+      background: #F1F5F9 !important;
+      color: #1E40AF !important;
   }
   button[data-baseweb="tab"][aria-selected="true"] {
-      font-weight: 600;
+      font-weight: 700 !important;
+      font-size: 1.13rem !important;
+      background: #EBF3FF !important;
+      color: #1565C0 !important;
+      border: 1px solid #BFDBFE !important;
+      border-bottom: 2px solid #FFFFFF !important;
   }
   /* Чуть меньше пустоты у containers с border */
   div[data-testid="stVerticalBlockBorderWrapper"] {padding: 0.6rem 0.9rem;}

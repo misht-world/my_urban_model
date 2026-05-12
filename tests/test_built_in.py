@@ -8,6 +8,7 @@ import pytest
 
 from urban_model import solve_max_kit, verify_kit
 from urban_model.models import BuiltInArea, CalculationOptions, Site
+from urban_model.models.social import KindergartenSpec
 from urban_model.normatives import load_normatives
 
 
@@ -200,3 +201,75 @@ class TestBuiltInImpactOnInverse:
         # Сравниваем по block_density — внутренней плотности квартала.
         # КИТ ПЗЗ (apt/lot) от ВПП меняется иначе и не годится для этого инварианта.
         assert density_yes >= density_no - 1e-6
+
+
+# ---------------------------------------------------------------------------
+# Встроенно-пристроенный ДОО (built_in kindergarten, v0.6.5)
+# ---------------------------------------------------------------------------
+
+class TestBuiltInKindergarten:
+    """Проверяем, что встроенно-пристроенный ДОО корректно:
+    - использует норматив ЗУ 24 м²/место (ПЗЗ СПб)
+    - вычитает площадь здания ДОО из жилой GFA
+    - уменьшает apartments_area и население по сравнению с detached.
+    """
+
+    def test_plot_area_per_place_is_24(self, spb, site_5ga):
+        """Площадь ЗУ встроенного ДОО = 24 м²/место (не 40/45)."""
+        res = verify_kit(
+            1.5, site_5ga,
+            CalculationOptions(
+                floors=12,
+                kindergarten=KindergartenSpec(building_type="built_in"),
+            ),
+            spb,
+        )
+        places = res.kindergarten_places_accepted.value or 0
+        if places > 0:
+            # plot_area должна быть close to 24 * places
+            expected = 24 * places
+            assert res.kindergarten_plot_area.value == pytest.approx(expected, rel=0.02)
+
+    def test_plot_area_less_than_detached(self, spb, site_5ga):
+        """ЗУ встроенного ДОО меньше, чем у отдельно стоящего."""
+        res_det = verify_kit(
+            1.5, site_5ga,
+            CalculationOptions(floors=12),  # detached по умолчанию
+            spb,
+        )
+        res_bi = verify_kit(
+            1.5, site_5ga,
+            CalculationOptions(
+                floors=12,
+                kindergarten=KindergartenSpec(building_type="built_in"),
+            ),
+            spb,
+        )
+        assert res_bi.kindergarten_plot_area.value < res_det.kindergarten_plot_area.value
+
+    def test_apartments_area_reduced(self, spb, site_5ga):
+        """apartments_area при built_in ДОО меньше, чем при detached
+        (здание ДОО вычитается из жилой GFA)."""
+        res_det = verify_kit(1.5, site_5ga, CalculationOptions(floors=12), spb)
+        res_bi = verify_kit(
+            1.5, site_5ga,
+            CalculationOptions(
+                floors=12,
+                kindergarten=KindergartenSpec(building_type="built_in"),
+            ),
+            spb,
+        )
+        assert res_bi.apartments_area.value < res_det.apartments_area.value
+
+    def test_inverse_converges_with_builtin_kg(self, spb, site_5ga):
+        """solve_max_kit сходится при встроенно-пристроенном ДОО."""
+        res = solve_max_kit(
+            site_5ga,
+            CalculationOptions(
+                floors=12, planning_doc=True,
+                kindergarten=KindergartenSpec(building_type="built_in"),
+            ),
+            spb,
+        )
+        assert res.balance.is_feasible
+        assert res.kit.value > 0

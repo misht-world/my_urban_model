@@ -42,10 +42,24 @@ def split_into_objects(
     return distribute_places_evenly(total_places, n, multiple)
 
 
-def plot_area_for_capacity(capacity: int, norms: Normatives) -> float:
-    per_place = norms.resolve(
-        "social_objects.kindergarten.plot_area_per_place", capacity=capacity
-    )
+def plot_area_for_capacity(
+    capacity: int,
+    norms: Normatives,
+    building_type: str = "detached",
+) -> float:
+    """Площадь ЗУ одного ДОО.
+
+    Для встроенно-пристроенного (built_in) — норматив 24 м²/место (ПЗЗ СПб).
+    Для отдельно стоящего (detached) — piecewise по вместимости (РМД 31-07-2009).
+    """
+    if building_type == "built_in":
+        per_place = norms.resolve(
+            "social_objects.kindergarten.plot_area_per_place_built_in"
+        )
+    else:
+        per_place = norms.resolve(
+            "social_objects.kindergarten.plot_area_per_place", capacity=capacity
+        )
     return per_place * capacity
 
 
@@ -56,9 +70,13 @@ def building_area_for_capacity(capacity: int, norms: Normatives) -> float:
     return per_place * capacity
 
 
-def total_areas(capacities: list[int], norms: Normatives) -> tuple[float, float]:
+def total_areas(
+    capacities: list[int],
+    norms: Normatives,
+    building_type: str = "detached",
+) -> tuple[float, float]:
     """Сумма площадей участков и зданий по списку вместимостей объектов."""
-    plot = sum(plot_area_for_capacity(c, norms) for c in capacities)
+    plot = sum(plot_area_for_capacity(c, norms, building_type) for c in capacities)
     bld = sum(building_area_for_capacity(c, norms) for c in capacities)
     return plot, bld
 

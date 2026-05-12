@@ -86,7 +86,7 @@ social_objects:
       value: 5
       note: "округление вместимости вверх кратно 5"
       source: "НГП СПб"
-    plot_area_per_place:   # переопределяет russia
+    plot_area_per_place:   # переопределяет russia (отдельно стоящий ДОО)
       type: piecewise
       argument: capacity
       breakpoints:
@@ -94,6 +94,12 @@ social_objects:
         - { up_to: .inf, value: 40 }
       unit: "m2_per_place"
       source: "РМД 31-07-2009"
+    plot_area_per_place_built_in:   # встроенно-пристроенный ДОО (1-й этаж жилого дома)
+      type: scalar
+      value: 24
+      unit: "m2_per_place"
+      note: "минимальный участок для встроенно-пристроенного ДОО"
+      source: "ПЗЗ СПб"
     building_area_per_place:
       type: piecewise
       argument: capacity

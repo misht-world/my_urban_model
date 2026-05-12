@@ -83,31 +83,43 @@ def render_kpi(result: TEPResult) -> None:
     # === Ряд 2: социалка / парковки / ЗНОП ===
     c5, c6, c7, c8 = st.columns(4)
 
+    # Вспомогательная функция: парсим список вместимостей из formula-строки
+    # Формат: «вверх кратно 5 → разбивка по объектам [160, 165, 165]»
+    def _buckets_delta(formula_str: str, total: int) -> str | None:
+        import re
+        m = re.search(r'\[([^\]]+)\]', formula_str)
+        if not m or total == 0:
+            return None
+        try:
+            vals = [int(x.strip()) for x in m.group(1).split(",") if x.strip()]
+        except ValueError:
+            return None
+        n = len(vals)
+        if n == 0:
+            return None
+        lo, hi = min(vals), max(vals)
+        per_str = f"{lo} мест" if lo == hi else f"{lo}–{hi} мест"
+        ending = "объект" if n == 1 else ("объекта" if 2 <= n <= 4 else "объектов")
+        return f"{n} {ending} по {per_str}"
+
     # ДОО
-    kg_n = (
-        len([1])  # placeholder, replaced below
-    )
-    # Реконструируем число объектов по metadata: храним в formula
-    # «вверх кратно 5 → разбивка по объектам [N1, N2]»
     kg_buckets_str = result.kindergarten_places_accepted.formula or ""
-    kg_n = kg_buckets_str.count(",") + 1 if "[" in kg_buckets_str else 0
     kg_total = int(result.kindergarten_places_accepted.value or 0)
     c5.metric(
         "ДОО",
         f"{kg_total} мест" if kg_total > 0 else "—",
-        delta=f"{kg_n} объект(а/ов)" if kg_n > 0 else None,
+        delta=_buckets_delta(kg_buckets_str, kg_total),
         delta_color="off",
         help="Принятая суммарная вместимость и число объектов ДОО.",
     )
 
     # СОШ
     sch_buckets_str = result.school_places_accepted.formula or ""
-    sch_n = sch_buckets_str.count(",") + 1 if "[" in sch_buckets_str else 0
     sch_total = int(result.school_places_accepted.value or 0)
     c6.metric(
         "СОШ",
         f"{sch_total} мест" if sch_total > 0 else "—",
-        delta=f"{sch_n} объект(а/ов)" if sch_n > 0 else None,
+        delta=_buckets_delta(sch_buckets_str, sch_total),
         delta_color="off",
         help="Принятая суммарная вместимость и число корпусов СОШ.",
     )
@@ -317,6 +329,7 @@ def render_actions(result: TEPResult, default_name: str) -> None:
         if st.button("➕ Добавить в сравнение", use_container_width=True):
             st.session_state.scenarios.append((scenario_name, result))
             st.toast(f"Сценарий «{scenario_name}» добавлен", icon="✅")
+            st.rerun()  # обновляем счётчик в заголовке вкладки «Сравнение»
     with c3:
         # xlsx-экспорт текущего сценария
         buf = io.BytesIO()

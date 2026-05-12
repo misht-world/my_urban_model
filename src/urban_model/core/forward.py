@@ -74,6 +74,8 @@ def compute_tep_for_kit(
     else:
         bi_area = 0.0
         apartments_area_v = housing.apartments_area(gfa_v, options.vpp_share, apt_ratio)
+        # back-compute residential_gfa (нужно для корректировки при встроенном ДОО)
+        residential_gfa = apartments_area_v / apt_ratio if apt_ratio > 0 else gfa_v
         bi_vri = None
 
     footprint_v = housing.housing_footprint(gfa_v, options.floors)
@@ -101,10 +103,10 @@ def compute_tep_for_kit(
     # даже когда include_kindergarten=False (важно для аудит-трейла).
     kg_per_1000 = norms.resolve("social_objects.kindergarten.places_per_1000")
     kg_round = norms.resolve("social_objects.kindergarten.rounding")
+    kg_btype = options.kindergarten.building_type  # нужно до conditional для formula/adj
     if options.include_kindergarten and pop_v > 0:
         kg_required_raw = kindergarten.required_places(pop_v, kg_per_1000)
         kg_accepted = kindergarten.round_places(kg_required_raw, kg_round)
-        kg_btype = options.kindergarten.building_type
         kg_cap_max = norms.resolve(
             "social_objects.kindergarten.capacity_max", building_type=kg_btype
         )
@@ -122,11 +124,30 @@ def compute_tep_for_kit(
             capacity_max=kg_cap_max,
             multiple=int(kg_round),
         )
-        kg_plot_total, kg_bld_total = kindergarten.total_areas(kg_buckets, norms)
+        kg_plot_total, kg_bld_total = kindergarten.total_areas(kg_buckets, norms, kg_btype)
     else:
         kg_required_raw = kg_accepted = 0
         kg_plot_total = kg_bld_total = 0.0
         kg_buckets = []
+
+    # === Корректировка жилой GFA для встроенно-пристроенного ДОО ===
+    # Здание ДОО физически входит в жилой дом → его площадь вычитается из жилой GFA.
+    # Пересчитываем apartments_area и население (все downstream-расчёты используют
+    # обновлённые значения). ДОО-места уже посчитаны по «доковскому» населению —
+    # погрешность незначительна (kg_bld_total ≈ 3–5% от residential_gfa).
+    _kg_builtin_adj = (
+        options.include_kindergarten
+        and kg_btype == "built_in"
+        and kg_bld_total > 0
+    )
+    if _kg_builtin_adj:
+        residential_gfa = max(0.0, residential_gfa - kg_bld_total)
+        apartments_area_v = residential_gfa * apt_ratio
+        pop_v = population.population(apartments_area_v, hp)
+        pop_check_v = population.population(apartments_area_v, hp_check)
+        density_v = population.density_chel_per_ga(pop_v, site.area_m2)
+        density_check_v = population.density_chel_per_ga(pop_check_v, site.area_m2)
+        density_status = Status.OK if density_check_v <= density_max else Status.ERROR
 
     # === СОШ ===
     # Резолвим нормативы заранее (см. ДОО выше).
@@ -370,7 +391,11 @@ def compute_tep_for_kit(
             apartments_area_v,
             unit="m2",
             formula=(
-                f"(GFA − ВПП={bi_area:.0f}) × {apt_ratio}"
+                f"(GFA − ВПП={bi_area:.0f} − ДОО_встр={kg_bld_total:.0f}) × {apt_ratio}"
+                if bi_area > 0 and _kg_builtin_adj
+                else f"(GFA − ДОО_встр={kg_bld_total:.0f}) × {apt_ratio}"
+                if _kg_builtin_adj
+                else f"(GFA − ВПП={bi_area:.0f}) × {apt_ratio}"
                 if bi_area > 0
                 else f"GFA × (1 − vpp_share={options.vpp_share}) × {apt_ratio}"
             ),
@@ -443,10 +468,24 @@ def compute_tep_for_kit(
         kindergarten_plot_area=_F(
             kg_plot_total,
             unit="m2",
-            formula="Σ piecewise(plot_per_place, capacity) по объектам ДОО",
+            formula=(
+                f"Σ 24 м²/место × вместимость (встроенный ДОО, ПЗЗ СПб) = {kg_plot_total:.0f}"
+                if kg_btype == "built_in" and kg_plot_total > 0
+                else "Σ piecewise(plot_per_place, capacity) по объектам ДОО"
+            ),
+            source=(
+                norms.source_of("social_objects.kindergarten.plot_area_per_place_built_in")
+                if kg_btype == "built_in" and kg_plot_total > 0
+                else None
+            ),
         ),
         kindergarten_building_area=_F(
-            kg_bld_total, unit="m2", formula="Σ piecewise(bld_per_place, capacity) по ДОО"
+            kg_bld_total,
+            unit="m2",
+            formula=(
+                f"Σ piecewise(bld_per_place, capacity) по ДОО"
+                + (" — вычтено из жилой GFA (встроенный)" if _kg_builtin_adj else "")
+            ),
         ),
         school_places_required=_F(
             sch_required_raw,
