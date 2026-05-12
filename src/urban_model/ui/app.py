@@ -37,6 +37,27 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
+# Глобальный CSS: крупнее вкладки + плотнее вертикальные интервалы
+st.markdown("""
+<style>
+  /* Уменьшаем верхний отступ всего блока */
+  div.block-container {padding-top: 1.5rem; padding-bottom: 1rem;}
+  /* Плотнее интервалы между виджетами */
+  div[data-testid="stVerticalBlock"] {gap: 0.5rem;}
+  /* Крупнее лейблы вкладок */
+  button[data-baseweb="tab"] {
+      font-size: 1.05rem !important;
+      padding: 0.5rem 1.25rem !important;
+      font-weight: 500;
+  }
+  button[data-baseweb="tab"][aria-selected="true"] {
+      font-weight: 600;
+  }
+  /* Чуть меньше пустоты у containers с border */
+  div[data-testid="stVerticalBlockBorderWrapper"] {padding: 0.6rem 0.9rem;}
+</style>
+""", unsafe_allow_html=True)
+
 # Заголовок и краткая подпись
 col_title, col_meta = st.columns([3, 1])
 with col_title:

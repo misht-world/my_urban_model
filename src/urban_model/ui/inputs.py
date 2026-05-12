@@ -92,7 +92,7 @@ def render_params_tab() -> UserInputs:
     # ─── ЛЕВАЯ КОЛОНКА ──────────────────────────────────────────────
     with col_left:
         site = _render_quarter()
-        floors, planning_doc = _render_housing()
+        floors, planning_doc, built_in, vpp_auto = _render_housing_and_vpp()
         znop_pp_override, znop_total_override = _render_znop()
         intra_override, lot_override = _render_driveways()
 
@@ -101,7 +101,6 @@ def render_params_tab() -> UserInputs:
         kg_spec, include_kg = _render_kg()
         school_spec, include_school = _render_school()
         parking = _render_parking()
-        built_in, vpp_auto = _render_vpp()
 
     # ==================================================================
     # Произвольные объекты — full-width внизу
@@ -165,23 +164,79 @@ def _render_quarter() -> Site:
     return Site(area_m2=area_m2)
 
 
-def _render_housing() -> tuple[int, bool]:
+def _render_housing_and_vpp() -> tuple[int, bool, BuiltInArea | None, bool]:
+    """Жилая застройка: этажность, ДПТ и (опционально) ВПП."""
     with st.container(border=True):
-        st.markdown("##### Жильё")
-        c1, c2 = st.columns(2)
-        floors = c1.number_input(
+        st.markdown("##### Жилая застройка")
+
+        # ДПТ — сверху, выровнен по левому краю (если выключен, ниже —
+        # пояснение о потолке КИТ=1.4 и возможном дефиците)
+        planning_doc = st.checkbox(
+            "ДПТ (документация по планировке территории)",
+            value=True, key="planning_doc",
+            help="Без ДПТ нормативный потолок КИТ = 1.4; с ДПТ = 2.5.",
+        )
+        if not planning_doc:
+            st.caption(
+                "Без ДПТ КИТ ≤ 1.4 — на типичной этажности (≥7) этого добиться "
+                "практически невозможно. Включите ДПТ или уменьшите этажность."
+            )
+
+        floors = st.number_input(
             "Этажность",
             min_value=1, max_value=40, value=12, step=1,
             key="floors",
         )
-        with c2:
-            st.write("")
-            planning_doc = st.checkbox(
-                "ДПТ (документация по планировке)",
-                value=True, key="planning_doc",
-                help="Без ДПТ нормативный потолок КИТ = 1.4; с ДПТ = 2.5.",
+
+        # --- ВПП ---
+        st.markdown("**Встроенно-пристроенные помещения (ВПП)**")
+        include_vpp = st.checkbox(
+            "Учитывать ВПП в составе жилого дома",
+            value=False, key="include_vpp",
+            help=(
+                "ВПП занимает часть GFA дома, требует своих парковок и "
+                "озеленения по ВРИ-коду."
+            ),
+        )
+        if not include_vpp:
+            return int(floors), planning_doc, None, False
+
+        vpp_vri = st.selectbox(
+            "ВРИ-код ВПП",
+            [
+                "4.4 — магазины",
+                "4.6 — общепит",
+                "3.3 — бытовые услуги",
+                "3.6 — культура",
+                "3.7 — религия",
+            ],
+            index=0, key="vpp_vri",
+        )
+        vri_code = vpp_vri.split(" ")[0]
+        vpp_size_mode = st.radio(
+            "Площадь ВПП",
+            [
+                "Площадь застройки 1 этажа (рассчитать)",
+                "Задать вручную, м²",
+            ],
+            key="vpp_size_mode",
+        )
+        if vpp_size_mode.startswith("Площадь застройки"):
+            return (
+                int(floors), planning_doc,
+                BuiltInArea(area_m2=1.0, vri_code=vri_code, label="1 этаж"),
+                True,
             )
-    return int(floors), planning_doc
+        vpp_area = st.number_input(
+            "Площадь ВПП, м²",
+            min_value=10.0, max_value=100_000.0,
+            value=2_000.0, step=100.0, key="vpp_area",
+        )
+        return (
+            int(floors), planning_doc,
+            BuiltInArea(area_m2=float(vpp_area), vri_code=vri_code),
+            False,
+        )
 
 
 def _render_znop() -> tuple[float | None, float | None]:
@@ -202,13 +257,14 @@ def _render_znop() -> tuple[float | None, float | None]:
         znop_mode = st.radio(
             "Источник значения",
             [
-                "По нормативу (зависит от КИТ ступенями: 0/3/4/6 м²/чел)",
+                "По нормативу",
                 "Задать вручную: м²/чел",
                 "Задать вручную: общая площадь",
             ],
             key="znop_mode",
+            help="По нормативу СПб: ЗНОП зависит от КИТ ступенями 0 / 3 / 4 / 6 м²/чел.",
         )
-        if znop_mode.startswith("По нормативу"):
+        if znop_mode == "По нормативу":
             return None, None
         if znop_mode.startswith("Задать вручную: м²/чел"):
             znop_pp = st.number_input(
@@ -370,12 +426,13 @@ def _render_school() -> tuple[SchoolSpec, bool]:
 
 
 def _render_parking() -> ParkingConfig:
-    """Парковки — три режима + расширенный custom с типами и count×capacity."""
+    """Парковки — пресеты + расширенный custom с типами и count×capacity."""
     with st.container(border=True):
         st.markdown("##### Парковки")
         PARK_MODE_LABELS = {
             "Минимум открытых, остальное подземные (по умолчанию)": "min_open",
             "Все парковки открытые наземные": "all_open",
+            "50/50: открытые + многоуровневые": "preset_50_50",
             "Задать вручную": "custom",
         }
         park_label = st.radio(
@@ -391,6 +448,27 @@ def _render_parking() -> ParkingConfig:
         if park_mode == "all_open":
             st.caption("100% м/м на поверхности — максимальная нагрузка на квартал.")
             return ParkingConfig(mode="all_open")
+        if park_mode == "preset_50_50":
+            ml_levels = st.number_input(
+                "Этажность многоуровневого паркинга",
+                min_value=1, max_value=10, value=3, step=1,
+                key="park_preset_ml_levels",
+                help=(
+                    "Многоуровневый паркинг компактнее открытого: его пятно "
+                    "обратно пропорционально этажности."
+                ),
+            )
+            st.caption(
+                "50% машино-мест — открытые на земле, 50% — в многоуровневых "
+                "паркингах с указанной этажностью. Подземных нет."
+            )
+            return ParkingConfig(
+                mode="custom",
+                open_share=0.5,
+                multilevel_share=0.5,
+                underground_share=0.0,
+                multilevel_levels=int(ml_levels),
+            )
         return _render_parking_custom()
 
 
@@ -555,20 +633,17 @@ def _render_share_slider(
         else "Доля, %"
     )
 
-    # Узкий замок-чекбокс слева + слайдер справа.
-    c_lock, c_slider = st.columns([1, 14])
+    # Замок-чекбокс слева, слайдер справа.
+    # CSS: компенсируем вертикальный отступ slider-лейбла, чтобы
+    # чекбокс визуально стоял на уровне слайдера, а не над ним.
+    c_lock, c_slider = st.columns([1, 12], vertical_alignment="bottom")
     with c_lock:
-        # Эмодзи как label: ✅ блокирует, ⚪ — нет. Стандартный checkbox
-        # без длинного текста — компактнее, чем «🔒 Зафиксировать».
-        st.checkbox(
-            "🔒",
-            key=lock_key,
-            help="Зафиксировать долю — двигаться будут только остальные.",
-        )
+        # Текст-подсказка чекбокса = его эмодзи (без help-«?», который
+        # налезал на слайдер). Поведение объясняется в caption выше.
+        st.checkbox("🔒", key=lock_key, label_visibility="visible")
 
     with c_slider:
         if not interactive:
-            # Единственный незалоченный — показываем как metric
             st.metric(slider_label, f"{st.session_state[pct_key]:.1f}%")
         else:
             st.slider(
@@ -602,8 +677,8 @@ def _render_parking_custom() -> ParkingConfig:
     _init_parking_state()
 
     st.caption(
-        "Выберите типы парковок и доли. Поставьте «🔒 Зафиксировать», чтобы "
-        "закрепить долю — двигаться будут только незалоченные. "
+        "Выберите типы парковок и доли. Замок 🔒 рядом со слайдером "
+        "фиксирует долю — двигаться будут только остальные. "
         "Сумма всех активных = 100%."
     )
 
@@ -744,45 +819,6 @@ def _render_parking_custom() -> ParkingConfig:
     except Exception as e:
         st.error(f"Некорректная конфигурация парковок: {e}")
         return ParkingConfig(mode="min_open")
-
-
-def _render_vpp() -> tuple[BuiltInArea | None, bool]:
-    with st.container(border=True):
-        st.markdown("##### ВПП — встроенно-пристроенные помещения")
-        include_vpp = st.checkbox(
-            "Учитывать ВПП", value=False, key="include_vpp",
-            help="ВПП занимает часть GFA, требует своих парковок и озеленения по ВРИ.",
-        )
-        if not include_vpp:
-            return None, False
-        vpp_vri = st.selectbox(
-            "ВРИ-код ВПП",
-            [
-                "4.4 — магазины",
-                "4.6 — общепит",
-                "3.3 — бытовые услуги",
-                "3.6 — культура",
-                "3.7 — религия",
-            ],
-            index=0, key="vpp_vri",
-        )
-        vri_code = vpp_vri.split(" ")[0]
-        vpp_size_mode = st.radio(
-            "Площадь ВПП",
-            [
-                "Площадь застройки 1 этажа (рассчитать)",
-                "Задать вручную, м²",
-            ],
-            key="vpp_size_mode",
-        )
-        if vpp_size_mode.startswith("Площадь застройки"):
-            return BuiltInArea(area_m2=1.0, vri_code=vri_code, label="1 этаж"), True
-        vpp_area = st.number_input(
-            "Площадь ВПП, м²",
-            min_value=10.0, max_value=100_000.0,
-            value=2_000.0, step=100.0, key="vpp_area",
-        )
-        return BuiltInArea(area_m2=float(vpp_area), vri_code=vri_code), False
 
 
 def _render_custom_objects() -> list[CustomObject]:

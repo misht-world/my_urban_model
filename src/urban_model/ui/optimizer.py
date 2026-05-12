@@ -354,26 +354,75 @@ def render_optimizer_tab(
         )
         return
 
-    st.markdown("### 🏆 Топ сценариев")
+    st.markdown("### Топ сценариев")
     df = _report_to_dataframe(report)
     st.dataframe(df, hide_index=True, use_container_width=True)
 
     # ------------------------------------------------------------------
-    # Кнопки «Добавить в сравнение»
+    # Предпросмотр выбранного сценария
     # ------------------------------------------------------------------
-    st.markdown("### Добавить выбранные сценарии в сравнение")
-    cols = st.columns(min(5, len(report.top_n)))
-    for i, r in enumerate(report.top_n[:5]):
-        col = cols[i]
-        if col.button(f"➕ #{r.rank}", key=f"opt_add_{i}", use_container_width=True):
-            params_summary = ", ".join(f"{k}={v}" for k, v in r.params.items())
-            name = f"opt#{r.rank} ({params_summary})"
-            st.session_state.scenarios.append((name, r.tep))
-            st.toast(f"Добавлен сценарий #{r.rank}", icon="✅")
+    st.markdown("### Предпросмотр сценария")
+    preview_options = [f"#{r.rank}" for r in report.top_n]
+    selected = st.selectbox(
+        "Выберите сценарий для просмотра",
+        preview_options,
+        index=0,
+        key="opt_preview_rank",
+    )
+    selected_idx = preview_options.index(selected)
+    preview = report.top_n[selected_idx]
 
-    if st.button("➕ Добавить ВСЕ топ-N в сравнение"):
-        for r in report.top_n:
-            params_summary = ", ".join(f"{k}={v}" for k, v in r.params.items())
-            name = f"opt#{r.rank} ({params_summary})"
-            st.session_state.scenarios.append((name, r.tep))
-        st.toast(f"Добавлено {len(report.top_n)} сценариев", icon="✅")
+    # Sub-KPI блок для выбранного сценария
+    pc1, pc2, pc3, pc4 = st.columns(4)
+    pc1.metric("КИТ ПЗЗ", f"{preview.kit:.3f}")
+    pc2.metric("Население", fmt_int(preview.tep.population.value))
+    pc3.metric("Площадь квартир", fmt_m2(preview.apartments_area))
+    pc4.metric("Резерв баланса", fmt_m2(preview.tep.balance.surplus))
+
+    # Параметры trial
+    if preview.params:
+        st.caption("**Параметры:** " + ", ".join(
+            f"{k} = {v}" for k, v in preview.params.items()
+        ))
+
+    # Краткая таблица соцобъекты/парковки/ЗНОП
+    tep = preview.tep
+    pc5, pc6, pc7, pc8 = st.columns(4)
+    kg_total = int(tep.kindergarten_places_accepted.value or 0)
+    pc5.metric("ДОО, мест", kg_total if kg_total else "—")
+    sch_total = int(tep.school_places_accepted.value or 0)
+    pc6.metric("СОШ, мест", sch_total if sch_total else "—")
+    pc7.metric(
+        "Парковки, м/м",
+        int(tep.parking_required_places.value or 0) or "—",
+    )
+    pc8.metric(
+        "ЗНОП, м²",
+        f"{int(tep.znop_area.value or 0):,}".replace(",", " ")
+        if tep.znop_area.value else "—",
+    )
+
+    # Полный summary под expander
+    with st.expander("Полные параметры и баланс сценария", expanded=False):
+        st.code(tep.summary(), language=None)
+
+    # ------------------------------------------------------------------
+    # Добавить в сравнение
+    # ------------------------------------------------------------------
+    add1, add2 = st.columns([1, 1])
+    with add1:
+        if st.button(
+            f"➕ Добавить #{preview.rank} в сравнение",
+            type="primary", use_container_width=True,
+        ):
+            params_summary = ", ".join(f"{k}={v}" for k, v in preview.params.items())
+            name = f"opt#{preview.rank} ({params_summary})"
+            st.session_state.scenarios.append((name, preview.tep))
+            st.toast(f"Добавлен сценарий #{preview.rank}", icon="✅")
+    with add2:
+        if st.button("➕ Добавить ВСЕ топ-N", use_container_width=True):
+            for r in report.top_n:
+                params_summary = ", ".join(f"{k}={v}" for k, v in r.params.items())
+                name = f"opt#{r.rank} ({params_summary})"
+                st.session_state.scenarios.append((name, r.tep))
+            st.toast(f"Добавлено {len(report.top_n)} сценариев", icon="✅")

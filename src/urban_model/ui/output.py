@@ -24,15 +24,29 @@ from urban_model.ui.formatting import (
 # ---------------------------------------------------------------------------
 
 def render_header(result: TEPResult) -> None:
-    feasible = result.balance.is_feasible
-    if feasible:
+    from urban_model.models.result import Status
+
+    kit_v = result.kit.value or 0
+    kit_max = result.kit_normative_max.value or 0
+    balance_feasible = result.balance.is_feasible
+    kit_ok = result.kit.status != Status.ERROR
+    feasible_all = balance_feasible and kit_ok
+
+    if feasible_all:
         st.success(
-            f"✅ **Баланс сходится.** КИТ = {result.kit.value:.3f}"
-            f"  ·  Резерв: {fmt_int(result.balance.surplus)} м²"
+            f"✅ **Все нормативы выполняются.** КИТ = {kit_v:.3f} (≤ {kit_max})"
+            f"  ·  Резерв территории: {fmt_int(result.balance.surplus)} м²"
+        )
+    elif not kit_ok:
+        # КИТ ПЗЗ превышает потолок — основная причина (часто из-за выключенного ДПТ)
+        st.error(
+            f"❌ **КИТ ПЗЗ ({kit_v:.3f}) превышает нормативный потолок ({kit_max}).** "
+            f"Жилой дом при выбранных параметрах не «помещается» в норматив. "
+            f"См. рекомендации ниже."
         )
     else:
         st.error(
-            f"❌ **Дефицит баланса.** КИТ = {result.kit.value:.3f}"
+            f"❌ **Дефицит баланса территории.** КИТ = {kit_v:.3f}"
             f"  ·  Не хватает: {fmt_int(-result.balance.surplus)} м²"
         )
 
@@ -47,6 +61,7 @@ def render_header(result: TEPResult) -> None:
 # ---------------------------------------------------------------------------
 
 def render_kpi(result: TEPResult) -> None:
+    # === Ряд 1: главные показатели жилья ===
     c1, c2, c3, c4 = st.columns(4)
     kit_help = (
         "КИТ по ПЗЗ СПб = площадь квартир / ЗУ жилой застройки. "
@@ -63,6 +78,66 @@ def render_kpi(result: TEPResult) -> None:
         fmt_m2(surplus),
         delta=("OK" if surplus >= 0 else "ДЕФИЦИТ"),
         delta_color=delta_color,
+    )
+
+    # === Ряд 2: социалка / парковки / ЗНОП ===
+    c5, c6, c7, c8 = st.columns(4)
+
+    # ДОО
+    kg_n = (
+        len([1])  # placeholder, replaced below
+    )
+    # Реконструируем число объектов по metadata: храним в formula
+    # «вверх кратно 5 → разбивка по объектам [N1, N2]»
+    kg_buckets_str = result.kindergarten_places_accepted.formula or ""
+    kg_n = kg_buckets_str.count(",") + 1 if "[" in kg_buckets_str else 0
+    kg_total = int(result.kindergarten_places_accepted.value or 0)
+    c5.metric(
+        "ДОО",
+        f"{kg_total} мест" if kg_total > 0 else "—",
+        delta=f"{kg_n} объект(а/ов)" if kg_n > 0 else None,
+        delta_color="off",
+        help="Принятая суммарная вместимость и число объектов ДОО.",
+    )
+
+    # СОШ
+    sch_buckets_str = result.school_places_accepted.formula or ""
+    sch_n = sch_buckets_str.count(",") + 1 if "[" in sch_buckets_str else 0
+    sch_total = int(result.school_places_accepted.value or 0)
+    c6.metric(
+        "СОШ",
+        f"{sch_total} мест" if sch_total > 0 else "—",
+        delta=f"{sch_n} объект(а/ов)" if sch_n > 0 else None,
+        delta_color="off",
+        help="Принятая суммарная вместимость и число корпусов СОШ.",
+    )
+
+    # Парковки — сводка по типам
+    open_pl = int(result.parking_open_places.value or 0)
+    ml_pl = int(result.parking_multilevel_places.value or 0)
+    ug_pl = int(result.parking_underground_places.value or 0)
+    total_pl = int(result.parking_required_places.value or 0)
+    breakdown_parts = []
+    if open_pl: breakdown_parts.append(f"откр. {open_pl}")
+    if ml_pl:   breakdown_parts.append(f"многоур. {ml_pl}")
+    if ug_pl:   breakdown_parts.append(f"подз. {ug_pl}")
+    c7.metric(
+        "Парковки",
+        f"{total_pl} м/м" if total_pl > 0 else "—",
+        delta=" · ".join(breakdown_parts) or None,
+        delta_color="off",
+        help="Всего машино-мест и разбивка по типам.",
+    )
+
+    # ЗНОП
+    znop_pp = result.znop_per_person.value or 0
+    znop_area = int(result.znop_area.value or 0)
+    c8.metric(
+        "ЗНОП",
+        f"{znop_area:,} м²".replace(",", " ") if znop_area > 0 else "—",
+        delta=f"{znop_pp:.1f} м²/чел" if znop_pp > 0 else None,
+        delta_color="off",
+        help="Общая площадь ЗНОП и норма на жителя.",
     )
 
 

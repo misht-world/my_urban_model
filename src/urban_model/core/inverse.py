@@ -93,12 +93,29 @@ def _bisect_max_feasible(
 def _identify_limiting_factor(result: TEPResult) -> str:
     """Что ограничивает дальнейший рост КИТ.
 
-    Сначала проверяем норматив озеленения квартала (25%): если
-    фактическое озеленение вплотную упирается в требуемое — это
-    ограничитель. Иначе — самый крупный территориальный компонент.
+    Приоритеты:
+      1. КИТ ПЗЗ > нормативного потолка (часто из-за выключенного ДПТ
+         или избыточной этажности).
+      2. Норматив озеленения квартала (25%) — на грани.
+      3. Самый крупный территориальный компонент.
     """
     bal = result.balance
     site_area = bal.site_area
+
+    # (1) КИТ ПЗЗ выше потолка
+    if result.kit.status == Status.ERROR:
+        kit_v = result.kit.value or 0
+        kit_max = result.kit_normative_max.value or 0
+        suggestion = (
+            "Включите ДПТ (поднимает потолок КИТ до 2.5)"
+            if kit_max <= 1.4
+            else "Уменьшите этажность или измените режим парковок"
+        )
+        return (
+            f"КИТ ПЗЗ {kit_v:.3f} > нормативного потолка {kit_max} — "
+            f"при текущей этажности и парковках жилой дом не «помещается» "
+            f"в норматив. {suggestion}."
+        )
 
     if bal.greening_required > 0:
         slack = bal.greening_actual - bal.greening_required
