@@ -104,6 +104,7 @@ def compute_tep_for_kit(
     kg_per_1000 = norms.resolve("social_objects.kindergarten.places_per_1000")
     kg_round = norms.resolve("social_objects.kindergarten.rounding")
     kg_btype = options.kindergarten.building_type  # нужно до conditional для formula/adj
+    kg_status = Status.OK
     if options.include_kindergarten and pop_v > 0:
         kg_required_raw = kindergarten.required_places(pop_v, kg_per_1000)
         kg_accepted = kindergarten.round_places(kg_required_raw, kg_round)
@@ -125,6 +126,23 @@ def compute_tep_for_kit(
             multiple=int(kg_round),
         )
         kg_plot_total, kg_bld_total = kindergarten.total_areas(kg_buckets, norms, kg_btype)
+        # Предупреждения по вместимости ДОО
+        if kg_cap_min and kg_buckets and any(c < kg_cap_min for c in kg_buckets):
+            kg_status = Status.WARNING
+            btype_label = (
+                "встроенно-пристроенный" if kg_btype == "built_in" else "отдельно стоящий"
+            )
+            warnings.append(
+                f"ДОО: вместимость объектов {kg_buckets} меньше нормативного минимума "
+                f"{kg_cap_min} мест ({btype_label}, Письмо К.Обр №03-28-3794/21-0-0). "
+                "Необходимо объединить корпуса или предусмотреть ДОО вне границ участка."
+            )
+        if kg_cap_max and kg_buckets and any(c > kg_cap_max for c in kg_buckets):
+            kg_status = Status.WARNING
+            warnings.append(
+                f"ДОО: вместимость объектов {kg_buckets} превышает принятый максимум "
+                f"{kg_cap_max} мест — рекомендуется разбить на большее число объектов."
+            )
     else:
         kg_required_raw = kg_accepted = 0
         kg_plot_total = kg_bld_total = 0.0
@@ -460,6 +478,7 @@ def compute_tep_for_kit(
         kindergarten_places_accepted=_F(
             kg_accepted,
             unit="мест",
+            status=kg_status,
             normative=kg_required_raw if options.include_kindergarten else None,
             formula=f"вверх кратно {kg_round} → разбивка по объектам {kg_buckets}"
             if options.include_kindergarten

@@ -64,17 +64,25 @@ class TestConditional:
         ) == 350
 
     def test_capacity_max_built_in(self, spb):
+        # capacity_max для встроенного ДОО принято как для отдельно стоящего (350)
         assert spb.resolve(
             "social_objects.kindergarten.capacity_max", building_type="built_in"
+        ) == 350
+
+    def test_capacity_min_built_in(self, spb):
+        # capacity_min встроенного ДОО = 120 (Письмо К.Обр)
+        assert spb.resolve(
+            "social_objects.kindergarten.capacity_min", building_type="built_in"
         ) == 120
 
     def test_per_branch_source(self, spb):
         assert spb.source_of(
             "social_objects.kindergarten.capacity_max", building_type="detached"
         ) == "РМД 15-26-2017"
-        assert "Письмо" in spb.source_of(
+        # built_in capacity_max — принято условно
+        assert "принято" in spb.source_of(
             "social_objects.kindergarten.capacity_max", building_type="built_in"
-        )
+        ).lower()
 
     def test_kit_limits(self, spb):
         assert spb.resolve("kit_limits", planning_doc="yes") == 2.5

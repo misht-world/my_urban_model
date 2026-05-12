@@ -113,17 +113,18 @@ social_objects:
       type: conditional
       argument: building_type
       cases:
-        detached: 160
+        detached: 160   # нижний предел отдельно стоящего ДОО
+        built_in: 120   # не менее 120 мест (минимальная наполняемость)
       source: "Письмо К.Обр №03-28-3794/21-0-0 от 29.04.2021"
     capacity_max:
       type: conditional
       argument: building_type
       cases:
         detached: 350
-        built_in: 120
+        built_in: 350   # явный максимум не установлен; принято как для отдельно стоящего
       sources:
         detached: "РМД 15-26-2017"
-        built_in: "Письмо К.Обр №03-28-3794/21-0-0 от 29.04.2021"
+        built_in: "принято условно (явный предел нормативами не установлен)"
 
   school:
     places_per_1000:
