@@ -273,5 +273,5 @@ class TestSchoolAllowedCapacities:
             ),
             spb,
         )
-        sosh_warns = [w for w in res.warnings if "не входит" in w]
+        sosh_warns = [w for w in res.warnings if "СОШ" in w and "не входит" in w]
         assert len(sosh_warns) == 0

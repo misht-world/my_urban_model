@@ -126,23 +126,60 @@ def compute_tep_for_kit(
             multiple=int(kg_round),
         )
         kg_plot_total, kg_bld_total = kindergarten.total_areas(kg_buckets, norms, kg_btype)
-        # Предупреждения по вместимости ДОО
-        if kg_cap_min and kg_buckets and any(c < kg_cap_min for c in kg_buckets):
-            kg_status = Status.WARNING
-            btype_label = (
-                "встроенно-пристроенный" if kg_btype == "built_in" else "отдельно стоящий"
-            )
-            warnings.append(
-                f"ДОО: вместимость объектов {kg_buckets} меньше нормативного минимума "
-                f"{kg_cap_min} мест ({btype_label}, Письмо К.Обр №03-28-3794/21-0-0). "
-                "Необходимо объединить корпуса или предусмотреть ДОО вне границ участка."
-            )
-        if kg_cap_max and kg_buckets and any(c > kg_cap_max for c in kg_buckets):
-            kg_status = Status.WARNING
-            warnings.append(
-                f"ДОО: вместимость объектов {kg_buckets} превышает принятый максимум "
-                f"{kg_cap_max} мест — рекомендуется разбить на большее число объектов."
-            )
+        # Предупреждения по вместимости ДОО (дифференцированы по типу и значению):
+        #   < 120                     → меньше нормативной наполняемости любого ДОО
+        #   120 ≤ c < 160 (detached)  → отдельно стоящий невозможен → рекомендуется встроенно-пристроенный
+        #   > 350                     → превышен принятый максимум
+        for c in kg_buckets:
+            if c < 120:
+                kg_status = Status.WARNING
+                warnings.append(
+                    f"ДОО: расчётная вместимость {c} мест меньше минимальной "
+                    "нормативной наполняемости (120 мест, Письмо К.Обр "
+                    "№03-28-3794/21-0-0 от 29.04.2021). "
+                    "Запроектировать ДОО на такое число мест невозможно."
+                )
+            elif kg_btype == "detached" and c < 160:
+                kg_status = Status.WARNING
+                warnings.append(
+                    f"ДОО: вместимость {c} мест меньше минимума отдельно стоящего "
+                    "ДОО (160 мест, Письмо К.Обр №03-28-3794/21-0-0 от 29.04.2021). "
+                    "Рекомендуется выбрать тип «встроенно-пристроенный ДОО» "
+                    "(минимум 120 мест)."
+                )
+            elif c > 350:
+                kg_status = Status.WARNING
+                warnings.append(
+                    f"ДОО: вместимость {c} мест превышает принятый максимум "
+                    "350 мест — рекомендуется разбить на большее число объектов."
+                )
+        # Проверка списка допустимых вместимостей (типовые по данным КС).
+        try:
+            kg_allowed = norms.resolve("social_objects.kindergarten.allowed_capacities")
+        except (KeyError, TypeError):
+            kg_allowed = None
+        if kg_allowed and kg_buckets:
+            for c in kg_buckets:
+                # Не дублируем предупреждение для уже пойманных «вне нормы» случаев
+                if c < 120 or (kg_btype == "detached" and c < 160) or c > 350:
+                    continue
+                if c not in kg_allowed:
+                    smaller = [a for a in kg_allowed if a < c]
+                    larger = [a for a in kg_allowed if a > c]
+                    nearest_lo = max(smaller) if smaller else None
+                    nearest_hi = min(larger) if larger else None
+                    parts = []
+                    if nearest_lo is not None:
+                        parts.append(f"меньше: {nearest_lo}")
+                    if nearest_hi is not None:
+                        parts.append(f"больше: {nearest_hi}")
+                    hint = "; ".join(parts) if parts else "нет ближайших"
+                    kg_status = Status.WARNING
+                    warnings.append(
+                        f"ДОО: вместимость {c} мест не входит в список типовых "
+                        f"(по данным КС). Ближайшие — {hint}. "
+                        "Рекомендуется привести к одной из типовых вместимостей."
+                    )
     else:
         kg_required_raw = kg_accepted = 0
         kg_plot_total = kg_bld_total = 0.0

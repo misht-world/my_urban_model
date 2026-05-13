@@ -359,7 +359,7 @@ def _render_kg() -> tuple[KindergartenSpec, bool]:
         )
         kg_btype = "detached" if kg_btype_label == "Отдельно стоящее" else "built_in"
         kg_override = st.checkbox(
-            "Задать число объектов вручную",
+            "Задать число ДОО вручную",
             value=False, disabled=not include_kg, key="kg_override",
         )
         kg_num_objects, kg_capacity = None, None

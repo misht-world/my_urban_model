@@ -273,3 +273,81 @@ class TestBuiltInKindergarten:
         )
         assert res.balance.is_feasible
         assert res.kit.value > 0
+
+
+# ---------------------------------------------------------------------------
+# Дифференцированные предупреждения по вместимости ДОО (v0.6.5)
+# ---------------------------------------------------------------------------
+
+class TestKindergartenCapacityWarnings:
+    """v0.6.5: предупреждения зависят от типа ДОО и значения вместимости."""
+
+    def test_warn_below_120_unconditional(self, spb):
+        """Вместимость < 120 — категорически невозможный ДОО (любой тип)."""
+        site = Site(area_m2=5_000)  # маленький квартал → мало мест
+        res = verify_kit(0.5, site, CalculationOptions(floors=8), spb)
+        # Должно быть < 120
+        if (res.kindergarten_places_accepted.value or 0) > 0:
+            assert res.kindergarten_places_accepted.value < 120
+            kg_warns = [w for w in res.warnings if "ДОО" in w]
+            assert any("меньше минимальной" in w for w in kg_warns)
+
+    def test_warn_detached_120_to_159_suggests_builtin(self, spb):
+        """detached с вместимостью 120≤c<160 → рекомендовать built_in."""
+        site = Site(area_m2=50_000)
+        res = verify_kit(
+            1.5, site,
+            CalculationOptions(
+                floors=12,
+                kindergarten=KindergartenSpec(
+                    building_type="detached",
+                    num_objects=1, capacity_per_object=140,
+                ),
+            ),
+            spb,
+        )
+        kg_warns = [w for w in res.warnings if "ДОО" in w]
+        assert any("встроенно-пристроенный" in w for w in kg_warns)
+
+    def test_no_warn_for_allowed_capacity(self, spb):
+        """Вместимость 200 в списке allowed → нет warning «не входит»."""
+        site = Site(area_m2=50_000)
+        res = verify_kit(
+            1.5, site,
+            CalculationOptions(
+                floors=12,
+                kindergarten=KindergartenSpec(
+                    building_type="detached",
+                    num_objects=1, capacity_per_object=200,
+                ),
+            ),
+            spb,
+        )
+        not_in_list = [w for w in res.warnings if "ДОО" in w and "не входит" in w]
+        assert len(not_in_list) == 0
+
+    def test_warn_not_in_allowed_with_nearest(self, spb):
+        """Вместимость 175 не в списке → warning с «меньше: 170; больше: 180»."""
+        site = Site(area_m2=50_000)
+        res = verify_kit(
+            1.5, site,
+            CalculationOptions(
+                floors=12,
+                kindergarten=KindergartenSpec(
+                    building_type="detached",
+                    num_objects=1, capacity_per_object=175,
+                ),
+            ),
+            spb,
+        )
+        not_in_list = [w for w in res.warnings if "ДОО" in w and "не входит" in w]
+        assert len(not_in_list) > 0
+        assert "170" in not_in_list[0]
+        assert "180" in not_in_list[0]
+
+    def test_allowed_capacities_list_loaded(self, spb):
+        """Проверка, что список typovyh capacities ДОО загружается из YAML."""
+        caps = spb.resolve("social_objects.kindergarten.allowed_capacities")
+        assert 90 in caps
+        assert 350 in caps
+        assert 175 not in caps  # промежуточное
