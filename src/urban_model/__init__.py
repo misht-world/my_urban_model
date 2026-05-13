@@ -1,6 +1,6 @@
 """Математическая модель застройки территории — обратный расчёт ТЭП.
 
-Публичный API (v0.5.x):
+Публичный API (v0.6.x):
 
     # Расчёты
     from urban_model import (
@@ -23,7 +23,7 @@
     from urban_model.normatives import load_normatives
     from urban_model.export import to_xlsx, results_to_dataframe
 
-    # Оптимизатор (v0.5)
+    # Оптимизатор (v0.5+)
     from urban_model.optimize import SearchSpace, optimize_max_apartments
 
 Пример:

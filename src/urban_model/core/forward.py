@@ -108,60 +108,81 @@ def compute_tep_for_kit(
     if options.include_kindergarten and pop_v > 0:
         kg_required_raw = kindergarten.required_places(pop_v, kg_per_1000)
         kg_accepted = kindergarten.round_places(kg_required_raw, kg_round)
+        # Резолвим оба варианта capacity_min и общий capacity_max из YAML —
+        # значения нужны для разных веток предупреждений (см. ниже).
+        kg_cap_min_detached = norms.resolve(
+            "social_objects.kindergarten.capacity_min", building_type="detached"
+        )
+        kg_cap_min_builtin = norms.resolve(
+            "social_objects.kindergarten.capacity_min", building_type="built_in"
+        )
         kg_cap_max = norms.resolve(
             "social_objects.kindergarten.capacity_max", building_type=kg_btype
         )
-        try:
-            kg_cap_min = norms.resolve(
-                "social_objects.kindergarten.capacity_min", building_type=kg_btype
-            )
-        except KeyError:
-            kg_cap_min = None
+        kg_cap_min_active = (
+            kg_cap_min_detached if kg_btype == "detached" else kg_cap_min_builtin
+        )
+        kg_src_min = norms.source_of(
+            "social_objects.kindergarten.capacity_min", building_type=kg_btype
+        )
+        kg_src_max = norms.source_of(
+            "social_objects.kindergarten.capacity_max", building_type=kg_btype
+        )
         kg_buckets = kindergarten.split_into_objects(
             total_places=kg_accepted,
             spec_capacity=options.kindergarten.capacity_per_object,
             spec_count=options.kindergarten.num_objects,
-            capacity_min=kg_cap_min,
+            capacity_min=kg_cap_min_active,
             capacity_max=kg_cap_max,
             multiple=int(kg_round),
         )
         kg_plot_total, kg_bld_total = kindergarten.total_areas(kg_buckets, norms, kg_btype)
-        # Предупреждения по вместимости ДОО (дифференцированы по типу и значению):
-        #   < 120                     → меньше нормативной наполняемости любого ДОО
-        #   120 ≤ c < 160 (detached)  → отдельно стоящий невозможен → рекомендуется встроенно-пристроенный
-        #   > 350                     → превышен принятый максимум
+        # Предупреждения по вместимости ДОО (дифференцированы по типу и значению).
+        # Пороги берутся из YAML (capacity_min/max — единый источник истины):
+        #   c < kg_cap_min_builtin                          → меньше норм. наполняемости любого ДОО
+        #   detached: kg_cap_min_builtin ≤ c < kg_cap_min_detached → рекомендовать built_in
+        #   c > kg_cap_max                                  → превышен максимум
         for c in kg_buckets:
-            if c < 120:
+            if c < kg_cap_min_builtin:
                 kg_status = Status.WARNING
                 warnings.append(
                     f"ДОО: расчётная вместимость {c} мест меньше минимальной "
-                    "нормативной наполняемости (120 мест, Письмо К.Обр "
-                    "№03-28-3794/21-0-0 от 29.04.2021). "
+                    f"нормативной наполняемости ({kg_cap_min_builtin} мест"
+                    + (f", {kg_src_min}" if kg_src_min else "") + "). "
                     "Запроектировать ДОО на такое число мест невозможно."
                 )
-            elif kg_btype == "detached" and c < 160:
+            elif kg_btype == "detached" and c < kg_cap_min_detached:
                 kg_status = Status.WARNING
                 warnings.append(
                     f"ДОО: вместимость {c} мест меньше минимума отдельно стоящего "
-                    "ДОО (160 мест, Письмо К.Обр №03-28-3794/21-0-0 от 29.04.2021). "
+                    f"ДОО ({kg_cap_min_detached} мест"
+                    + (f", {kg_src_min}" if kg_src_min else "") + "). "
                     "Рекомендуется выбрать тип «встроенно-пристроенный ДОО» "
-                    "(минимум 120 мест)."
+                    f"(минимум {kg_cap_min_builtin} мест)."
                 )
-            elif c > 350:
+            elif c > kg_cap_max:
                 kg_status = Status.WARNING
                 warnings.append(
                     f"ДОО: вместимость {c} мест превышает принятый максимум "
-                    "350 мест — рекомендуется разбить на большее число объектов."
+                    f"{kg_cap_max} мест"
+                    + (f" ({kg_src_max})" if kg_src_max else "")
+                    + " — рекомендуется разбить на большее число объектов."
                 )
         # Проверка списка допустимых вместимостей (типовые по данным КС).
         try:
             kg_allowed = norms.resolve("social_objects.kindergarten.allowed_capacities")
-        except (KeyError, TypeError):
+            kg_allowed_src = norms.source_of("social_objects.kindergarten.allowed_capacities")
+        except KeyError:
             kg_allowed = None
+            kg_allowed_src = None
         if kg_allowed and kg_buckets:
             for c in kg_buckets:
                 # Не дублируем предупреждение для уже пойманных «вне нормы» случаев
-                if c < 120 or (kg_btype == "detached" and c < 160) or c > 350:
+                if (
+                    c < kg_cap_min_builtin
+                    or (kg_btype == "detached" and c < kg_cap_min_detached)
+                    or c > kg_cap_max
+                ):
                     continue
                 if c not in kg_allowed:
                     smaller = [a for a in kg_allowed if a < c]
@@ -175,9 +196,10 @@ def compute_tep_for_kit(
                         parts.append(f"больше: {nearest_hi}")
                     hint = "; ".join(parts) if parts else "нет ближайших"
                     kg_status = Status.WARNING
+                    src_str = f" (источник списка: {kg_allowed_src})" if kg_allowed_src else ""
                     warnings.append(
-                        f"ДОО: вместимость {c} мест не входит в список типовых "
-                        f"(по данным КС). Ближайшие — {hint}. "
+                        f"ДОО: вместимость {c} мест не входит в список типовых"
+                        f"{src_str}. Ближайшие — {hint}. "
                         "Рекомендуется привести к одной из типовых вместимостей."
                     )
     else:
@@ -217,15 +239,22 @@ def compute_tep_for_kit(
                 "social_objects.school.capacity_min",
                 building_type=options.school.building_type,
             )
-        except (KeyError, TypeError):
+        except KeyError:
             sch_cap_min = None
         try:
             sch_cap_max = norms.resolve(
                 "social_objects.school.capacity_max",
                 building_type=options.school.building_type,
             )
-        except (KeyError, TypeError):
+        except KeyError:
             sch_cap_max = None
+        sch_cap_min_src = (
+            norms.source_of(
+                "social_objects.school.capacity_min",
+                building_type=options.school.building_type,
+            )
+            if sch_cap_min else None
+        )
         sch_buckets = school.split_into_objects(
             total_places=sch_accepted,
             spec_capacity=options.school.capacity_per_object,
@@ -245,20 +274,27 @@ def compute_tep_for_kit(
         # Для СПб нет «built_in» школ → минимум распространяется на любую СОШ.
         if sch_cap_min and sch_buckets and any(c < sch_cap_min for c in sch_buckets):
             sch_status = Status.WARNING
+            offenders_lo = [c for c in sch_buckets if c < sch_cap_min]
+            src_str = f" ({sch_cap_min_src})" if sch_cap_min_src else ""
             warnings.append(
-                f"СОШ: расчётная вместимость {sch_buckets} < нормативного минимума "
-                f"{sch_cap_min} мест — стандартная отдельно стоящая СОШ невозможна, "
+                f"СОШ: расчётная вместимость {offenders_lo} < нормативного минимума "
+                f"{sch_cap_min} мест{src_str} — стандартная отдельно стоящая СОШ невозможна, "
                 "необходимо размещение начальной СОШ или стандартной СОШ "
                 "вне границ территории."
             )
         # Проверка списка допустимых вместимостей (параллели II–IX по данным КС).
-        # Если объект не из списка — выдаём WARNING с ближайшими значениями.
+        # Не дублируем для c < sch_cap_min (уже предупреждено выше).
         try:
             allowed_caps = norms.resolve("social_objects.school.allowed_capacities")
-        except (KeyError, TypeError):
+            allowed_caps_src = norms.source_of("social_objects.school.allowed_capacities")
+        except KeyError:
             allowed_caps = None
+            allowed_caps_src = None
         if allowed_caps and sch_buckets:
-            offenders = [c for c in sch_buckets if c not in allowed_caps]
+            offenders = [
+                c for c in sch_buckets
+                if c not in allowed_caps and (not sch_cap_min or c >= sch_cap_min)
+            ]
             for c in offenders:
                 smaller = [a for a in allowed_caps if a < c]
                 larger = [a for a in allowed_caps if a > c]
@@ -271,9 +307,10 @@ def compute_tep_for_kit(
                     parts.append(f"больше: {nearest_hi}")
                 hint = "; ".join(parts) if parts else "нет ближайших"
                 sch_status = Status.WARNING
+                src_str = f" (источник списка: {allowed_caps_src})" if allowed_caps_src else ""
                 warnings.append(
                     f"СОШ: вместимость {c} мест не входит в список типовых "
-                    f"параллелей (II–IX). Ближайшие — {hint}. "
+                    f"параллелей (II–IX){src_str}. Ближайшие — {hint}. "
                     "Рекомендуется привести к одной из допустимых вместимостей."
                 )
     else:
@@ -314,12 +351,12 @@ def compute_tep_for_kit(
             try:
                 per_place = norms.resolve("parking.vpp.m2_per_place", vri_code=obj.vri_code)
                 obj_parking = math.ceil(floor_area / per_place)
-            except (KeyError, TypeError):
+            except KeyError:
                 # Если для ВРИ нет норматива парковок — считаем 0 + warning
                 obj_parking = 0
                 warnings.append(
                     f"Объект «{obj.name}» (ВРИ {obj.vri_code}): нет норматива "
-                    "парковки — м/м не учтены"
+                    "парковки — м/м не учтены."
                 )
             obj_greening = floor_area * green_ratio_vpp
             custom_total_plot += obj.plot_area_m2

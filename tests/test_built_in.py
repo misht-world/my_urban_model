@@ -261,6 +261,43 @@ class TestBuiltInKindergarten:
         )
         assert res_bi.apartments_area.value < res_det.apartments_area.value
 
+    def test_apartments_area_exact_formula(self, spb, site_5ga):
+        """Точная формула: apartments_area = (GFA − kg_bld_total) × apt_ratio."""
+        res = verify_kit(
+            1.5, site_5ga,
+            CalculationOptions(
+                floors=12,
+                kindergarten=KindergartenSpec(building_type="built_in"),
+            ),
+            spb,
+        )
+        apt_ratio = spb.resolve("building_params.apartments_to_gfa_ratio")
+        gfa = res.gfa.value
+        kg_bld = res.kindergarten_building_area.value
+        expected = (gfa - kg_bld) * apt_ratio
+        assert res.apartments_area.value == pytest.approx(expected, rel=1e-4)
+
+    def test_builtin_kg_with_vpp_both_subtract_from_gfa(self, spb, site_5ga):
+        """built_in ДОО + ВПП: оба вычитаются из GFA жилого дома."""
+        res = verify_kit(
+            1.5, site_5ga,
+            CalculationOptions(
+                floors=12,
+                kindergarten=KindergartenSpec(building_type="built_in"),
+                built_in=BuiltInArea(area_m2=2_000, vri_code="4.4"),
+            ),
+            spb,
+        )
+        apt_ratio = spb.resolve("building_params.apartments_to_gfa_ratio")
+        gfa = res.gfa.value
+        vpp = res.built_in_area.value
+        kg_bld = res.kindergarten_building_area.value
+        # apt_area = (GFA − VPP − KG_bld) × apt_ratio
+        expected = (gfa - vpp - kg_bld) * apt_ratio
+        assert res.apartments_area.value == pytest.approx(expected, rel=1e-3)
+        assert vpp == 2_000
+        assert kg_bld > 0
+
     def test_inverse_converges_with_builtin_kg(self, spb, site_5ga):
         """solve_max_kit сходится при встроенно-пристроенном ДОО."""
         res = solve_max_kit(
