@@ -219,10 +219,59 @@ class TestSchoolMinCapacityWarning:
         assert any("СОШ" in w for w in res.warnings)
 
     def test_no_warning_for_large_population(self, spb):
-        """На большом квартале СОШ нормального размера → статус ok."""
-        # 200 000 м² × КИТ=1.0 × ratio=0.75 = 150 000 м² квартир
-        # → ~5357 чел → ~643 мест → ≥ 550 ✓
-        site = Site(area_m2=200_000)
+        """На большом квартале с СОШ типового размера (попадает в список) → статус ok.
+
+        v0.6.5: типовые параллели КС [550/825/1100/1375/1650/1925/2200/2475].
+        Подбор site так, чтобы расчётная вместимость попала ровно в 825 (III параллель):
+        apt × 0.12/28 ≈ 825 → apt ≈ 192_500 → gfa ≈ 256_667 → site=250_000 при КИТ=1.0
+        даёт ~803 → round 25 → 825.
+        """
+        site = Site(area_m2=250_000)
         res = verify_kit(1.0, site, CalculationOptions(floors=10), spb)
-        assert res.school_places_accepted.value >= 550
+        assert res.school_places_accepted.value == 825
         assert res.school_places_accepted.status.value == "ok"
+        # Никакого warning про СОШ
+        assert not any("СОШ" in w for w in res.warnings)
+
+
+# ---------------------------------------------------------------------------
+# WARNING: СОШ вне списка допустимых вместимостей (v0.6.5)
+# ---------------------------------------------------------------------------
+
+class TestSchoolAllowedCapacities:
+    """Проверка: если итоговая вместимость СОШ не входит в список
+    типовых параллелей [550/825/1100/1375/1650/1925/2200/2475] —
+    выдаётся WARNING с указанием ближайших значений."""
+
+    def test_warning_with_neighbors(self, spb):
+        """При вместимости вне списка — warning с «меньше: X, больше: Y»."""
+        from urban_model.models.social import SchoolSpec
+        site = Site(area_m2=200_000)
+        # Принудительно задаём 700 мест (нет в списке, между 550 и 825)
+        res = verify_kit(
+            1.5, site,
+            CalculationOptions(
+                floors=10,
+                school=SchoolSpec(num_objects=1, capacity_per_object=700),
+            ),
+            spb,
+        )
+        sosh_warns = [w for w in res.warnings if "СОШ" in w and "не входит" in w]
+        assert len(sosh_warns) > 0
+        assert "550" in sosh_warns[0]
+        assert "825" in sosh_warns[0]
+
+    def test_no_warning_for_max_parallel(self, spb):
+        """СОШ ровно 2475 мест (IX параллель) → нет warning о вне списка."""
+        from urban_model.models.social import SchoolSpec
+        site = Site(area_m2=500_000)
+        res = verify_kit(
+            1.0, site,
+            CalculationOptions(
+                floors=12,
+                school=SchoolSpec(num_objects=1, capacity_per_object=2475),
+            ),
+            spb,
+        )
+        sosh_warns = [w for w in res.warnings if "не входит" in w]
+        assert len(sosh_warns) == 0

@@ -42,9 +42,28 @@ class TestPiecewise:
         assert spb.resolve("social_objects.kindergarten.plot_area_per_place", capacity=10_000) == 40
 
     def test_school_piecewise(self, spb):
-        assert spb.resolve("social_objects.school.building_area_per_place", capacity=500) == 30
-        assert spb.resolve("social_objects.school.building_area_per_place", capacity=700) == 28
-        assert spb.resolve("social_objects.school.building_area_per_place", capacity=1000) == 25
+        # v0.6.5: данные от КС — II/III параллели (≤825) → 30, IV+ → 25
+        assert spb.resolve("social_objects.school.building_area_per_place", capacity=550) == 30
+        assert spb.resolve("social_objects.school.building_area_per_place", capacity=825) == 30
+        assert spb.resolve("social_objects.school.building_area_per_place", capacity=1100) == 25
+        assert spb.resolve("social_objects.school.building_area_per_place", capacity=2475) == 25
+
+    def test_school_plot_per_place(self, spb):
+        # spb-переопределение для СОШ: II→35, III→28, IV/V→24, VI–IX→22
+        assert spb.resolve("social_objects.school.plot_area_per_place", capacity=550) == 35
+        assert spb.resolve("social_objects.school.plot_area_per_place", capacity=825) == 28
+        assert spb.resolve("social_objects.school.plot_area_per_place", capacity=1100) == 24
+        assert spb.resolve("social_objects.school.plot_area_per_place", capacity=1375) == 24
+        assert spb.resolve("social_objects.school.plot_area_per_place", capacity=1650) == 22
+        assert spb.resolve("social_objects.school.plot_area_per_place", capacity=2475) == 22
+
+    def test_school_allowed_capacities(self, spb):
+        caps = spb.resolve("social_objects.school.allowed_capacities")
+        assert caps == [550, 825, 1100, 1375, 1650, 1925, 2200, 2475]
+
+    def test_school_rounding_is_25(self, spb):
+        # v0.6.5: кратность 25 мест (СП Градостроительство)
+        assert spb.resolve("social_objects.school.rounding") == 25
 
     def test_znop_thresholds(self, spb):
         assert spb.resolve("znop_per_person", kit=1.4) == 0

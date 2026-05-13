@@ -134,19 +134,39 @@ social_objects:
       source: "НГП СПб"
     rounding:
       type: scalar
-      value: 10
-      note: "округление вместимости вверх кратно 10"
-      source: "НГП СПб"
+      value: 25
+      note: "округление вместимости вверх кратно 25 (1 параллель ≈ 25 мест)"
+      source: "СП 42.13330.2016 (СП «Градостроительство»)"
+    # Список допустимых вместимостей СОШ (по числу параллелей II–IX).
+    # Если расчётная вместимость не попадает в список — выдаётся WARNING с
+    # указанием ближайших значений из списка.
+    allowed_capacities:
+      type: scalar
+      value: [550, 825, 1100, 1375, 1650, 1925, 2200, 2475]
+      note: "II=550, III=825, IV=1100, V=1375, VI=1650, VII=1925, VIII=2200, IX=2475"
+      source: "Данные КС по Замечаниям (СОШ - Санкт-Петербург)"
+    # Площадь земельного участка на 1 место (переопределяет russia).
+    # Значения из таблицы КС: II→35, III→28, IV/V→24, VI–IX→22.
+    plot_area_per_place:
+      type: piecewise
+      argument: capacity
+      breakpoints:
+        - { up_to: 550, value: 35 }
+        - { up_to: 825, value: 28 }
+        - { up_to: 1375, value: 24 }
+        - { up_to: .inf, value: 22 }
+      unit: "m2_per_place"
+      note: "по параллелям II–IX (КС)"
+      source: "Данные КС по Замечаниям"
     building_area_per_place:
       type: piecewise
       argument: capacity
       breakpoints:
-        - { up_to: 600, value: 30 }
-        - { up_to: 825, value: 28 }
-        - { up_to: .inf, value: 25 }
+        - { up_to: 825, value: 30 }    # II, III параллели
+        - { up_to: .inf, value: 25 }    # IV+
       unit: "m2_per_place"
-      note: "от 450 мест"
-      source: "РМД 15-26-2017"
+      note: "по данным КС: II/III → 30, IV+ → 25"
+      source: "Данные КС по Замечаниям"
     capacity_min:
       type: conditional
       argument: building_type
@@ -157,9 +177,9 @@ social_objects:
       type: conditional
       argument: building_type
       cases:
-        detached: 1500
-      note: "Типовая школа: 550/825/1100/1500. Свыше 1500 — разбивать на корпуса."
-      source: "РМД 15-26-2017"
+        detached: 2475
+      note: "Типовая школа: II/III/IV/V/VI/VII/VIII/IX параллели = 550/825/1100/1375/1650/1925/2200/2475 мест. Свыше 2475 — разбивать на корпуса."
+      source: "Данные КС по Замечаниям"
 
 # === Парковки ===
 parking:

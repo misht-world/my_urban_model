@@ -214,6 +214,31 @@ def compute_tep_for_kit(
                 "необходимо размещение начальной СОШ или стандартной СОШ "
                 "вне границ территории."
             )
+        # Проверка списка допустимых вместимостей (параллели II–IX по данным КС).
+        # Если объект не из списка — выдаём WARNING с ближайшими значениями.
+        try:
+            allowed_caps = norms.resolve("social_objects.school.allowed_capacities")
+        except (KeyError, TypeError):
+            allowed_caps = None
+        if allowed_caps and sch_buckets:
+            offenders = [c for c in sch_buckets if c not in allowed_caps]
+            for c in offenders:
+                smaller = [a for a in allowed_caps if a < c]
+                larger = [a for a in allowed_caps if a > c]
+                nearest_lo = max(smaller) if smaller else None
+                nearest_hi = min(larger) if larger else None
+                parts = []
+                if nearest_lo is not None:
+                    parts.append(f"меньше: {nearest_lo}")
+                if nearest_hi is not None:
+                    parts.append(f"больше: {nearest_hi}")
+                hint = "; ".join(parts) if parts else "нет ближайших"
+                sch_status = Status.WARNING
+                warnings.append(
+                    f"СОШ: вместимость {c} мест не входит в список типовых "
+                    f"параллелей (II–IX). Ближайшие — {hint}. "
+                    "Рекомендуется привести к одной из допустимых вместимостей."
+                )
     else:
         sch_required_raw = sch_accepted = 0
         sch_plot_total = sch_bld_total = 0.0
