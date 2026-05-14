@@ -28,6 +28,9 @@ from urban_model.calculations import (
     school,
     znop,
 )
+from urban_model.calculations.allowed_capacities import (
+    build_warnings as _build_allowed_warnings,
+)
 from urban_model.calculations.parking import compute_parking_breakdown
 from urban_model.models.options import CalculationOptions
 from urban_model.models.result import Status, TEPField, TEPResult
@@ -73,9 +76,8 @@ def compute_tep_for_kit(
         bi_vri = options.built_in.vri_code
     else:
         bi_area = 0.0
-        apartments_area_v = housing.apartments_area(gfa_v, options.vpp_share, apt_ratio)
-        # back-compute residential_gfa (нужно для корректировки при встроенном ДОО)
-        residential_gfa = apartments_area_v / apt_ratio if apt_ratio > 0 else gfa_v
+        residential_gfa = gfa_v * (1.0 - options.vpp_share)
+        apartments_area_v = residential_gfa * apt_ratio
         bi_vri = None
 
     footprint_v = housing.housing_footprint(gfa_v, options.floors)
@@ -176,32 +178,20 @@ def compute_tep_for_kit(
             kg_allowed = None
             kg_allowed_src = None
         if kg_allowed and kg_buckets:
-            for c in kg_buckets:
-                # Не дублируем предупреждение для уже пойманных «вне нормы» случаев
-                if (
+            def _kg_skip(c: int) -> bool:
+                # Уже пойманные «вне нормы» случаи не дублируем
+                return (
                     c < kg_cap_min_builtin
                     or (kg_btype == "detached" and c < kg_cap_min_detached)
                     or c > kg_cap_max
-                ):
-                    continue
-                if c not in kg_allowed:
-                    smaller = [a for a in kg_allowed if a < c]
-                    larger = [a for a in kg_allowed if a > c]
-                    nearest_lo = max(smaller) if smaller else None
-                    nearest_hi = min(larger) if larger else None
-                    parts = []
-                    if nearest_lo is not None:
-                        parts.append(f"меньше: {nearest_lo}")
-                    if nearest_hi is not None:
-                        parts.append(f"больше: {nearest_hi}")
-                    hint = "; ".join(parts) if parts else "нет ближайших"
-                    kg_status = Status.WARNING
-                    src_str = f" (источник списка: {kg_allowed_src})" if kg_allowed_src else ""
-                    warnings.append(
-                        f"ДОО: вместимость {c} мест не входит в список типовых"
-                        f"{src_str}. Ближайшие — {hint}. "
-                        "Рекомендуется привести к одной из типовых вместимостей."
-                    )
+                )
+            kg_extra = _build_allowed_warnings(
+                kg_buckets, kg_allowed, "ДОО",
+                source=kg_allowed_src, skip=_kg_skip,
+            )
+            if kg_extra:
+                kg_status = Status.WARNING
+                warnings.extend(kg_extra)
     else:
         kg_required_raw = kg_accepted = 0
         kg_plot_total = kg_bld_total = 0.0
@@ -291,28 +281,15 @@ def compute_tep_for_kit(
             allowed_caps = None
             allowed_caps_src = None
         if allowed_caps and sch_buckets:
-            offenders = [
-                c for c in sch_buckets
-                if c not in allowed_caps and (not sch_cap_min or c >= sch_cap_min)
-            ]
-            for c in offenders:
-                smaller = [a for a in allowed_caps if a < c]
-                larger = [a for a in allowed_caps if a > c]
-                nearest_lo = max(smaller) if smaller else None
-                nearest_hi = min(larger) if larger else None
-                parts = []
-                if nearest_lo is not None:
-                    parts.append(f"меньше: {nearest_lo}")
-                if nearest_hi is not None:
-                    parts.append(f"больше: {nearest_hi}")
-                hint = "; ".join(parts) if parts else "нет ближайших"
+            def _sch_skip(c: int) -> bool:
+                return bool(sch_cap_min) and c < sch_cap_min
+            sch_extra = _build_allowed_warnings(
+                sch_buckets, allowed_caps, "СОШ",
+                source=allowed_caps_src, skip=_sch_skip,
+            )
+            if sch_extra:
                 sch_status = Status.WARNING
-                src_str = f" (источник списка: {allowed_caps_src})" if allowed_caps_src else ""
-                warnings.append(
-                    f"СОШ: вместимость {c} мест не входит в список типовых "
-                    f"параллелей (II–IX){src_str}. Ближайшие — {hint}. "
-                    "Рекомендуется привести к одной из допустимых вместимостей."
-                )
+                warnings.extend(sch_extra)
     else:
         sch_required_raw = sch_accepted = 0
         sch_plot_total = sch_bld_total = 0.0

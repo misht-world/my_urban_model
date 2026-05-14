@@ -94,8 +94,22 @@ class ConditionalNormative(_BaseNormative):
         )
 
 
+class ListNormative(_BaseNormative):
+    """Нормативное перечисление допустимых значений (без аргумента контекста).
+
+    Пример — список типовых вместимостей: [90, 100, …, 350].
+    Resolve возвращает список целиком; вызывающий код сам решает, как с ним работать
+    (проверка вхождения, ближайшие значения и т. п.).
+    """
+    type: Literal["list"]
+    values: list[Any]
+
+    def resolve(self, **ctx: Any) -> list[Any]:
+        return self.values
+
+
 NormativeValue = Annotated[
-    Union[ScalarNormative, PiecewiseNormative, ConditionalNormative],
+    Union[ScalarNormative, PiecewiseNormative, ConditionalNormative, ListNormative],
     Field(discriminator="type"),
 ]
 
@@ -103,6 +117,7 @@ _TYPE_TO_CLASS = {
     "scalar": ScalarNormative,
     "piecewise": PiecewiseNormative,
     "conditional": ConditionalNormative,
+    "list": ListNormative,
 }
 
 

@@ -369,9 +369,16 @@ def _render_kg() -> tuple[KindergartenSpec, bool]:
                 "Кол-во ДОО", min_value=1, max_value=20, value=2, step=1,
                 key="kg_num_objects",
             )
+            # Диапазон: минимум 90 (наименьшее значение в allowed_capacities КС),
+            # максимум 350 (capacity_max). Step=5 (кратность норматива rounding).
             kg_capacity = c2.number_input(
                 "Мест в каждом",
-                min_value=40, max_value=400, value=160, step=10,
+                min_value=90, max_value=350, value=160, step=5,
+                help=(
+                    "Типовые вместимости КС: 90, 100, 110, 120, 140, 150, 160, "
+                    "165, 170, 180, 190, 200, 215, 220, 230, 240, 250, 260, "
+                    "280, 310, 320, 340, 350. Иное → предупреждение."
+                ),
                 key="kg_capacity",
             )
     spec = KindergartenSpec(

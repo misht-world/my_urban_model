@@ -226,9 +226,17 @@ class TestBuiltInKindergarten:
         )
         places = res.kindergarten_places_accepted.value or 0
         if places > 0:
-            # plot_area должна быть close to 24 * places
-            expected = 24 * places
-            assert res.kindergarten_plot_area.value == pytest.approx(expected, rel=0.02)
+            # plot_area дискретный: ровно 24 м²/место × число мест по всем объектам.
+            # places (kindergarten_places_accepted) — округлённый required;
+            # фактическая сумма мест может отличаться (см. buckets), поэтому
+            # сверяем через сумму buckets.
+            import re
+            formula = res.kindergarten_places_accepted.formula or ""
+            m = re.search(r'\[([^\]]+)\]', formula)
+            assert m, f"Не удалось получить buckets из formula: {formula}"
+            buckets = [int(x.strip()) for x in m.group(1).split(",") if x.strip()]
+            expected = 24 * sum(buckets)
+            assert res.kindergarten_plot_area.value == expected
 
     def test_plot_area_less_than_detached(self, spb, site_5ga):
         """ЗУ встроенного ДОО меньше, чем у отдельно стоящего."""

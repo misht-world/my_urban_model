@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import io
+import os
+import re
+import tempfile
 
 import pandas as pd
 import streamlit as st
@@ -24,8 +27,6 @@ from urban_model.ui.formatting import (
 # ---------------------------------------------------------------------------
 
 def render_header(result: TEPResult) -> None:
-    from urban_model.models.result import Status
-
     kit_v = result.kit.value or 0
     kit_max = result.kit_normative_max.value or 0
     balance_feasible = result.balance.is_feasible
@@ -86,7 +87,6 @@ def render_kpi(result: TEPResult) -> None:
     # Вспомогательная функция: парсим список вместимостей из formula-строки
     # Формат: «вверх кратно 5 → разбивка по объектам [160, 165, 165]»
     def _buckets_delta(formula_str: str, total: int) -> str | None:
-        import re
         m = re.search(r'\[([^\]]+)\]', formula_str)
         if not m or total == 0:
             return None
@@ -332,9 +332,7 @@ def render_actions(result: TEPResult, default_name: str) -> None:
             st.rerun()  # обновляем счётчик в заголовке вкладки «Сравнение»
     with c3:
         # xlsx-экспорт текущего сценария
-        buf = io.BytesIO()
         # to_xlsx требует path → делаем временный путь и читаем
-        import tempfile, os
         with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False) as tmp:
             tmp_path = tmp.name
         try:
@@ -387,7 +385,6 @@ def render_comparison_tab() -> None:
         st.dataframe(df, use_container_width=True)
 
         # Скачать xlsx-сравнение
-        import tempfile, os
         with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False) as tmp:
             tmp_path = tmp.name
         try:
