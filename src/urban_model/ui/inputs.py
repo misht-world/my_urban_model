@@ -346,6 +346,15 @@ def _render_kg() -> tuple[KindergartenSpec, bool]:
         include_kg = st.checkbox(
             "Учитывать ДОО", value=True, key="include_kg",
         )
+        kg_only_demand = st.checkbox(
+            "Только рассчитать потребность",
+            value=False, disabled=not include_kg, key="kg_only_demand",
+            help=(
+                "Показать число мест и площади объектов, но НЕ учитывать ЗУ "
+                "и здание ДОО в балансе квартала. Полезно, если ДОО размещается "
+                "за пределами квартала или уже существует."
+            ),
+        )
         kg_btype_label = st.selectbox(
             "Тип здания ДОО",
             ["Отдельно стоящее", "Встроенно-пристроенное"],
@@ -385,6 +394,7 @@ def _render_kg() -> tuple[KindergartenSpec, bool]:
         building_type=kg_btype,
         num_objects=int(kg_num_objects) if kg_num_objects else None,
         capacity_per_object=int(kg_capacity) if kg_capacity else None,
+        only_demand=bool(kg_only_demand),
     )
     return spec, include_kg
 
@@ -394,6 +404,15 @@ def _render_school() -> tuple[SchoolSpec, bool]:
         st.markdown("##### Средние общеобразовательные школы (СОШ)")
         include_school = st.checkbox(
             "Учитывать СОШ", value=True, key="include_school",
+        )
+        sch_only_demand = st.checkbox(
+            "Только рассчитать потребность",
+            value=False, disabled=not include_school, key="sch_only_demand",
+            help=(
+                "Показать число мест и площадь СОШ, но НЕ учитывать ЗУ "
+                "в балансе квартала. Полезно, если СОШ размещается "
+                "за пределами квартала или уже существует."
+            ),
         )
         c1, c2 = st.columns(2)
         with c1:
@@ -419,15 +438,21 @@ def _render_school() -> tuple[SchoolSpec, bool]:
                 "Кол-во СОШ", min_value=1, max_value=10, value=1, step=1,
                 key="sch_num_objects",
             )
+            # Диапазон: 550 (II параллель) — 2475 (IX параллель). Step=25 (rounding).
             sch_capacity = c2.number_input(
                 "Мест в каждой",
-                min_value=200, max_value=2000, value=550, step=10,
+                min_value=550, max_value=2475, value=550, step=25,
+                help=(
+                    "Типовые параллели КС: 550, 825, 1100, 1375, 1650, 1925, "
+                    "2200, 2475. Иное → предупреждение."
+                ),
                 key="sch_capacity",
             )
     spec = SchoolSpec(
         has_pool=school_pool, has_sport_core=school_sport,
         num_objects=int(sch_num_objects) if sch_num_objects else None,
         capacity_per_object=int(sch_capacity) if sch_capacity else None,
+        only_demand=bool(sch_only_demand),
     )
     return spec, include_school
 

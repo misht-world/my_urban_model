@@ -202,10 +202,13 @@ def compute_tep_for_kit(
     # Пересчитываем apartments_area и население (все downstream-расчёты используют
     # обновлённые значения). ДОО-места уже посчитаны по «доковскому» населению —
     # погрешность незначительна (kg_bld_total ≈ 3–5% от residential_gfa).
+    # Если только_потребность — объект размещается ВНЕ квартала, корректировка не нужна.
+    _kg_only_demand = options.include_kindergarten and options.kindergarten.only_demand
     _kg_builtin_adj = (
         options.include_kindergarten
         and kg_btype == "built_in"
         and kg_bld_total > 0
+        and not _kg_only_demand
     )
     if _kg_builtin_adj:
         residential_gfa = max(0.0, residential_gfa - kg_bld_total)
@@ -295,12 +298,19 @@ def compute_tep_for_kit(
         sch_plot_total = sch_bld_total = 0.0
         sch_buckets = []
 
+    # === Эффективные площади соцобъектов для баланса/озеленения ===
+    # При only_demand=True объект размещается ВНЕ квартала и не занимает
+    # территорию (но потребность считается и отображается как обычно).
+    _sch_only_demand = options.include_school and options.school.only_demand
+    kg_plot_in_balance = 0.0 if _kg_only_demand else kg_plot_total
+    sch_plot_in_balance = 0.0 if _sch_only_demand else sch_plot_total
+
     # === Озеленение жилого ЗУ (нужно до housing_lot) ===
     green_ratio = norms.resolve("greening.housing_per_apartments")
     green_housing_v = greening.housing_greening_area(apartments_area_v, green_ratio)
     quarter_share = norms.resolve("greening.quarter_min_share")
     green_quarter_req_v = greening.quarter_greening_required(
-        site.area_m2, kg_plot_total + sch_plot_total, quarter_share
+        site.area_m2, kg_plot_in_balance + sch_plot_in_balance, quarter_share
     )
 
     # === ВПП — парковки и озеленение по своему ВРИ ===
@@ -370,7 +380,7 @@ def compute_tep_for_kit(
     drive_lot_share = (
         options.driveways_lot_share_override
         if options.driveways_lot_share_override is not None
-        else norms.resolve("driveways.housing_lot_share")
+        else norms.resolve("driveways.housing_lot_share", floors=options.floors)
     )
     drive_intra_v = driveways.intra_quarter_area(site.area_m2, drive_intra_share)
     drive_lot_v = driveways.housing_lot_driveways_area(footprint_v, drive_lot_share)
@@ -409,10 +419,11 @@ def compute_tep_for_kit(
         znop_source_label = norms.source_of("znop_per_person", kit=kit_developed)
 
     # === Баланс квартала ===
+    # При only_demand для соцобъектов их ЗУ не входит в баланс (см. выше).
     components = {
         "housing_lot": housing_lot_v,
-        "kindergarten_plot": kg_plot_total,
-        "school_plot": sch_plot_total,
+        "kindergarten_plot": kg_plot_in_balance,
+        "school_plot": sch_plot_in_balance,
         "znop": znop_area_v,
         "intra_quarter_driveways": drive_intra_v,
         "parking_multilevel": park.multilevel_footprint,
@@ -564,9 +575,12 @@ def compute_tep_for_kit(
             kg_plot_total,
             unit="m2",
             formula=(
-                f"Σ 24 м²/место × вместимость (встроенный ДОО, ПЗЗ СПб) = {kg_plot_total:.0f}"
-                if kg_btype == "built_in" and kg_plot_total > 0
-                else "Σ piecewise(plot_per_place, capacity) по объектам ДОО"
+                (
+                    f"Σ 24 м²/место × вместимость (встроенный ДОО, ПЗЗ СПб) = {kg_plot_total:.0f}"
+                    if kg_btype == "built_in" and kg_plot_total > 0
+                    else "Σ piecewise(plot_per_place, capacity) по объектам ДОО"
+                )
+                + (" — только потребность, в баланс не входит" if _kg_only_demand else "")
             ),
             source=(
                 norms.source_of("social_objects.kindergarten.plot_area_per_place_built_in")
@@ -604,7 +618,10 @@ def compute_tep_for_kit(
         school_plot_area=_F(
             sch_plot_total,
             unit="m2",
-            formula=f"plot(capacity) + бассейн={options.school.has_pool} + ядро={options.school.has_sport_core}",
+            formula=(
+                f"plot(capacity) + бассейн={options.school.has_pool} + ядро={options.school.has_sport_core}"
+                + (" — только потребность, в баланс не входит" if _sch_only_demand else "")
+            ),
         ),
         school_building_area=_F(sch_bld_total, unit="m2"),
         znop_per_person=_F(

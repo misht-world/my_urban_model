@@ -18,6 +18,14 @@ class KindergartenSpec(BaseModel):
     # если задано — фиксированное число объектов и вместимость каждого
     num_objects: int | None = None
     capacity_per_object: int | None = None
+    # «Только потребность»: ЗУ и здание ДОО не учитываются в балансе квартала
+    # и не вычитаются из жилой GFA (для built_in). Используется когда ДОО
+    # размещается за пределами квартала или уже существует. Места требуемые/
+    # принятые при этом считаются и показываются как обычно.
+    only_demand: bool = Field(
+        default=False,
+        description="ДОО учитывается только для расчёта потребности; ЗУ/здание не входят в баланс",
+    )
 
 
 class SchoolSpec(BaseModel):
@@ -31,3 +39,9 @@ class SchoolSpec(BaseModel):
     has_sport_core: bool = True
     num_objects: int | None = None
     capacity_per_object: int | None = None
+    # «Только потребность»: ЗУ СОШ не учитывается в балансе квартала.
+    # Используется когда СОШ размещается за пределами квартала.
+    only_demand: bool = Field(
+        default=False,
+        description="СОШ учитывается только для расчёта потребности; ЗУ не входит в баланс",
+    )
