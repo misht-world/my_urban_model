@@ -385,11 +385,20 @@ def compute_tep_for_kit(
     drive_intra_v = driveways.intra_quarter_area(site.area_m2, drive_intra_share)
     drive_lot_v = driveways.housing_lot_driveways_area(footprint_v, drive_lot_share)
 
+    # === Эффективные значения с учётом include_* флагов (v0.6.7) ===
+    # Если компонент отключён — он размещается за пределами квартала и не
+    # занимает территорию (но информационные поля по нему рассчитываются).
+    parking_open_in_lot = 0.0 if not options.include_parking else park.open_area
+    parking_ml_footprint_in_balance = (
+        0.0 if not options.include_parking else park.multilevel_footprint
+    )
+    drive_intra_in_balance = 0.0 if not options.include_intra_driveways else drive_intra_v
+
     # === Площадь жилого ЗУ (ЗУ жилой застройки) ===
     # ЗУ жилья = площадь застройки + проезды на ЗУ + озеленение жилого
-    #            + озеленение ВПП + открытые парковки
+    #            + озеленение ВПП + открытые парковки (если учитываются)
     housing_lot_v = (
-        footprint_v + drive_lot_v + green_housing_v + bi_greening_v + park.open_area
+        footprint_v + drive_lot_v + green_housing_v + bi_greening_v + parking_open_in_lot
     )
 
     # === КИТ ПЗЗ = площадь квартир / ЗУ жилой застройки ===
@@ -419,21 +428,23 @@ def compute_tep_for_kit(
         znop_source_label = norms.source_of("znop_per_person", kit=kit_developed)
 
     # === Баланс квартала ===
-    # При only_demand для соцобъектов их ЗУ не входит в баланс (см. выше).
+    # При include_*=False / only_demand компоненты в баланс не входят (см. выше).
+    znop_in_balance = 0.0 if not options.include_znop else znop_area_v
     components = {
         "housing_lot": housing_lot_v,
         "kindergarten_plot": kg_plot_in_balance,
         "school_plot": sch_plot_in_balance,
-        "znop": znop_area_v,
-        "intra_quarter_driveways": drive_intra_v,
-        "parking_multilevel": park.multilevel_footprint,
+        "znop": znop_in_balance,
+        "intra_quarter_driveways": drive_intra_in_balance,
+        "parking_multilevel": parking_ml_footprint_in_balance,
     }
     if custom_total_plot > 0:
         components["custom_objects"] = custom_total_plot
     # Фактическое озеленение квартала: ЗНОП + озеленение жилого ЗУ + ВПП + кастомные.
+    # ЗНОП учитывается, только если include_znop=True.
     # Норматив (25% площади квартала за вычетом ДОО/СОШ) — обязательная проверка.
     greening_actual_total = (
-        znop_area_v + green_housing_v + bi_greening_v + custom_total_greening
+        znop_in_balance + green_housing_v + bi_greening_v + custom_total_greening
     )
     bal = balance.compute_balance(
         site.area_m2,

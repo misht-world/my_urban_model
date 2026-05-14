@@ -28,6 +28,16 @@ class CalculationOptions(BaseModel):
     # Соцобъекты — учитывать или нет
     include_kindergarten: bool = True
     include_school: bool = True
+    # Прочие компоненты баланса — учитывать или нет (v0.6.7).
+    # По умолчанию все включены (стандартный сценарий). Выключают, когда
+    # компонент размещается за пределами квартала: парковки — на стоянке-
+    # спутнике; ЗНОП — на смежной зелёной зоне; внутриквартальные проезды —
+    # отсутствуют (плотная городская застройка с уличными проездами).
+    include_parking: bool = Field(default=True, description="Учитывать парковки в балансе")
+    include_znop: bool = Field(default=True, description="Учитывать ЗНОП в балансе и озеленении")
+    include_intra_driveways: bool = Field(
+        default=True, description="Учитывать внутриквартальные проезды в балансе"
+    )
 
     kindergarten: KindergartenSpec = Field(default_factory=KindergartenSpec)
     school: SchoolSpec = Field(default_factory=SchoolSpec)

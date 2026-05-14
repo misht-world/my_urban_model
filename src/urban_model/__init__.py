@@ -32,7 +32,7 @@
     print(res.summary())
 """
 
-__version__ = "0.6.6"
+__version__ = "0.6.7"
 
 from urban_model.core.inverse import (
     solve_max_kit,

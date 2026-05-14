@@ -176,3 +176,69 @@ class TestDrivewaysByFloors:
         assert res.kit.value > 0
         # И что drive_lot_share при 4 этажах = 1.00
         assert spb.resolve("driveways.housing_lot_share", floors=4) == 1.00
+
+
+# ---------------------------------------------------------------------------
+# v0.6.7: include_parking / include_znop / include_intra_driveways
+# ---------------------------------------------------------------------------
+
+class TestIncludeFlags:
+    """Новые флаги в CalculationOptions: занулять компонент при False."""
+
+    def test_no_parking_zeros_lot_open_and_ml(self, spb, site):
+        """include_parking=False: open_area не в housing_lot, multilevel — не в баланс."""
+        res_on = verify_kit(1.5, site, CalculationOptions(floors=12), spb)
+        res_off = verify_kit(
+            1.5, site,
+            CalculationOptions(floors=12, include_parking=False),
+            spb,
+        )
+        assert res_off.balance.components["parking_multilevel"] == 0.0
+        # Жилое ЗУ при отключённых парковках меньше → КИТ ПЗЗ выше
+        # (площадь квартир / меньшее ЗУ)
+        assert res_off.kit.value > res_on.kit.value
+
+    def test_no_znop_zeros_component_and_greening(self, spb, site):
+        """include_znop=False: znop_area не в balance.components И не в greening_actual."""
+        res_off = verify_kit(
+            1.5, site,
+            CalculationOptions(floors=12, include_znop=False),
+            spb,
+        )
+        assert res_off.balance.components["znop"] == 0.0
+        # greening_actual теперь без znop_area
+        assert res_off.balance.greening_actual < res_off.znop_area.value + 1.0 + (
+            # допустимая разница — другие источники озеленения (housing, vpp, custom)
+            10_000
+        )
+
+    def test_no_intra_driveways_zeros_component(self, spb, site):
+        """include_intra_driveways=False: drive_intra не в баланс."""
+        res_off = verify_kit(
+            1.5, site,
+            CalculationOptions(floors=12, include_intra_driveways=False),
+            spb,
+        )
+        assert res_off.balance.components["intra_quarter_driveways"] == 0.0
+
+    def test_all_off_increases_surplus(self, spb, site):
+        """Отключение всех опциональных компонентов → больший резерв."""
+        res_on = verify_kit(1.5, site, CalculationOptions(floors=12), spb)
+        res_off = verify_kit(
+            1.5, site,
+            CalculationOptions(
+                floors=12,
+                include_parking=False,
+                include_znop=False,
+                include_intra_driveways=False,
+            ),
+            spb,
+        )
+        assert res_off.balance.surplus > res_on.balance.surplus
+
+    def test_defaults_unchanged(self, spb, site):
+        """Дефолты CalculationOptions: все три флага True → старое поведение."""
+        opts = CalculationOptions(floors=12)
+        assert opts.include_parking is True
+        assert opts.include_znop is True
+        assert opts.include_intra_driveways is True
