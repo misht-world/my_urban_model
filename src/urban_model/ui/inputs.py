@@ -15,7 +15,7 @@ from urban_model.models import CalculationOptions, Site
 from urban_model.models.built_in import BuiltInArea
 from urban_model.models.custom_object import CustomObject
 from urban_model.models.parking import ParkingConfig
-from urban_model.models.social import KindergartenSpec, SchoolSpec
+from urban_model.models.social import KindergartenSpec, SchoolSpec, SportFacilitiesSpec
 
 
 @dataclass
@@ -97,6 +97,14 @@ def render_params_tab() -> UserInputs:
             st.caption("Включите компоненты — справа появятся их настройки.")
             include_kg = st.checkbox("🎒 ДОО — детские сады", value=True, key="include_kg")
             include_school = st.checkbox("🏫 СОШ — школы", value=True, key="include_school")
+            include_sport = st.checkbox(
+                "🏃 Плоскостные спортивные сооружения",
+                value=True, key="include_sport",
+                help=(
+                    "Норматив: 1000 м²/1000 чел + 40% озеленения по ПЗЗ (ВРИ 5.1.3). "
+                    "До 49% озеленения замещается самой спортплощадкой (п. 1.9.4 ПЗЗ)."
+                ),
+            )
             include_parking = st.checkbox("🅿️ Парковки", value=True, key="include_parking")
             include_znop = st.checkbox(
                 "🌳 ЗНОП — зелёные насаждения общего пользования",
@@ -126,6 +134,12 @@ def render_params_tab() -> UserInputs:
             school_spec = _render_school_tile()
         else:
             school_spec = SchoolSpec()
+
+        # Плоскостные спортивные сооружения
+        if include_sport:
+            sport_spec = _render_sport_tile()
+        else:
+            sport_spec = SportFacilitiesSpec()
 
         # Парковки
         if include_parking:
@@ -159,8 +173,8 @@ def render_params_tab() -> UserInputs:
 
         # Сообщение когда правая колонка пуста
         if not any([
-            include_kg, include_school, include_parking, include_znop,
-            include_vpp, include_intra, include_custom,
+            include_kg, include_school, include_sport, include_parking,
+            include_znop, include_vpp, include_intra, include_custom,
         ]):
             st.info(
                 "⬅ Выберите хотя бы один компонент в левой колонке, "
@@ -175,11 +189,13 @@ def render_params_tab() -> UserInputs:
         planning_doc=planning_doc,
         include_kindergarten=include_kg,
         include_school=include_school,
+        include_sport_facilities=include_sport,
         include_parking=include_parking,
         include_znop=include_znop,
         include_intra_driveways=include_intra,
         kindergarten=kg_spec,
         school=school_spec,
+        sport_facilities=sport_spec,
         parking=parking,
         built_in=built_in,
         znop_per_person_override=znop_pp_override,
@@ -199,6 +215,28 @@ def render_params_tab() -> UserInputs:
 # ===========================================================================
 # Секции — выделены в отдельные функции для читаемости
 # ===========================================================================
+
+def _render_sport_tile() -> SportFacilitiesSpec:
+    """Плитка настроек плоскостных спортивных сооружений (без чекбокса 'Учитывать')."""
+    with st.container(border=True):
+        st.markdown("##### 🏃 Плоскостные спортивные сооружения")
+        st.caption(
+            "Норматив СПб: **1000 м²/1000 чел** + **40% озеленения** на ЗУ "
+            "(по ПЗЗ для ВРИ 5.1.3). По п. 1.9.4 ПЗЗ до **49%** озеленения "
+            "может быть замещено самой спортплощадкой → на ЗУ дополнительно "
+            "≈ 20.4% озеленения. Пример: 1000 чел → ЗУ ≈ 1204 м²."
+        )
+        only_demand = st.checkbox(
+            "Только рассчитать потребность",
+            value=False, key="sport_only_demand",
+            help=(
+                "Показать площади, но НЕ учитывать ЗУ спортсооружений в "
+                "балансе квартала. Полезно, если они размещаются за пределами "
+                "квартала или уже существуют."
+            ),
+        )
+    return SportFacilitiesSpec(only_demand=bool(only_demand))
+
 
 def _render_intra_driveways_tile() -> float | None:
     """Плитка настроек внутриквартальных проездов. Override на долю."""

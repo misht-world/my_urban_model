@@ -94,6 +94,12 @@ class TEPResult(BaseModel):
     school_plot_area: TEPField
     school_building_area: TEPField
 
+    # Плоскостные спортивные сооружения (v0.6.8)
+    sport_facilities_area: TEPField           # площадь самих спортплощадок, м²
+    sport_facilities_plot_area: TEPField      # полный ЗУ (sport + extra greening), м²
+    sport_facilities_greening_required: TEPField  # требуемое озеленение по ПЗЗ
+    sport_facilities_greening_extra: TEPField     # доп. озеленение после substitution
+
     # ЗНОП
     znop_per_person: TEPField
     znop_area: TEPField

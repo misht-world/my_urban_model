@@ -7,7 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from urban_model.models.built_in import BuiltInArea
 from urban_model.models.custom_object import CustomObject
 from urban_model.models.parking import ParkingConfig
-from urban_model.models.social import KindergartenSpec, SchoolSpec
+from urban_model.models.social import KindergartenSpec, SchoolSpec, SportFacilitiesSpec
 
 
 class CalculationOptions(BaseModel):
@@ -41,6 +41,12 @@ class CalculationOptions(BaseModel):
 
     kindergarten: KindergartenSpec = Field(default_factory=KindergartenSpec)
     school: SchoolSpec = Field(default_factory=SchoolSpec)
+
+    # Плоскостные спортивные сооружения (ВРИ 5.1.3, v0.6.8) — по умолчанию включены.
+    include_sport_facilities: bool = Field(
+        default=True, description="Учитывать плоскостные спорт. сооружения в балансе"
+    )
+    sport_facilities: SportFacilitiesSpec = Field(default_factory=SportFacilitiesSpec)
 
     # Парковочный сценарий
     parking: ParkingConfig = Field(

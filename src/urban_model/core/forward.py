@@ -26,6 +26,7 @@ from urban_model.calculations import (
     parking,
     population,
     school,
+    sport,
     znop,
 )
 from urban_model.calculations.allowed_capacities import (
@@ -298,19 +299,35 @@ def compute_tep_for_kit(
         sch_plot_total = sch_bld_total = 0.0
         sch_buckets = []
 
+    # === Плоскостные спортивные сооружения (ВРИ 5.1.3, v0.6.8) ===
+    # Норматив: 1000 м²/1000 чел + озеленение 40% от ЗУ.
+    # До 49% озеленения замещается самой спортплощадкой (п.1.9.4 ПЗЗ).
+    # ЗУ_спорта = sport_area + greening_extra.
+    if options.include_sport_facilities and pop_v > 0:
+        sport_br = sport.compute(pop_v, norms)
+    else:
+        sport_br = sport.SportBreakdown(0.0, 0.0, 0.0, 0.0, 0.0)
+
     # === Эффективные площади соцобъектов для баланса/озеленения ===
     # При only_demand=True объект размещается ВНЕ квартала и не занимает
     # территорию (но потребность считается и отображается как обычно).
     _sch_only_demand = options.include_school and options.school.only_demand
+    _sport_only_demand = (
+        options.include_sport_facilities and options.sport_facilities.only_demand
+    )
     kg_plot_in_balance = 0.0 if _kg_only_demand else kg_plot_total
     sch_plot_in_balance = 0.0 if _sch_only_demand else sch_plot_total
+    sport_plot_in_balance = 0.0 if _sport_only_demand else sport_br.plot_area
 
     # === Озеленение жилого ЗУ (нужно до housing_lot) ===
     green_ratio = norms.resolve("greening.housing_per_apartments")
     green_housing_v = greening.housing_greening_area(apartments_area_v, green_ratio)
     quarter_share = norms.resolve("greening.quarter_min_share")
+    # Спорт-ЗУ исключаем из знаменателя 25% (внутри него своё озеленение).
     green_quarter_req_v = greening.quarter_greening_required(
-        site.area_m2, kg_plot_in_balance + sch_plot_in_balance, quarter_share
+        site.area_m2,
+        kg_plot_in_balance + sch_plot_in_balance + sport_plot_in_balance,
+        quarter_share,
     )
 
     # === ВПП — парковки и озеленение по своему ВРИ ===
@@ -434,6 +451,7 @@ def compute_tep_for_kit(
         "housing_lot": housing_lot_v,
         "kindergarten_plot": kg_plot_in_balance,
         "school_plot": sch_plot_in_balance,
+        "sport_facilities": sport_plot_in_balance,
         "znop": znop_in_balance,
         "intra_quarter_driveways": drive_intra_in_balance,
         "parking_multilevel": parking_ml_footprint_in_balance,
@@ -635,6 +653,69 @@ def compute_tep_for_kit(
             ),
         ),
         school_building_area=_F(sch_bld_total, unit="m2"),
+        # ── Плоскостные спортивные сооружения (v0.6.8) ──────────────────
+        sport_facilities_area=_F(
+            sport_br.sport_area,
+            unit="m2",
+            formula=(
+                f"население × {norms.resolve('sport_facilities.area_per_1000')} / 1000"
+                if options.include_sport_facilities and pop_v > 0
+                else "Спорт. сооружения отключены"
+            ),
+            source=(
+                norms.source_of("sport_facilities.area_per_1000")
+                if options.include_sport_facilities and pop_v > 0
+                else None
+            ),
+        ),
+        sport_facilities_plot_area=_F(
+            sport_br.plot_area,
+            unit="m2",
+            formula=(
+                (
+                    f"sport={sport_br.sport_area:.0f} + extra_greening="
+                    f"{sport_br.greening_extra:.0f} (после substitution "
+                    f"{norms.resolve('sport_facilities.greening_substitution_max') * 100:.0f}%)"
+                )
+                + (" — только потребность, в баланс не входит" if _sport_only_demand else "")
+                if options.include_sport_facilities and pop_v > 0
+                else "—"
+            ),
+            source=(
+                norms.source_of("sport_facilities.greening_ratio")
+                if options.include_sport_facilities and pop_v > 0
+                else None
+            ),
+        ),
+        sport_facilities_greening_required=_F(
+            sport_br.greening_required,
+            unit="m2",
+            formula=(
+                f"sport_area × {norms.resolve('sport_facilities.greening_ratio')} (ПЗЗ для ВРИ 5.1.3)"
+                if options.include_sport_facilities and pop_v > 0
+                else "—"
+            ),
+            source=(
+                norms.source_of("sport_facilities.greening_ratio")
+                if options.include_sport_facilities and pop_v > 0
+                else None
+            ),
+        ),
+        sport_facilities_greening_extra=_F(
+            sport_br.greening_extra,
+            unit="m2",
+            formula=(
+                f"greening_required − substituted = "
+                f"{sport_br.greening_required:.0f} − {sport_br.greening_substituted:.0f}"
+                if options.include_sport_facilities and pop_v > 0
+                else "—"
+            ),
+            source=(
+                norms.source_of("sport_facilities.greening_substitution_max")
+                if options.include_sport_facilities and pop_v > 0
+                else None
+            ),
+        ),
         znop_per_person=_F(
             znop_pp,
             unit="m2/чел",

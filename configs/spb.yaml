@@ -271,6 +271,25 @@ driveways:
       - { up_to: .inf, value: 1.20 }
     note: "≤4 эт. — 100% от застройки; >4 эт. — 120%"
     source: "принято условно"
+
+# === Плоскостные спортивные сооружения (ВРИ 5.1.3) ===
+sport_facilities:
+  area_per_1000:
+    type: scalar
+    value: 1000
+    unit: "m2_per_1000_people"
+    note: "плоскостные спортивные сооружения на 1000 жителей"
+    source: "НГП СПб"
+  greening_ratio:
+    type: scalar
+    value: 0.4
+    note: "минимальная доля озеленения ЗУ спортивных сооружений"
+    source: "ПЗЗ СПб (ВРИ 5.1.3)"
+  greening_substitution_max:
+    type: scalar
+    value: 0.49
+    note: "макс. доля озеленения, замещаемая открытыми спорт-площадками (до 50% по п.1.9.4 ПЗЗ; 49% — для запаса)"
+    source: "п. 1.9.4 ПЗЗ СПб (в т.ч. 1.9.3.2)"
   non_housing_lot_share:
     type: scalar
     value: 1.00

@@ -233,6 +233,20 @@ def render_details(result: TEPResult) -> None:
         ]
         _show_rows(rows)
 
+    # 🏃 Плоскостные спортивные сооружения
+    if (result.sport_facilities_plot_area.value or 0) > 0:
+        with st.expander("🏃 Плоскостные спортивные сооружения (ВРИ 5.1.3)", expanded=False):
+            rows = [
+                _row("Площадь сооружений", result.sport_facilities_area, fmt_m2),
+                _row("Озеленение требуется (40%)",
+                     result.sport_facilities_greening_required, fmt_m2),
+                _row("Доп. озеленение на ЗУ (после substitution)",
+                     result.sport_facilities_greening_extra, fmt_m2),
+                _row("Полный ЗУ (sport + доп. озеленение)",
+                     result.sport_facilities_plot_area, fmt_m2),
+            ]
+            _show_rows(rows)
+
     # 🌳 ЗНОП и озеленение
     with st.expander("🌳 ЗНОП и озеленение", expanded=False):
         rows = [
@@ -280,6 +294,7 @@ def render_details(result: TEPResult) -> None:
                 "housing_lot": "ЗУ жилой застройки",
                 "kindergarten_plot": "Участки ДОО",
                 "school_plot": "Участки СОШ",
+                "sport_facilities": "Спортивные сооружения (ВРИ 5.1.3)",
                 "znop": "ЗНОП",
                 "intra_quarter_driveways": "Внутриквартальные проезды",
                 "parking_multilevel": "Многоуровневые паркинги",
