@@ -303,8 +303,11 @@ def compute_tep_for_kit(
     # Норматив: 1000 м²/1000 чел + озеленение 40% от ЗУ.
     # До 49% озеленения замещается самой спортплощадкой (п.1.9.4 ПЗЗ).
     # ЗУ_спорта = sport_area + greening_extra.
-    if options.include_sport_facilities and pop_v > 0:
-        sport_br = sport.compute(pop_v, norms)
+    if options.include_sport_facilities:
+        sport_br = sport.compute(
+            pop_v, norms,
+            area_override_m2=options.sport_facilities.area_override_m2,
+        )
     else:
         sport_br = sport.SportBreakdown(0.0, 0.0, 0.0, 0.0, 0.0)
 
@@ -658,13 +661,19 @@ def compute_tep_for_kit(
             sport_br.sport_area,
             unit="m2",
             formula=(
-                f"население × {norms.resolve('sport_facilities.area_per_1000')} / 1000"
-                if options.include_sport_facilities and pop_v > 0
+                f"override = {sport_br.sport_area:.0f} м² (задано вручную)"
+                if options.include_sport_facilities
+                    and options.sport_facilities.area_override_m2 is not None
+                else f"население × {norms.resolve('sport_facilities.area_per_1000')} / 1000"
+                if options.include_sport_facilities and sport_br.sport_area > 0
                 else "Спорт. сооружения отключены"
             ),
             source=(
-                norms.source_of("sport_facilities.area_per_1000")
-                if options.include_sport_facilities and pop_v > 0
+                "пользовательский ввод"
+                if options.include_sport_facilities
+                    and options.sport_facilities.area_override_m2 is not None
+                else norms.source_of("sport_facilities.area_per_1000")
+                if options.include_sport_facilities and sport_br.sport_area > 0
                 else None
             ),
         ),
@@ -678,12 +687,12 @@ def compute_tep_for_kit(
                     f"{norms.resolve('sport_facilities.greening_substitution_max') * 100:.0f}%)"
                 )
                 + (" — только потребность, в баланс не входит" if _sport_only_demand else "")
-                if options.include_sport_facilities and pop_v > 0
+                if options.include_sport_facilities and sport_br.plot_area > 0
                 else "—"
             ),
             source=(
                 norms.source_of("sport_facilities.greening_ratio")
-                if options.include_sport_facilities and pop_v > 0
+                if options.include_sport_facilities and sport_br.plot_area > 0
                 else None
             ),
         ),
@@ -692,12 +701,12 @@ def compute_tep_for_kit(
             unit="m2",
             formula=(
                 f"sport_area × {norms.resolve('sport_facilities.greening_ratio')} (ПЗЗ для ВРИ 5.1.3)"
-                if options.include_sport_facilities and pop_v > 0
+                if options.include_sport_facilities and sport_br.sport_area > 0
                 else "—"
             ),
             source=(
                 norms.source_of("sport_facilities.greening_ratio")
-                if options.include_sport_facilities and pop_v > 0
+                if options.include_sport_facilities and sport_br.sport_area > 0
                 else None
             ),
         ),
@@ -707,12 +716,12 @@ def compute_tep_for_kit(
             formula=(
                 f"greening_required − substituted = "
                 f"{sport_br.greening_required:.0f} − {sport_br.greening_substituted:.0f}"
-                if options.include_sport_facilities and pop_v > 0
+                if options.include_sport_facilities and sport_br.sport_area > 0
                 else "—"
             ),
             source=(
                 norms.source_of("sport_facilities.greening_substitution_max")
-                if options.include_sport_facilities and pop_v > 0
+                if options.include_sport_facilities and sport_br.sport_area > 0
                 else None
             ),
         ),

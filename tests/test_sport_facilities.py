@@ -153,3 +153,56 @@ class TestSportNormatives:
         opts = CalculationOptions(floors=12)
         assert opts.include_sport_facilities is True
         assert opts.sport_facilities.only_demand is False
+        assert opts.sport_facilities.area_override_m2 is None
+
+
+# ---------------------------------------------------------------------------
+# Override площади спортсооружений (v0.6.9)
+# ---------------------------------------------------------------------------
+
+class TestSportAreaOverride:
+    """Пользователь задаёт площадь самих спортплощадок вручную."""
+
+    def test_override_replaces_norm_in_pure_compute(self, spb):
+        """sport.compute(area_override=2000) → sport_area=2000 независимо от pop."""
+        br = sport.compute(1000.0, spb, area_override_m2=2000.0)
+        assert br.sport_area == 2000.0
+        # Озеленение пересчитывается от новой площади
+        assert br.greening_required == pytest.approx(2000.0 * 0.4)
+        assert br.plot_area == pytest.approx(2000.0 + 800 - 800 * 0.49)
+
+    def test_override_works_with_zero_population(self, spb):
+        """Можно задать спортплощадку даже без жителей (например, для существующего объекта)."""
+        br = sport.compute(0.0, spb, area_override_m2=1500.0)
+        assert br.sport_area == 1500.0
+        assert br.plot_area > 1500.0
+
+    def test_override_in_result_field(self, spb, site):
+        """В TEPResult.sport_facilities_area отражается override."""
+        res = verify_kit(
+            1.5, site,
+            CalculationOptions(
+                floors=12,
+                sport_facilities=SportFacilitiesSpec(area_override_m2=5000.0),
+            ),
+            spb,
+        )
+        assert res.sport_facilities_area.value == 5000.0
+        assert "override" in (res.sport_facilities_area.formula or "")
+
+    def test_zero_override_falls_back_to_norm(self, spb, site):
+        """area_override=0 → используется норматив (не считать как override)."""
+        # area_override = 0 — это фактически «не задано», fallback на норматив.
+        # SportFacilitiesSpec.area_override_m2=0 проходит ge=0.
+        # В compute() условие `area_override > 0` → fallback на норматив.
+        res_norm = verify_kit(1.5, site, CalculationOptions(floors=12), spb)
+        res_zero = verify_kit(
+            1.5, site,
+            CalculationOptions(
+                floors=12,
+                sport_facilities=SportFacilitiesSpec(area_override_m2=0.0),
+            ),
+            spb,
+        )
+        # Должны совпадать (0 = fallback)
+        assert res_zero.sport_facilities_area.value == res_norm.sport_facilities_area.value

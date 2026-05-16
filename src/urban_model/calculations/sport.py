@@ -37,16 +37,31 @@ class SportBreakdown:
     plot_area: float            # полный ЗУ = sport_area + greening_extra
 
 
-def compute(population: float, norms: Normatives) -> SportBreakdown:
-    """Расчёт площадей плоскостных спорт. сооружений по жителям."""
-    if population <= 0:
+def compute(
+    population: float,
+    norms: Normatives,
+    area_override_m2: float | None = None,
+) -> SportBreakdown:
+    """Расчёт площадей плоскостных спорт. сооружений.
+
+    Args:
+        population: население квартала (чел).
+        norms: загруженные нормативы.
+        area_override_m2: если задано (>0) — заменяет нормативную
+            sport_area = population × area_per_1000 / 1000.
+    """
+    if population <= 0 and not (area_override_m2 and area_override_m2 > 0):
         return SportBreakdown(0.0, 0.0, 0.0, 0.0, 0.0)
 
-    area_per_1000 = norms.resolve("sport_facilities.area_per_1000")
     greening_ratio = norms.resolve("sport_facilities.greening_ratio")
     substitution_max = norms.resolve("sport_facilities.greening_substitution_max")
 
-    sport_area = population * area_per_1000 / 1000
+    if area_override_m2 is not None and area_override_m2 > 0:
+        sport_area = float(area_override_m2)
+    else:
+        area_per_1000 = norms.resolve("sport_facilities.area_per_1000")
+        sport_area = population * area_per_1000 / 1000
+
     greening_required = sport_area * greening_ratio
     greening_substituted = greening_required * substitution_max
     greening_extra = greening_required - greening_substituted

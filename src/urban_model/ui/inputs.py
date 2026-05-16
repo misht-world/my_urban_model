@@ -235,7 +235,38 @@ def _render_sport_tile() -> SportFacilitiesSpec:
                 "квартала или уже существуют."
             ),
         )
-    return SportFacilitiesSpec(only_demand=bool(only_demand))
+        size_mode = st.radio(
+            "Площадь спортплощадок",
+            ["По нормативу (1000 м²/1000 чел)", "Задать вручную"],
+            key="sport_size_mode",
+        )
+        area_override: float | None = None
+        if size_mode == "Задать вручную":
+            c1, c2 = st.columns(2)
+            unit = c1.radio(
+                "Единица", ["м²", "га"],
+                horizontal=True, key="sport_area_unit",
+                label_visibility="collapsed",
+            )
+            if unit == "га":
+                area_ga = c2.number_input(
+                    "Площадь, га",
+                    min_value=0.0, max_value=50.0,
+                    value=0.1, step=0.05,
+                    key="sport_area_ga",
+                )
+                area_override = float(area_ga) * 10_000
+            else:
+                area_override = float(c2.number_input(
+                    "Площадь, м²",
+                    min_value=0.0, max_value=500_000.0,
+                    value=1_000.0, step=100.0,
+                    key="sport_area_m2",
+                ))
+    return SportFacilitiesSpec(
+        only_demand=bool(only_demand),
+        area_override_m2=area_override,
+    )
 
 
 def _render_intra_driveways_tile() -> float | None:
@@ -355,7 +386,7 @@ def _render_vpp_tile() -> tuple[BuiltInArea | None, bool]:
         vpp_size_mode = st.radio(
             "Площадь ВПП",
             [
-                "Площадь застройки 1 этажа (рассчитать)",
+                "Площадь застройки 1 этажа",
                 "Задать вручную, м²",
             ],
             key="vpp_size_mode",
@@ -494,15 +525,13 @@ def _render_school_tile() -> SchoolSpec:
                 "за пределами квартала или уже существует."
             ),
         )
-        c1, c2 = st.columns(2)
-        with c1:
-            school_pool = st.checkbox(
-                "С бассейном (+0.2 га)", value=True, key="school_pool",
-            )
-        with c2:
-            school_sport = st.checkbox(
-                "Со спортивным ядром (+0.7 га)", value=True, key="school_sport",
-            )
+        # Вертикально, чтобы вторая галочка не терялась в узкой правой колонке
+        school_pool = st.checkbox(
+            "С бассейном (+0.2 га)", value=True, key="school_pool",
+        )
+        school_sport = st.checkbox(
+            "Со спортивным ядром (+0.7 га)", value=True, key="school_sport",
+        )
         sch_override = st.checkbox(
             "Задать число СОШ вручную", value=False, key="sch_override",
         )
