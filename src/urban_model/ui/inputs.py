@@ -778,7 +778,16 @@ def _render_share_slider(
 
     with c_slider:
         if not interactive:
-            st.metric(slider_label, f"{st.session_state[pct_key]:.1f}%")
+            # Компактная замена st.metric (которая давала слишком крупный шрифт):
+            # серый лейбл + значение того же размера, что и у обычного слайдера.
+            st.markdown(
+                f"<div style='padding:0.25rem 0 0.5rem 0;line-height:1.3;'>"
+                f"<span style='color:#6B7280;font-size:0.85rem;'>{slider_label}</span><br>"
+                f"<span style='font-weight:500;font-size:1rem;'>"
+                f"{st.session_state[pct_key]:.1f}%</span>"
+                f"</div>",
+                unsafe_allow_html=True,
+            )
         else:
             st.slider(
                 slider_label,
