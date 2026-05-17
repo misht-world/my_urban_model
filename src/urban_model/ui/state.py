@@ -56,26 +56,58 @@ def run_calculation(
     target_surplus_m2: float = 0.0,
     verify_kit_value: float = 1.0,
     vpp_auto_one_floor: bool = False,
+    vpp_request: Any = None,
 ) -> TEPResult:
     """Унифицированный запуск расчёта по выбранному режиму.
 
-    Если vpp_auto_one_floor=True и options.built_in задан с area_m2=0, делаем
-    двухпроходный расчёт: первый проход — без ВПП, чтобы получить footprint;
-    второй — с built_in.area_m2 = footprint первого этажа.
+    Двухпроходные расчёты ВПП:
+    - vpp_auto_one_floor=True + options.built_in: legacy single, ВПП = footprint.
+    - vpp_request (VppRequest): новый механизм 5 вариантов (v0.7.1).
+      Проход 1 → footprint + population → vpp.build_built_ins → проход 2.
     """
+    from urban_model.calculations import vpp as _vpp
+
     if vpp_auto_one_floor and options.built_in is not None:
-        # 1-й проход: без ВПП
+        # Legacy: 1 ВПП = footprint
         opts_step1 = options.model_copy(deep=True)
         opts_step1.built_in = None
         r0 = solve_max_kit(site, opts_step1, norms)
         bi_area = r0.housing_footprint.value or 0.0
-        # 2-й проход: с ВПП = footprint
         opts_step2 = options.model_copy(deep=True)
         opts_step2.built_in = BuiltInArea(
             area_m2=max(bi_area, 1.0),
             vri_code=options.built_in.vri_code,
             label="1 этаж жилого дома",
         )
+        options = opts_step2
+
+    if vpp_request is not None:
+        # v0.7.1: двухпроходный расчёт для списка ВПП.
+        # Проход 1 — БЕЗ ВПП → получаем footprint и population.
+        opts_step1 = options.model_copy(deep=True)
+        opts_step1.built_in = None
+        opts_step1.built_in_list = []
+        r0 = solve_max_kit(site, opts_step1, norms)
+        footprint = r0.housing_footprint.value or 0.0
+        pop = r0.population.value or 0.0
+
+        # Сохраняем для UI-превью на следующем рендере
+        st.session_state["_last_population"] = pop
+
+        # Собираем список ВПП по выбранному режиму
+        build_res = _vpp.build_built_ins(
+            mode=vpp_request.mode,
+            population=pop,
+            footprint=footprint,
+            norms=norms,
+            custom_4_4_m2=vpp_request.custom_4_4_m2,
+            custom_4_6_m2=vpp_request.custom_4_6_m2,
+        )
+
+        # Проход 2 — с готовым списком ВПП
+        opts_step2 = options.model_copy(deep=True)
+        opts_step2.built_in = None
+        opts_step2.built_in_list = build_res.built_ins
         options = opts_step2
 
     if mode == "max_kit":
@@ -87,10 +119,11 @@ def run_calculation(
     else:
         raise ValueError(f"Неизвестный режим: {mode}")
 
-    # Сохраняем оценку общей потребности в м/м — для подсказок в UI
-    # парковок (count×cap режим показывает примерную раскладку).
     if result.parking_required_places.value is not None:
         st.session_state["_last_total_required"] = int(result.parking_required_places.value)
+    # Сохраняем население для VPP-превью в UI
+    if result.population.value is not None:
+        st.session_state["_last_population"] = float(result.population.value)
     return result
 
 

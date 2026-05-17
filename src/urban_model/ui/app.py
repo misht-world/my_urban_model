@@ -147,6 +147,7 @@ with tab_calc:
             target_surplus_m2=inputs.target_surplus_m2,
             verify_kit_value=inputs.verify_kit_value,
             vpp_auto_one_floor=inputs.vpp_auto_one_floor,
+            vpp_request=inputs.vpp_request,
         )
     except Exception as e:
         st.error(f"Ошибка расчёта: {e}")

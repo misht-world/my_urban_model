@@ -11,11 +11,24 @@ from dataclasses import dataclass
 import pandas as pd
 import streamlit as st
 
+from urban_model.calculations.vpp import VppMode
 from urban_model.models import CalculationOptions, Site
 from urban_model.models.built_in import BuiltInArea
 from urban_model.models.custom_object import CustomObject
 from urban_model.models.parking import ParkingConfig
 from urban_model.models.social import KindergartenSpec, SchoolSpec, SportFacilitiesSpec
+
+
+@dataclass
+class VppRequest:
+    """Запрос на расчёт ВПП по одному из 5 вариантов (v0.7.1).
+
+    Используется state.run_calculation для двухпроходного расчёта:
+    проход 1 → footprint + population → vpp.build_built_ins → проход 2.
+    """
+    mode: VppMode
+    custom_4_4_m2: float | None = None
+    custom_4_6_m2: float | None = None
 
 
 @dataclass
@@ -26,6 +39,8 @@ class UserInputs:
     target_surplus_m2: float
     verify_kit_value: float
     vpp_auto_one_floor: bool
+    # v0.7.1: новый механизм списка ВПП с 5 режимами. Если None — ВПП не считаем.
+    vpp_request: VppRequest | None = None
 
 
 # Допустимые ВРИ для произвольных объектов
@@ -153,11 +168,15 @@ def render_params_tab() -> UserInputs:
         else:
             znop_pp_override, znop_total_override = None, None
 
-        # ВПП
+        # ВПП — новый механизм с 5 вариантами (v0.7.1)
         if include_vpp:
-            built_in, vpp_auto = _render_vpp_tile()
+            vpp_request = _render_vpp_tile()
+            built_in = None      # legacy single — больше не используется
+            vpp_auto = False     # legacy auto-floor — больше не используется
         else:
-            built_in, vpp_auto = None, False
+            vpp_request = None
+            built_in = None
+            vpp_auto = False
 
         # Внутриквартальные проезды
         if include_intra:
@@ -209,6 +228,7 @@ def render_params_tab() -> UserInputs:
         target_surplus_m2=target_surplus_m2,
         verify_kit_value=verify_kit_value,
         vpp_auto_one_floor=vpp_auto,
+        vpp_request=vpp_request,
     )
 
 
@@ -364,44 +384,84 @@ def _render_lot_share_expander() -> float | None:
         return lot_pct / 100
 
 
-def _render_vpp_tile() -> tuple[BuiltInArea | None, bool]:
-    """Плитка настроек ВПП (без внешнего чекбокса «Учитывать»)."""
+def _render_vpp_tile() -> VppRequest:
+    """Плитка настроек ВПП с 5 вариантами размещения (v0.7.1).
+
+    Возвращает VppRequest. Список ВПП собирается в state.run_calculation
+    через двухпроходный расчёт (нужны footprint и population).
+    """
     with st.container(border=True):
         st.markdown("##### 🏪 Встроенно-пристроенные помещения (ВПП)")
         st.caption(
-            "Занимают часть GFA дома, требуют своих парковок и озеленения по ВРИ."
+            "Обязательные ВПП по НГП СПб: 4.4 торговля, 4.6 общепит, "
+            "3.3 быт.обсл., 3.4.1 поликлиника, 3.5.1 школа искусств. "
+            "Выберите вариант размещения:"
         )
-        vpp_vri = st.selectbox(
-            "ВРИ-код ВПП",
-            [
-                "4.4 — магазины",
-                "4.6 — общепит",
-                "3.3 — бытовые услуги",
-                "3.6 — культура",
-                "3.7 — религия",
-            ],
-            index=0, key="vpp_vri",
+
+        VPP_MODES = {
+            "min_only": "Минимум по нормативу (все 5 ВРИ)",
+            "min_plus": "Минимум + дополнительные 4.4/4.6",
+            "custom_only": "Только 4.4 и/или 4.6 вручную",
+            "full_floor": "Весь 1 этаж (min + остаток между 4.4 и 4.6)",
+            "half_floor": "50% 1 этажа (min + остаток между 4.4 и 4.6)",
+        }
+        mode_label = st.radio(
+            "Вариант размещения",
+            list(VPP_MODES.values()),
+            key="vpp_mode_label",
         )
-        vri_code = vpp_vri.split(" ")[0]
-        vpp_size_mode = st.radio(
-            "Площадь ВПП",
-            [
-                "Площадь застройки 1 этажа",
-                "Задать вручную, м²",
-            ],
-            key="vpp_size_mode",
-        )
-        if vpp_size_mode.startswith("Площадь застройки"):
-            return (
-                BuiltInArea(area_m2=1.0, vri_code=vri_code, label="1 этаж"),
-                True,
-            )
-        vpp_area = st.number_input(
-            "Площадь ВПП, м²",
-            min_value=10.0, max_value=100_000.0,
-            value=2_000.0, step=100.0, key="vpp_area",
-        )
-        return BuiltInArea(area_m2=float(vpp_area), vri_code=vri_code), False
+        # Обратный mapping label → ключ
+        mode: VppMode = next(k for k, v in VPP_MODES.items() if v == mode_label)
+
+        # Поля для custom 4.4 / 4.6 — только для min_plus и custom_only
+        custom_44 = None
+        custom_46 = None
+        if mode in ("min_plus", "custom_only"):
+            c1, c2 = st.columns(2)
+            with c1:
+                use_44 = st.checkbox(
+                    "4.4 — торговля", value=(mode == "min_plus"),
+                    key="vpp_custom_use_44",
+                )
+                if use_44:
+                    custom_44 = float(st.number_input(
+                        "Площадь 4.4, м²",
+                        min_value=10.0, max_value=50_000.0,
+                        value=500.0, step=100.0,
+                        key="vpp_custom_44_m2",
+                    ))
+            with c2:
+                use_46 = st.checkbox(
+                    "4.6 — общепит", value=(mode == "min_plus"),
+                    key="vpp_custom_use_46",
+                )
+                if use_46:
+                    custom_46 = float(st.number_input(
+                        "Площадь 4.6, м²",
+                        min_value=10.0, max_value=50_000.0,
+                        value=300.0, step=100.0,
+                        key="vpp_custom_46_m2",
+                    ))
+
+        # Превью обязательных площадей от последней рассчитанной population
+        last_pop = st.session_state.get("_last_population", None)
+        if last_pop and last_pop > 0:
+            with st.expander("ℹ Обязательная программа НГП (превью)", expanded=False):
+                from urban_model.calculations import vpp as _vpp
+                from urban_model.normatives import load_normatives
+                _spb = load_normatives("spb")
+                m = _vpp.compute_mandatory_areas(last_pop, _spb)
+                st.markdown(
+                    f"**Население:** ~{last_pop:.0f} чел  \n"
+                    f"• 4.4 торговля: {m.shopping_4_4:.0f} м²  \n"
+                    f"• 4.6 общепит: {m.catering_4_6:.0f} м²  \n"
+                    f"• 3.3 быт.обсл.: {m.domestic_3_3:.0f} м²  \n"
+                    f"• 3.4.1 поликлиника: {m.medical_3_4_1:.0f} м²  \n"
+                    f"• 3.5.1 школа искусств: {m.arts_3_5_1:.0f} м²  \n"
+                    f"**Итого min:** {m.total:.0f} м²"
+                )
+
+    return VppRequest(mode=mode, custom_4_4_m2=custom_44, custom_4_6_m2=custom_46)
 
 
 def _render_znop_tile() -> tuple[float | None, float | None]:

@@ -28,12 +28,14 @@ from urban_model.calculations import (
     school,
     social_parking,
     sport,
+    vpp,
     znop,
 )
 from urban_model.calculations.allowed_capacities import (
     build_warnings as _build_allowed_warnings,
 )
 from urban_model.calculations.parking import compute_parking_breakdown
+from urban_model.models.built_in import BuiltInArea
 from urban_model.models.options import CalculationOptions
 from urban_model.models.result import Status, TEPField, TEPResult
 from urban_model.models.site import Site
@@ -69,13 +71,22 @@ def compute_tep_for_kit(
     gfa_v = housing.gfa_from_kit(kit, site.area_m2)
     apt_ratio = norms.resolve("building_params.apartments_to_gfa_ratio")
 
-    # Если задан BuiltInArea — площадь ВПП вычитается из GFA до перевода в квартиры.
-    # Иначе используется legacy `vpp_share`.
+    # ВПП — собираем общий список из legacy single (`built_in`) и нового
+    # `built_in_list`. Все они вычитаются из GFA жилого дома (v0.7.1).
+    all_built_ins: list[BuiltInArea] = list(options.built_in_list)
     if options.built_in is not None:
-        bi_area = min(options.built_in.area_m2, gfa_v)  # safety: ВПП не больше GFA
+        all_built_ins.insert(0, options.built_in)
+
+    if all_built_ins:
+        # Сумма площадей всех ВПП (safety: не больше GFA)
+        total_bi_area = sum(b.area_m2 for b in all_built_ins)
+        bi_area = min(total_bi_area, gfa_v)
         residential_gfa = gfa_v - bi_area
         apartments_area_v = residential_gfa * apt_ratio
-        bi_vri = options.built_in.vri_code
+        # bi_vri: для legacy-совместимости поля built_in_vri_code в результате
+        # берём первый ВРИ (если несколько — это поле информативное; полный
+        # список — в audit-полях)
+        bi_vri = all_built_ins[0].vri_code
     else:
         bi_area = 0.0
         residential_gfa = gfa_v * (1.0 - options.vpp_share)
@@ -357,12 +368,36 @@ def compute_tep_for_kit(
         quarter_share,
     )
 
-    # === ВПП — парковки и озеленение по своему ВРИ ===
-    if bi_area > 0 and bi_vri:
-        bi_per_place = norms.resolve("parking.vpp.m2_per_place", vri_code=bi_vri)
-        bi_parking_places = math.ceil(bi_area / bi_per_place)
+    # === ВПП — парковки и озеленение по своему ВРИ (v0.7.1: список) ===
+    # Итерируем по всем ВПП, суммируем парковки и озеленение.
+    # Для ВРИ 3.4.1 и 3.5.1 — продвинутая формула (работники + посетители)
+    # через vpp.advanced_parking_for_vri. Для остальных — обычная m²/м.место.
+    if all_built_ins and bi_area > 0:
         bi_greening_ratio = norms.resolve("greening.vpp_per_floor_area")
-        bi_greening_v = bi_area * bi_greening_ratio
+        bi_parking_places = 0
+        bi_greening_v = 0.0
+        for b in all_built_ins:
+            adv = vpp.advanced_parking_for_vri(b.vri_code, b.area_m2, norms)
+            if adv is not None:
+                bi_parking_places += adv
+            else:
+                try:
+                    per_place = norms.resolve(
+                        "parking.vpp.m2_per_place", vri_code=b.vri_code
+                    )
+                    bi_parking_places += math.ceil(b.area_m2 / per_place)
+                except KeyError:
+                    warnings.append(
+                        f"ВПП (ВРИ {b.vri_code}): нет норматива парковки — м/м не учтены."
+                    )
+            bi_greening_v += b.area_m2 * bi_greening_ratio
+        # legacy-поле: для аудита берём per_place первого ВПП (если есть в YAML)
+        try:
+            bi_per_place = norms.resolve(
+                "parking.vpp.m2_per_place", vri_code=all_built_ins[0].vri_code
+            )
+        except KeyError:
+            bi_per_place = None
     else:
         bi_per_place = None
         bi_parking_places = 0
