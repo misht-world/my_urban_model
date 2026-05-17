@@ -273,6 +273,14 @@ def render_details(result: TEPResult) -> None:
             ]
         if result.parking_underground_places.value and result.parking_underground_places.value > 0:
             rows.append(_row("Подземные м/м", result.parking_underground_places, fmt_int))
+        # Парковки соцобъектов (v0.7.0)
+        if (result.social_parking_total.value or 0) > 0:
+            rows += [
+                _row("В т.ч. для ДОО (1 м/м на 5 раб + 1 м/м на 100 уч., min 2)",
+                     result.social_parking_kindergarten, fmt_int),
+                _row("В т.ч. для СОШ (та же формула)",
+                     result.social_parking_school, fmt_int),
+            ]
         _show_rows(rows)
 
     # 🛣️ Проезды

@@ -26,6 +26,7 @@ from urban_model.calculations import (
     parking,
     population,
     school,
+    social_parking,
     sport,
     znop,
 )
@@ -383,12 +384,32 @@ def compute_tep_for_kit(
     # м/м и распределяются в выбранном пользователем режиме (min_open / all_open
     # / custom). По нормативам ПЗЗ парковки нежилых объектов могут размещаться
     # на собственном ЗУ объекта, либо на стоянках-спутниках. Текущая модель —
-    # упрощение: считаем суммарную нагрузку. Раздельный учёт парковок по
-    # объектам — TODO (см. дорожную карту: «парковки соцобъектов на стоянках-
-    # спутниках»).
+    # упрощение: считаем суммарную нагрузку.
+
+    # === Парковки соцобъектов (ДОО, СОШ) — v0.7.0 ===
+    # Формула ПЗЗ СПб: ceil(работники/5) + ceil(учащиеся/100), не менее 2.
+    # При only_demand или include_*=False объект «вне квартала» → не учитываем.
+    sp_kg_active = (
+        options.include_kindergarten
+        and not _kg_only_demand
+        and options.include_parking
+    )
+    sp_sch_active = (
+        options.include_school
+        and not _sch_only_demand
+        and options.include_parking
+    )
+    soc_park = social_parking.compute(
+        kg_buckets, sch_buckets, norms,
+        kg_include=sp_kg_active,
+        sch_include=sp_sch_active,
+    )
+
     park = compute_parking_breakdown(
         apartments_area_v, options.parking, norms,
-        additional_places=bi_parking_places + custom_total_parking_places,
+        additional_places=(
+            bi_parking_places + custom_total_parking_places + soc_park.total_places
+        ),
     )
 
     # === Проезды ===
@@ -656,6 +677,41 @@ def compute_tep_for_kit(
             ),
         ),
         school_building_area=_F(sch_bld_total, unit="m2"),
+        # ── Парковки соцобъектов (v0.7.0) ────────────────────────────────
+        social_parking_total=_F(
+            soc_park.total_places,
+            unit="м/м",
+            formula=(
+                f"ДОО: {soc_park.kindergarten_details} + "
+                f"СОШ: {soc_park.school_details}"
+                if soc_park.total_places > 0
+                else "—"
+            ),
+            source=(
+                norms.source_of("parking.social_objects.per_worker")
+                if soc_park.total_places > 0 else None
+            ),
+        ),
+        social_parking_kindergarten=_F(
+            soc_park.kindergarten_places,
+            unit="м/м",
+            formula=(
+                "Σ max(2, ceil(work/5) + ceil(cap/100)) по ДОО: "
+                + str([(c, w, p) for c, w, p in soc_park.kindergarten_details])
+                if soc_park.kindergarten_details
+                else "ДОО парковки не учитываются"
+            ),
+        ),
+        social_parking_school=_F(
+            soc_park.school_places,
+            unit="м/м",
+            formula=(
+                "Σ max(2, ceil(work/5) + ceil(cap/100)) по СОШ: "
+                + str([(c, w, p) for c, w, p in soc_park.school_details])
+                if soc_park.school_details
+                else "СОШ парковки не учитываются"
+            ),
+        ),
         # ── Плоскостные спортивные сооружения (v0.6.8) ──────────────────
         sport_facilities_area=_F(
             sport_br.sport_area,

@@ -100,6 +100,11 @@ class TEPResult(BaseModel):
     sport_facilities_greening_required: TEPField  # требуемое озеленение по ПЗЗ
     sport_facilities_greening_extra: TEPField     # доп. озеленение после substitution
 
+    # Парковки соцобъектов (v0.7.0) — ПЗЗ СПб
+    social_parking_total: TEPField        # всего м/м для ДОО + СОШ
+    social_parking_kindergarten: TEPField # м/м для всех ДОО
+    social_parking_school: TEPField       # м/м для всех СОШ
+
     # ЗНОП
     znop_per_person: TEPField
     znop_area: TEPField

@@ -132,6 +132,39 @@ social_objects:
       sources:
         detached: "РМД 15-26-2017"
         built_in: "принято условно (явный предел нормативами не установлен)"
+    # Число работников по вместимости (для расчёта парковок ДОО).
+    # Значения по типовым проектам КС: точные для capacity ∈ {160, 220, 250},
+    # остальное — линейная интерполяция/экстраполяция.
+    workers_per_capacity:
+      type: piecewise
+      argument: capacity
+      breakpoints:
+        - { up_to: 90,  value: 33 }
+        - { up_to: 100, value: 35 }
+        - { up_to: 110, value: 38 }
+        - { up_to: 120, value: 40 }
+        - { up_to: 140, value: 45 }
+        - { up_to: 150, value: 48 }
+        - { up_to: 160, value: 50 }
+        - { up_to: 165, value: 51 }
+        - { up_to: 170, value: 53 }
+        - { up_to: 180, value: 55 }
+        - { up_to: 190, value: 58 }
+        - { up_to: 200, value: 60 }
+        - { up_to: 215, value: 64 }
+        - { up_to: 220, value: 65 }
+        - { up_to: 230, value: 68 }
+        - { up_to: 240, value: 72 }
+        - { up_to: 250, value: 75 }
+        - { up_to: 260, value: 78 }
+        - { up_to: 280, value: 85 }
+        - { up_to: 310, value: 95 }
+        - { up_to: 320, value: 98 }
+        - { up_to: 340, value: 105 }
+        - { up_to: .inf, value: 108 }
+      unit: "workers"
+      note: "Данные КС: точные значения для 160/220/250 мест; остальное — интерполяция"
+      source: "Данные КС по Замечаниям (ДОО - Санкт-Петербург)"
 
   school:
     places_per_1000:
@@ -188,6 +221,24 @@ social_objects:
         detached: 2475
       note: "Типовая школа: II/III/IV/V/VI/VII/VIII/IX параллели = 550/825/1100/1375/1650/1925/2200/2475 мест. Свыше 2475 — разбивать на корпуса."
       source: "Данные КС по Замечаниям"
+    # Число работников по вместимости (для расчёта парковок СОШ).
+    # Значения для параллелей II–IX (550/825/1100/1375/1650/1925/2200/2475).
+    # Точные данные КС для capacity ∈ {550, 825, 1375}; остальное — оценка.
+    workers_per_capacity:
+      type: piecewise
+      argument: capacity
+      breakpoints:
+        - { up_to: 550,  value: 90 }
+        - { up_to: 825,  value: 135 }
+        - { up_to: 1100, value: 178 }
+        - { up_to: 1375, value: 220 }
+        - { up_to: 1650, value: 263 }
+        - { up_to: 1925, value: 305 }
+        - { up_to: 2200, value: 348 }
+        - { up_to: .inf, value: 390 }
+      unit: "workers"
+      note: "Данные КС: точные для 550/825/1375; остальное — линейная экстраполяция."
+      source: "Данные КС по Замечаниям (СОШ - Санкт-Петербург)"
 
 # === Парковки ===
 parking:
@@ -252,6 +303,25 @@ parking:
     value: 0.5
     note: "уменьшение на 50% в пределах 500 м от метрополитена"
     source: "ПЗЗ СПб <3>"
+
+  # === Парковки соцобъектов (ДОО, СОШ) — v0.7.0 ===
+  # Формула: 1 м/м на N работников + 1 м/м на M учащихся, не менее `minimum`.
+  social_objects:
+    per_worker:
+      type: scalar
+      value: 5
+      note: "1 машино-место на 5 работников ДОО/СОШ"
+      source: "ПЗЗ СПб"
+    per_student:
+      type: scalar
+      value: 100
+      note: "1 машино-место на 100 учащихся ДОО/СОШ"
+      source: "ПЗЗ СПб"
+    minimum:
+      type: scalar
+      value: 2
+      note: "не менее 2 машино-мест на каждый объект ДОО/СОШ"
+      source: "ПЗЗ СПб"
 
 # === Проезды (приняты условно) ===
 driveways:
