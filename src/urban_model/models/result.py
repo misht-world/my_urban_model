@@ -104,6 +104,7 @@ class TEPResult(BaseModel):
     social_parking_total: TEPField        # всего м/м для ДОО + СОШ
     social_parking_kindergarten: TEPField # м/м для всех ДОО
     social_parking_school: TEPField       # м/м для всех СОШ
+    social_parking_area: TEPField         # площадь парковок соцобъектов на квартале, м²
 
     # ЗНОП
     znop_per_person: TEPField

@@ -273,13 +273,17 @@ def render_details(result: TEPResult) -> None:
             ]
         if result.parking_underground_places.value and result.parking_underground_places.value > 0:
             rows.append(_row("Подземные м/м", result.parking_underground_places, fmt_int))
-        # Парковки соцобъектов (v0.7.0)
+        # Парковки соцобъектов — отдельные открытые на ЗУ соцобъектов (v0.7.0)
         if (result.social_parking_total.value or 0) > 0:
             rows += [
-                _row("В т.ч. для ДОО (1 м/м на 5 раб + 1 м/м на 100 уч., min 2)",
+                _row("СОЦ: всего м/м (отдельные открытые на ЗУ)",
+                     result.social_parking_total, fmt_int),
+                _row("В т.ч. ДОО (ceil(раб/5) + ceil(уч/100), min 2)",
                      result.social_parking_kindergarten, fmt_int),
-                _row("В т.ч. для СОШ (та же формула)",
+                _row("В т.ч. СОШ (та же формула)",
                      result.social_parking_school, fmt_int),
+                _row("Площадь парковок соцобъектов на квартале",
+                     result.social_parking_area, fmt_m2),
             ]
         _show_rows(rows)
 
@@ -303,6 +307,7 @@ def render_details(result: TEPResult) -> None:
                 "kindergarten_plot": "Участки ДОО",
                 "school_plot": "Участки СОШ",
                 "sport_facilities": "Спортивные сооружения (ВРИ 5.1.3)",
+                "social_parking_plot": "Парковки соцобъектов (ДОО/СОШ)",
                 "znop": "ЗНОП",
                 "intra_quarter_driveways": "Внутриквартальные проезды",
                 "parking_multilevel": "Многоуровневые паркинги",

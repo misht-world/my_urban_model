@@ -323,14 +323,37 @@ def compute_tep_for_kit(
     sch_plot_in_balance = 0.0 if _sch_only_demand else sch_plot_total
     sport_plot_in_balance = 0.0 if _sport_only_demand else sport_br.plot_area
 
+    # === Парковки соцобъектов (ДОО, СОШ) — v0.7.0 ===
+    # Считаем ЗДЕСЬ (до greening), т.к. их ЗУ нужно вычесть из знаменателя
+    # 25%-озеленения квартала. Парковки — открытые на собственном ЗУ
+    # соцобъекта; в общий пул жилищных парковок НЕ вливаются.
+    sp_kg_active = (
+        options.include_kindergarten
+        and not _kg_only_demand
+        and options.include_parking
+    )
+    sp_sch_active = (
+        options.include_school
+        and not _sch_only_demand
+        and options.include_parking
+    )
+    soc_park = social_parking.compute(
+        kg_buckets, sch_buckets, norms,
+        kg_include=sp_kg_active,
+        sch_include=sp_sch_active,
+    )
+    open_space_per_place = norms.resolve("parking.open_space_per_place")
+    soc_park_area = soc_park.total_places * open_space_per_place
+
     # === Озеленение жилого ЗУ (нужно до housing_lot) ===
     green_ratio = norms.resolve("greening.housing_per_apartments")
     green_housing_v = greening.housing_greening_area(apartments_area_v, green_ratio)
     quarter_share = norms.resolve("greening.quarter_min_share")
-    # Спорт-ЗУ исключаем из знаменателя 25% (внутри него своё озеленение).
+    # Из знаменателя 25%-норматива озеленения исключаем все «нежилые» ЗУ:
+    # ДОО, СОШ, спорт, парковки соцобъектов.
     green_quarter_req_v = greening.quarter_greening_required(
         site.area_m2,
-        kg_plot_in_balance + sch_plot_in_balance + sport_plot_in_balance,
+        kg_plot_in_balance + sch_plot_in_balance + sport_plot_in_balance + soc_park_area,
         quarter_share,
     )
 
@@ -386,30 +409,11 @@ def compute_tep_for_kit(
     # на собственном ЗУ объекта, либо на стоянках-спутниках. Текущая модель —
     # упрощение: считаем суммарную нагрузку.
 
-    # === Парковки соцобъектов (ДОО, СОШ) — v0.7.0 ===
-    # Формула ПЗЗ СПб: ceil(работники/5) + ceil(учащиеся/100), не менее 2.
-    # При only_demand или include_*=False объект «вне квартала» → не учитываем.
-    sp_kg_active = (
-        options.include_kindergarten
-        and not _kg_only_demand
-        and options.include_parking
-    )
-    sp_sch_active = (
-        options.include_school
-        and not _sch_only_demand
-        and options.include_parking
-    )
-    soc_park = social_parking.compute(
-        kg_buckets, sch_buckets, norms,
-        kg_include=sp_kg_active,
-        sch_include=sp_sch_active,
-    )
-
+    # Жилищные парковки + ВПП + кастомные — общий пул (парковки соцобъектов
+    # НЕ входят: см. блок «Парковки соцобъектов» выше).
     park = compute_parking_breakdown(
         apartments_area_v, options.parking, norms,
-        additional_places=(
-            bi_parking_places + custom_total_parking_places + soc_park.total_places
-        ),
+        additional_places=bi_parking_places + custom_total_parking_places,
     )
 
     # === Проезды ===
@@ -476,6 +480,7 @@ def compute_tep_for_kit(
         "kindergarten_plot": kg_plot_in_balance,
         "school_plot": sch_plot_in_balance,
         "sport_facilities": sport_plot_in_balance,
+        "social_parking_plot": soc_park_area,
         "znop": znop_in_balance,
         "intra_quarter_driveways": drive_intra_in_balance,
         "parking_multilevel": parking_ml_footprint_in_balance,
@@ -710,6 +715,19 @@ def compute_tep_for_kit(
                 + str([(c, w, p) for c, w, p in soc_park.school_details])
                 if soc_park.school_details
                 else "СОШ парковки не учитываются"
+            ),
+        ),
+        social_parking_area=_F(
+            soc_park_area,
+            unit="m2",
+            formula=(
+                f"{soc_park.total_places} м/м × {open_space_per_place} м²/место "
+                f"(открытые на ЗУ соцобъекта)"
+                if soc_park.total_places > 0 else "—"
+            ),
+            source=(
+                norms.source_of("parking.open_space_per_place")
+                if soc_park.total_places > 0 else None
             ),
         ),
         # ── Плоскостные спортивные сооружения (v0.6.8) ──────────────────

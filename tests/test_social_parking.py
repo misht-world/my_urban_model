@@ -138,8 +138,9 @@ class TestSocialParkingInResult:
             + res.social_parking_school.value
         )
 
-    def test_added_to_total_parking(self, spb, site):
-        """Парковки соцобъектов добавляются к общему пулу parking_required."""
+    def test_separate_from_housing_pool(self, spb, site):
+        """Парковки соцобъектов НЕ вливаются в общий пул жилищных
+        (parking_required_places не включает соц-парковки)."""
         res_no = verify_kit(
             1.5, site,
             CalculationOptions(
@@ -150,8 +151,22 @@ class TestSocialParkingInResult:
             spb,
         )
         res_yes = verify_kit(1.5, site, CalculationOptions(floors=12), spb)
-        # При включённых соцобъектах общая парковка больше
-        assert res_yes.parking_required_places.value > res_no.parking_required_places.value
+        # Жилищные парковки одинаковы (зависят только от apartments_area)
+        # Соц-парковки идут отдельно: смотрим social_parking_total
+        assert res_yes.parking_required_places.value == res_no.parking_required_places.value
+        assert res_yes.social_parking_total.value > 0
+        assert res_no.social_parking_total.value == 0
+
+    def test_social_parking_area_in_balance(self, spb, site):
+        """social_parking_plot = отдельный компонент в balance."""
+        res = verify_kit(1.5, site, CalculationOptions(floors=12), spb)
+        assert "social_parking_plot" in res.balance.components
+        assert res.balance.components["social_parking_plot"] > 0
+        # Площадь = м/м × 20.75 (СПб норматив открытой парковки)
+        expected = res.social_parking_total.value * 20.75
+        assert res.balance.components["social_parking_plot"] == pytest.approx(expected)
+        # Совпадает с social_parking_area
+        assert res.social_parking_area.value == pytest.approx(expected)
 
     def test_only_demand_kg_zeroes_kg_parking(self, spb, site):
         """only_demand для ДОО → парковки ДОО не считаются."""
