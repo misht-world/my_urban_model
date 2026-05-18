@@ -22,7 +22,7 @@ STATUS_BG = {
 }
 
 STATUS_LABEL_RU = {
-    Status.OK:      "норм.",
+    Status.OK:      "ok",
     Status.WARNING: "внимание",
     Status.ERROR:   "ошибка",
     Status.MANUAL:  "вручную",

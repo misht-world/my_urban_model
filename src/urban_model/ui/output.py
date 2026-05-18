@@ -62,14 +62,19 @@ def render_header(result: TEPResult) -> None:
 # KPI-карточки
 # ---------------------------------------------------------------------------
 
-def render_kpi(result: TEPResult) -> None:
+def render_kpi(result: TEPResult, *, scenario_default_name: str | None = None) -> None:
+    """KPI-блок с возможностью встроить кнопки «Добавить в сравнение» и xlsx.
+
+    Если scenario_default_name задан — внутри того же блока (под линией
+    разделителя) рисуются actions: text_input + добавить/скачать.
+    """
     # === Основные показатели в едином блоке с возможностью копирования ===
     with st.container(border=True):
-        header_col, copy_col = st.columns([10, 1])
+        header_col, copy_col = st.columns([10, 2])
         with header_col:
             st.markdown("##### 📊 Основные показатели")
         with copy_col:
-            # Сводка в виде plain-text для копирования
+            # Сводка в виде plain-text для копирования через JS clipboard API
             kit_v = result.kit.value or 0
             kit_max = result.kit_normative_max.value or 0
             pop_v = int(result.population.value or 0)
@@ -90,14 +95,30 @@ def render_kpi(result: TEPResult) -> None:
                 f"Парковки: {total_pl} м/м\n"
                 f"ЗНОП: {znop_area:,} м² ({znop_pp:.1f} м²/чел)"
             ).replace(",", " ")
-            with st.popover("📋", help="Скопировать показатели в виде текста"):
-                st.text_area(
-                    "Сводка (выделите и скопируйте Ctrl+C)",
-                    value=summary_text,
-                    height=200,
-                    key=f"_kpi_copy_{id(result)}",
-                    label_visibility="visible",
-                )
+            # JS-кнопка: navigator.clipboard.writeText + inline-сообщение
+            import json
+            js_text = json.dumps(summary_text)
+            uid = f"copy_{id(result)}"
+            st.html(f"""
+            <div style="display:flex;align-items:center;gap:8px;">
+              <button id="btn_{uid}" type="button"
+                  onclick='navigator.clipboard.writeText({js_text}).then(()=>{{
+                      var s=document.getElementById("ok_{uid}");
+                      s.style.opacity="1";
+                      setTimeout(()=>{{s.style.opacity="0";}},2000);
+                  }});'
+                  style="background:#1565C0;color:white;border:none;
+                         padding:6px 12px;border-radius:4px;cursor:pointer;
+                         font-size:0.9rem;font-weight:500;">
+                📋 Копировать
+              </button>
+              <span id="ok_{uid}"
+                  style="color:#107C10;font-weight:500;opacity:0;
+                         transition:opacity 0.2s;font-size:0.85rem;">
+                ✓ Скопировано
+              </span>
+            </div>
+            """)
 
         # === Ряд 1: главные показатели жилья ===
         c1, c2, c3, c4 = st.columns(4)
@@ -124,73 +145,74 @@ def render_kpi(result: TEPResult) -> None:
         # === Ряд 2: социалка / парковки / ЗНОП (внутри того же контейнера) ===
         c5, c6, c7, c8 = st.columns(4)
 
-    # Вспомогательная функция: парсим список вместимостей из formula-строки
-    # Формат: «вверх кратно 5 → разбивка по объектам [160, 165, 165]»
-    def _buckets_delta(formula_str: str, total: int) -> str | None:
-        m = re.search(r'\[([^\]]+)\]', formula_str)
-        if not m or total == 0:
-            return None
-        try:
-            vals = [int(x.strip()) for x in m.group(1).split(",") if x.strip()]
-        except ValueError:
-            return None
-        n = len(vals)
-        if n == 0:
-            return None
-        lo, hi = min(vals), max(vals)
-        per_str = f"{lo} мест" if lo == hi else f"{lo}–{hi} мест"
-        ending = "объект" if n == 1 else ("объекта" if 2 <= n <= 4 else "объектов")
-        return f"{n} {ending} по {per_str}"
+        # Вспомогательная функция: парсим список вместимостей из formula-строки
+        def _buckets_delta(formula_str: str, total: int) -> str | None:
+            m = re.search(r'\[([^\]]+)\]', formula_str)
+            if not m or total == 0:
+                return None
+            try:
+                vals = [int(x.strip()) for x in m.group(1).split(",") if x.strip()]
+            except ValueError:
+                return None
+            n = len(vals)
+            if n == 0:
+                return None
+            lo, hi = min(vals), max(vals)
+            per_str = f"{lo} мест" if lo == hi else f"{lo}–{hi} мест"
+            ending = "объект" if n == 1 else ("объекта" if 2 <= n <= 4 else "объектов")
+            return f"{n} {ending} по {per_str}"
 
-    # ДОО
-    kg_buckets_str = result.kindergarten_places_accepted.formula or ""
-    kg_total = int(result.kindergarten_places_accepted.value or 0)
-    c5.metric(
-        "ДОО",
-        f"{kg_total} мест" if kg_total > 0 else "—",
-        delta=_buckets_delta(kg_buckets_str, kg_total),
-        delta_color="off",
-        help="Принятая суммарная вместимость и число объектов ДОО.",
-    )
+        kg_buckets_str = result.kindergarten_places_accepted.formula or ""
+        kg_total = int(result.kindergarten_places_accepted.value or 0)
+        c5.metric(
+            "ДОО",
+            f"{kg_total} мест" if kg_total > 0 else "—",
+            delta=_buckets_delta(kg_buckets_str, kg_total),
+            delta_color="off",
+            help="Принятая суммарная вместимость и число объектов ДОО.",
+        )
 
-    # СОШ
-    sch_buckets_str = result.school_places_accepted.formula or ""
-    sch_total = int(result.school_places_accepted.value or 0)
-    c6.metric(
-        "СОШ",
-        f"{sch_total} мест" if sch_total > 0 else "—",
-        delta=_buckets_delta(sch_buckets_str, sch_total),
-        delta_color="off",
-        help="Принятая суммарная вместимость и число корпусов СОШ.",
-    )
+        sch_buckets_str = result.school_places_accepted.formula or ""
+        sch_total = int(result.school_places_accepted.value or 0)
+        c6.metric(
+            "СОШ",
+            f"{sch_total} мест" if sch_total > 0 else "—",
+            delta=_buckets_delta(sch_buckets_str, sch_total),
+            delta_color="off",
+            help="Принятая суммарная вместимость и число корпусов СОШ.",
+        )
 
-    # Парковки — сводка по типам
-    open_pl = int(result.parking_open_places.value or 0)
-    ml_pl = int(result.parking_multilevel_places.value or 0)
-    ug_pl = int(result.parking_underground_places.value or 0)
-    total_pl = int(result.parking_required_places.value or 0)
-    breakdown_parts = []
-    if open_pl: breakdown_parts.append(f"откр. {open_pl}")
-    if ml_pl:   breakdown_parts.append(f"многоур. {ml_pl}")
-    if ug_pl:   breakdown_parts.append(f"подз. {ug_pl}")
-    c7.metric(
-        "Парковки",
-        f"{total_pl} м/м" if total_pl > 0 else "—",
-        delta=" · ".join(breakdown_parts) or None,
-        delta_color="off",
-        help="Всего машино-мест и разбивка по типам.",
-    )
+        # Парковки — сводка по типам
+        open_pl = int(result.parking_open_places.value or 0)
+        ml_pl = int(result.parking_multilevel_places.value or 0)
+        ug_pl = int(result.parking_underground_places.value or 0)
+        total_pl = int(result.parking_required_places.value or 0)
+        breakdown_parts = []
+        if open_pl: breakdown_parts.append(f"откр. {open_pl}")
+        if ml_pl:   breakdown_parts.append(f"многоур. {ml_pl}")
+        if ug_pl:   breakdown_parts.append(f"подз. {ug_pl}")
+        c7.metric(
+            "Парковки",
+            f"{total_pl} м/м" if total_pl > 0 else "—",
+            delta=" · ".join(breakdown_parts) or None,
+            delta_color="off",
+            help="Всего машино-мест и разбивка по типам.",
+        )
 
-    # ЗНОП
-    znop_pp = result.znop_per_person.value or 0
-    znop_area = int(result.znop_area.value or 0)
-    c8.metric(
-        "ЗНОП",
-        f"{znop_area:,} м²".replace(",", " ") if znop_area > 0 else "—",
-        delta=f"{znop_pp:.1f} м²/чел" if znop_pp > 0 else None,
-        delta_color="off",
-        help="Общая площадь ЗНОП и норма на жителя.",
-    )
+        znop_pp = result.znop_per_person.value or 0
+        znop_area = int(result.znop_area.value or 0)
+        c8.metric(
+            "ЗНОП",
+            f"{znop_area:,} м²".replace(",", " ") if znop_area > 0 else "—",
+            delta=f"{znop_pp:.1f} м²/чел" if znop_pp > 0 else None,
+            delta_color="off",
+            help="Общая площадь ЗНОП и норма на жителя.",
+        )
+
+        # === Inline-actions: «Добавить в сравнение» + xlsx (внутри блока) ===
+        if scenario_default_name is not None:
+            st.markdown("---")
+            _render_actions_inline(result, scenario_default_name)
 
 
 # ---------------------------------------------------------------------------
@@ -383,14 +405,19 @@ def render_details(result: TEPResult) -> None:
 # Кнопки внизу: добавить в сравнение, скачать xlsx
 # ---------------------------------------------------------------------------
 
-def render_actions(result: TEPResult, default_name: str) -> None:
-    st.markdown("---")
+def _render_actions_inline(result: TEPResult, default_name: str) -> None:
+    """Inline-actions: text_input + кнопки «Добавить» / «Скачать xlsx».
+
+    Используется внутри блока «Основные показатели» — без отдельного разделителя
+    сверху (его рисует caller, чтобы actions были ВНУТРИ container).
+    """
     c1, c2, c3 = st.columns([2, 1, 1])
 
     with c1:
         scenario_name = st.text_input(
             "Имя сценария для сравнения",
             value=default_name,
+            placeholder="Введите название расчёта",
             key="scenario_name_input",
             label_visibility="collapsed",
         )
@@ -398,10 +425,9 @@ def render_actions(result: TEPResult, default_name: str) -> None:
         if st.button("➕ Добавить в сравнение", use_container_width=True):
             st.session_state.scenarios.append((scenario_name, result))
             st.toast(f"Сценарий «{scenario_name}» добавлен", icon="✅")
-            st.rerun()  # обновляем счётчик в заголовке вкладки «Сравнение»
+            st.rerun()
     with c3:
         # xlsx-экспорт текущего сценария
-        # to_xlsx требует path → делаем временный путь и читаем
         with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False) as tmp:
             tmp_path = tmp.name
         try:
@@ -420,6 +446,12 @@ def render_actions(result: TEPResult, default_name: str) -> None:
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             use_container_width=True,
         )
+
+
+def render_actions(result: TEPResult, default_name: str) -> None:
+    """DEPRECATED: actions теперь встроены в render_kpi через scenario_default_name."""
+    st.markdown("---")
+    _render_actions_inline(result, default_name)
 
 
 # ---------------------------------------------------------------------------

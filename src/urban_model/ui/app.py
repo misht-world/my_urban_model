@@ -71,16 +71,23 @@ st.markdown("""
       border: 1px solid #BFDBFE !important;
       border-bottom: 2px solid #FFFFFF !important;
   }
-  /* Цветовая дифференциация левого и правого блока на вкладке «Параметры»:
-     левая колонка — нейтральный голубоватый фон (входные данные),
-     правая — нейтральный зеленоватый (плитки настроек включённых компонентов). */
-  div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-child(1) div[data-testid="stVerticalBlockBorderWrapper"] {
-      background-color: #F0F6FB;
-      border-color: #C7DEEE !important;
+  /* Цветовая дифференциация левой/правой колонок на «Параметрах»:
+     • левая (вводные данные) — голубой акцент слева + светло-голубой фон
+     • правая (настройки компонентов) — зелёный акцент слева + светло-зелёный фон
+     Усилено !important + border-left для надёжной видимости. */
+  div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:first-child [data-testid="stVerticalBlockBorderWrapper"] {
+      background-color: #E7F0F8 !important;
+      border-left: 4px solid #1565C0 !important;
+      border-top-color: #C2D9EC !important;
+      border-right-color: #C2D9EC !important;
+      border-bottom-color: #C2D9EC !important;
   }
-  div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-child(2) div[data-testid="stVerticalBlockBorderWrapper"] {
-      background-color: #F2F8F3;
-      border-color: #CFE2D2 !important;
+  div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:last-child [data-testid="stVerticalBlockBorderWrapper"] {
+      background-color: #E8F4EA !important;
+      border-left: 4px solid #2E7D32 !important;
+      border-top-color: #C4DEC8 !important;
+      border-right-color: #C4DEC8 !important;
+      border-bottom-color: #C4DEC8 !important;
   }
   /* Чуть меньше пустоты у containers с border */
   div[data-testid="stVerticalBlockBorderWrapper"] {padding: 0.6rem 0.9rem;}
@@ -168,12 +175,11 @@ with tab_calc:
         st.stop()
 
     render_header(result)
-    render_kpi(result)
-    # v0.7.2: «Добавить в сравнение» — сразу под основными показателями.
-    # Логика: «посмотрели, что основное устраивает — сохранили в сравнение».
-    render_actions(
+    # v0.7.3: «Добавить в сравнение» теперь ВНУТРИ блока «Основные показатели»
+    # — render_kpi с scenario_default_name делает actions inline.
+    render_kpi(
         result,
-        default_name=auto_scenario_name(
+        scenario_default_name=auto_scenario_name(
             inputs.site,
             inputs.options,
             inputs.mode,
