@@ -94,8 +94,10 @@ class TestBuiltInImpactOnApartments:
 # ---------------------------------------------------------------------------
 
 class TestBuiltInParking:
+    """v0.7.1.1: единый коэффициент 64 м²/м.м. для всех ВПП."""
+
     def test_parking_for_4_4_shop(self, spb, site_5ga):
-        # ВРИ 4.4: 50 м²/м.м.; ВПП 5000 м² → 100 м/м
+        # ВПП 5000 м² / 64 = 79 м/м (ceil)
         res = verify_kit(
             1.5, site_5ga,
             CalculationOptions(
@@ -103,10 +105,10 @@ class TestBuiltInParking:
             ),
             spb,
         )
-        assert res.built_in_parking_places.value == 100
+        assert res.built_in_parking_places.value == math.ceil(5000 / 64)
 
     def test_parking_for_4_6_cafe(self, spb, site_5ga):
-        # ВРИ 4.6: 25 м²/м.м.; ВПП 1000 м² → 40 м/м
+        # ВПП 1000 м² / 64 = 16 м/м (ceil)
         res = verify_kit(
             1.5, site_5ga,
             CalculationOptions(
@@ -114,7 +116,7 @@ class TestBuiltInParking:
             ),
             spb,
         )
-        assert res.built_in_parking_places.value == 40
+        assert res.built_in_parking_places.value == math.ceil(1000 / 64)
 
     def test_built_in_parking_added_to_total(self, spb, site_5ga):
         """Парковка ВПП суммируется с парковкой жилья в общий total."""

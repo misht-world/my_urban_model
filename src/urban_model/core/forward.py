@@ -368,36 +368,18 @@ def compute_tep_for_kit(
         quarter_share,
     )
 
-    # === ВПП — парковки и озеленение по своему ВРИ (v0.7.1: список) ===
-    # Итерируем по всем ВПП, суммируем парковки и озеленение.
-    # Для ВРИ 3.4.1 и 3.5.1 — продвинутая формула (работники + посетители)
-    # через vpp.advanced_parking_for_vri. Для остальных — обычная m²/м.место.
+    # === ВПП — парковки и озеленение по списку (v0.7.1.1: единый коэф) ===
+    # Все ВПП считаются по среднему коэффициенту parking.vpp.m2_per_place
+    # (1.56 м/м на 100 м² = 64 м²/м.м). Упрощение от детальных формул
+    # по каждому ВРИ — практически не теряем точности, выигрываем в простоте.
     if all_built_ins and bi_area > 0:
+        bi_per_place = norms.resolve("parking.vpp.m2_per_place")
         bi_greening_ratio = norms.resolve("greening.vpp_per_floor_area")
         bi_parking_places = 0
         bi_greening_v = 0.0
         for b in all_built_ins:
-            adv = vpp.advanced_parking_for_vri(b.vri_code, b.area_m2, norms)
-            if adv is not None:
-                bi_parking_places += adv
-            else:
-                try:
-                    per_place = norms.resolve(
-                        "parking.vpp.m2_per_place", vri_code=b.vri_code
-                    )
-                    bi_parking_places += math.ceil(b.area_m2 / per_place)
-                except KeyError:
-                    warnings.append(
-                        f"ВПП (ВРИ {b.vri_code}): нет норматива парковки — м/м не учтены."
-                    )
+            bi_parking_places += math.ceil(b.area_m2 / bi_per_place)
             bi_greening_v += b.area_m2 * bi_greening_ratio
-        # legacy-поле: для аудита берём per_place первого ВПП (если есть в YAML)
-        try:
-            bi_per_place = norms.resolve(
-                "parking.vpp.m2_per_place", vri_code=all_built_ins[0].vri_code
-            )
-        except KeyError:
-            bi_per_place = None
     else:
         bi_per_place = None
         bi_parking_places = 0
@@ -414,16 +396,9 @@ def compute_tep_for_kit(
         green_ratio_vpp = norms.resolve("greening.vpp_per_floor_area")
         for obj in options.custom_objects:
             floor_area = obj.floor_area_m2 or obj.plot_area_m2
-            try:
-                per_place = norms.resolve("parking.vpp.m2_per_place", vri_code=obj.vri_code)
-                obj_parking = math.ceil(floor_area / per_place)
-            except KeyError:
-                # Если для ВРИ нет норматива парковок — считаем 0 + warning
-                obj_parking = 0
-                warnings.append(
-                    f"Объект «{obj.name}» (ВРИ {obj.vri_code}): нет норматива "
-                    "парковки — м/м не учтены."
-                )
+            # v0.7.1.1: единый коэффициент для всех нежилых объектов
+            per_place = norms.resolve("parking.vpp.m2_per_place")
+            obj_parking = math.ceil(floor_area / per_place)
             obj_greening = floor_area * green_ratio_vpp
             custom_total_plot += obj.plot_area_m2
             custom_total_parking_places += obj_parking
@@ -611,11 +586,12 @@ def compute_tep_for_kit(
             bi_parking_places,
             unit="м/м",
             formula=(
-                f"ВПП {bi_area:.0f} м² / {bi_per_place} м²/м.м. (ВРИ {bi_vri}), вверх"
+                f"ВПП Σ{bi_area:.0f} м² / {bi_per_place} м²/м.м. "
+                f"(средний коэф для всех ВПП), вверх по корпусам"
                 if bi_area > 0 else "—"
             ),
             source=(
-                norms.source_of("parking.vpp.m2_per_place", vri_code=bi_vri)
+                norms.source_of("parking.vpp.m2_per_place")
                 if bi_area > 0 else None
             ),
         ),

@@ -175,45 +175,7 @@ def build_built_ins(
     return res
 
 
-def advanced_parking_for_vri(
-    vri_code: str,
-    area_m2: float,
-    norms: Normatives,
-) -> int | None:
-    """Парковка для ВРИ 3.4.1 / 3.5.1 по формуле ПЗЗ (раб + посетители/учащ).
-
-    Возвращает None для ВРИ, у которых нет «продвинутой» формулы —
-    тогда применяется обычный механизм parking.vpp.m2_per_place.
-    """
-    if vri_code == "3.4.1":
-        # Поликлиника: 1 м/м на 5 раб + 1 м/м на 40 посетителей
-        visits_per_shift_per_1000 = norms.resolve(
-            "mandatory_vpp.medical_3_4_1.visits_per_shift_per_1000"
-        )
-        m2_per_visit = norms.resolve(
-            "mandatory_vpp.medical_3_4_1.m2_per_visit_per_shift"
-        )
-        workers_per_visit = norms.resolve(
-            "mandatory_vpp.medical_3_4_1.workers_per_visit"
-        )
-        per_worker = norms.resolve("parking.medical_3_4_1.per_worker")
-        per_visitor = norms.resolve("parking.medical_3_4_1.per_visitor")
-        # Сколько посещений и работников в данной площади
-        visits = area_m2 / m2_per_visit if m2_per_visit > 0 else 0
-        workers = visits * workers_per_visit
-        places = math.ceil(workers / per_worker) + math.ceil(visits / per_visitor)
-        return max(0, int(places))
-
-    if vri_code == "3.5.1":
-        # Школа искусств: 1 м/м на 5 раб + 1 м/м на 100 учащихся, min 2
-        m2_per_seat = norms.resolve("mandatory_vpp.arts_3_5_1.m2_per_seat")
-        workers_per_seat = norms.resolve("mandatory_vpp.arts_3_5_1.workers_per_seat")
-        per_worker = norms.resolve("parking.arts_3_5_1.per_worker")
-        per_student = norms.resolve("parking.arts_3_5_1.per_student")
-        minimum = int(norms.resolve("parking.arts_3_5_1.minimum"))
-        students = area_m2 / m2_per_seat if m2_per_seat > 0 else 0
-        workers = students * workers_per_seat
-        places = math.ceil(workers / per_worker) + math.ceil(students / per_student)
-        return max(minimum, int(places))
-
-    return None
+# v0.7.1.1: убрана функция advanced_parking_for_vri.
+# Теперь все ВПП считаются по единому коэффициенту parking.vpp.m2_per_place = 64
+# (1.56 м/м на 100 м²) — упрощение по сравнению с детальной формулой
+# «5 работников + N посетителей» для 3.4.1 / 3.5.1.

@@ -140,36 +140,20 @@ class TestVppModes:
 
 
 # ---------------------------------------------------------------------------
-# Продвинутая парковка для 3.4.1 / 3.5.1
+# Парковки ВПП — единый коэффициент (v0.7.1.1)
 # ---------------------------------------------------------------------------
 
-class TestAdvancedParking:
-    def test_3_4_1_typical(self, spb):
-        """Поликлиника на 1000 м²: visits=125, workers=18.75
-        → ceil(18.75/5) + ceil(125/40) = 4 + 4 = 8."""
-        places = vpp.advanced_parking_for_vri("3.4.1", 1000.0, spb)
-        # visits = 1000/8 = 125; workers = 125 × 0.15 = 18.75
-        # ceil(18.75/5) = 4; ceil(125/40) = 4; sum = 8
-        assert places == 8
+class TestVppParkingAverage:
+    """Все ВПП считаются по среднему коэффициенту 64 м²/м.м.
+    Продвинутая формула для 3.4.1 / 3.5.1 убрана для простоты."""
 
-    def test_3_5_1_typical(self, spb):
-        """Школа искусств на 300 м²: students=20, workers=2
-        → ceil(2/5)+ceil(20/100) = 1+1 = 2 → max(2, 2)=2."""
-        places = vpp.advanced_parking_for_vri("3.5.1", 300.0, spb)
-        # students = 300/15 = 20; workers = 20 × 0.10 = 2
-        # ceil(2/5) = 1; ceil(20/100) = 1; sum = 2; min = 2 → 2
-        assert places == 2
+    def test_uniform_coefficient(self, spb):
+        """parking.vpp.m2_per_place = 64 (1.56 м/м на 100 м²)."""
+        assert spb.resolve("parking.vpp.m2_per_place") == 64
 
-    def test_3_5_1_minimum_kicks_in(self, spb):
-        """Очень маленькая школа искусств: всё равно min 2."""
-        places = vpp.advanced_parking_for_vri("3.5.1", 10.0, spb)
-        assert places == 2
-
-    def test_other_vri_returns_none(self, spb):
-        """Для 4.4 / 4.6 / 3.3 продвинутая формула не применяется."""
-        assert vpp.advanced_parking_for_vri("4.4", 1000.0, spb) is None
-        assert vpp.advanced_parking_for_vri("4.6", 1000.0, spb) is None
-        assert vpp.advanced_parking_for_vri("3.3", 1000.0, spb) is None
+    def test_no_advanced_parking_function(self):
+        """Функция advanced_parking_for_vri удалена в v0.7.1.1."""
+        assert not hasattr(vpp, "advanced_parking_for_vri")
 
 
 # ---------------------------------------------------------------------------
@@ -182,7 +166,8 @@ class TestBuiltInListIntegration:
         assert opts.built_in_list == []
 
     def test_built_in_list_works(self, spb, site):
-        """Список из двух ВПП: и площади и парковки суммируются."""
+        """Список из двух ВПП: площади и парковки суммируются (по ceil на корпус)."""
+        import math
         res = verify_kit(
             1.5, site,
             CalculationOptions(
@@ -194,13 +179,13 @@ class TestBuiltInListIntegration:
             ),
             spb,
         )
-        # Общая площадь ВПП = 1500
         assert res.built_in_area.value == 1500
-        # Парковки ВПП: 4.4 → 1000/50 = 20; 4.6 → 500/25 = 20; всего 40
-        assert res.built_in_parking_places.value == 40
+        # v0.7.1.1: ceil(1000/64) + ceil(500/64) = 16 + 8 = 24
+        assert res.built_in_parking_places.value == math.ceil(1000/64) + math.ceil(500/64)
 
     def test_legacy_single_still_works(self, spb, site):
         """Legacy single built_in продолжает работать."""
+        import math
         res = verify_kit(
             1.5, site,
             CalculationOptions(
@@ -210,7 +195,7 @@ class TestBuiltInListIntegration:
             spb,
         )
         assert res.built_in_area.value == 1000
-        assert res.built_in_parking_places.value == 20
+        assert res.built_in_parking_places.value == math.ceil(1000/64)
 
     def test_legacy_plus_list_combined(self, spb, site):
         """Single + list складываются."""
@@ -227,9 +212,18 @@ class TestBuiltInListIntegration:
         )
         assert res.built_in_area.value == 800
 
-    def test_vri_341_uses_advanced_parking(self, spb, site):
-        """ВПП с ВРИ 3.4.1 использует продвинутую формулу парковок."""
-        res = verify_kit(
+    def test_vri_independent_parking(self, spb, site):
+        """v0.7.1.1: парковка ВПП не зависит от ВРИ-кода (единый коэф)."""
+        import math
+        res_44 = verify_kit(
+            1.5, site,
+            CalculationOptions(
+                floors=12,
+                built_in_list=[BuiltInArea(area_m2=1000, vri_code="4.4")],
+            ),
+            spb,
+        )
+        res_341 = verify_kit(
             1.5, site,
             CalculationOptions(
                 floors=12,
@@ -237,5 +231,6 @@ class TestBuiltInListIntegration:
             ),
             spb,
         )
-        # Должна быть применена формула: 8 м/м (см. test_3_4_1_typical)
-        assert res.built_in_parking_places.value == 8
+        # Парковки идентичны (зависят только от площади и среднего коэф)
+        assert res_44.built_in_parking_places.value == math.ceil(1000/64)
+        assert res_341.built_in_parking_places.value == math.ceil(1000/64)

@@ -121,18 +121,20 @@ class TestParkingAndGreening:
 # ---------------------------------------------------------------------------
 
 class TestEdgeCases:
-    def test_unknown_vri_warns_but_no_crash(self, spb, site):
-        """Если для ВРИ нет норматива парковки — предупреждение, не падение."""
+    def test_any_vri_code_works(self, spb, site):
+        """v0.7.1.1: единый коэф парковки → любой ВРИ-код работает без warning.
+
+        Раньше неизвестный ВРИ давал warning. Теперь parking.vpp.m2_per_place —
+        scalar (среднее 64 м²/м.м), не зависит от vri_code.
+        """
         opts = CalculationOptions(
             floors=12, planning_doc=True,
             custom_objects=[
-                CustomObject(plot_area_m2=1_000, vri_code="9.99"),  # несуществующий код
+                CustomObject(plot_area_m2=1_000, vri_code="9.99"),
             ],
         )
         r = compute_tep_for_kit(1.0, site, opts, spb)
-        # Объект должен попасть в баланс, парковки — 0 + warning
         assert r.balance.components["custom_objects"] == 1_000
-        assert any("Объект" in w for w in r.warnings)
 
     def test_empty_list_acts_like_no_objects(self, spb, site):
         """Пустой список — как если бы custom_objects не задавались."""
