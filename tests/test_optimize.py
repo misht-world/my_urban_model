@@ -83,6 +83,35 @@ class TestParkingSearch:
 # Оптимизатор реально улучшает результат
 # ---------------------------------------------------------------------------
 
+class TestZnopSearch:
+    """v0.7.3: перебор значений ЗНОП (м²/чел) через znop_per_person_choices."""
+
+    def test_znop_choices_in_params(self, site, base_opts, spb):
+        """При znop_per_person_choices=[0,3,4,6] параметр появляется в результатах."""
+        space = SearchSpace(
+            floors_range=(10, 15),
+            znop_per_person_choices=[0.0, 3.0, 4.0, 6.0],
+        )
+        report = optimize_max_apartments(site, base_opts, spb, space, n_trials=20)
+        assert report.best is not None
+        # Хотя бы один из топ-N должен иметь znop_per_person в params
+        params_with_znop = [r for r in report.top_n if "znop_per_person" in r.params]
+        assert len(params_with_znop) > 0
+        # Все значения из заданного списка
+        for r in params_with_znop:
+            assert r.params["znop_per_person"] in (0.0, 3.0, 4.0, 6.0)
+
+    def test_znop_only_not_empty_space(self, site, base_opts, spb):
+        """Если задан только znop — пространство НЕ пустое."""
+        space = SearchSpace(znop_per_person_choices=[0.0, 6.0])
+        assert not space.is_empty()
+
+    def test_empty_znop_choices_means_no_variation(self, site, base_opts, spb):
+        """Пустой список znop = no variation (None по умолчанию)."""
+        space = SearchSpace(floors_range=(10, 12))
+        assert space.znop_per_person_choices is None
+
+
 class TestOptimizerImproves:
     def test_floors_optimization_beats_low_baseline(self, site, spb):
         """Низкая базовая этажность; оптимизатор должен поднять КИТ → больше квартир."""

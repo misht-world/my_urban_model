@@ -155,6 +155,14 @@ def _build_options_for_trial(
         else:
             opts.built_in = None
 
+    # --- ЗНОП: override м²/чел (v0.7.3) ---
+    if space.znop_per_person_choices:
+        znop_pp = trial.suggest_categorical(
+            "znop_per_person", space.znop_per_person_choices
+        )
+        opts.znop_per_person_override = float(znop_pp)
+        sampled["znop_per_person"] = znop_pp
+
     return opts, sampled
 
 

@@ -49,6 +49,13 @@ class SearchSpace(BaseModel):
         description="Какие ВРИ-коды пробовать; используется при try_built_in=True",
     )
 
+    # ЗНОП (v0.7.3): значения м²/чел для перебора. Например [0, 3, 4, 6]
+    # — это нормативные ступени по ПЗЗ. None = не варьировать (брать из base).
+    znop_per_person_choices: list[float] | None = Field(
+        default=None,
+        description="Варианты ЗНОП в м²/чел для перебора (override); None = не варьировать",
+    )
+
     def is_empty(self) -> bool:
         """True, если ни одна декорация не задана — оптимизировать нечего."""
         return all(
@@ -61,5 +68,6 @@ class SearchSpace(BaseModel):
                 "multilevel_levels_range",
                 "kg_num_objects_range",
                 "school_num_objects_range",
+                "znop_per_person_choices",
             )
         ) and not self.try_built_in

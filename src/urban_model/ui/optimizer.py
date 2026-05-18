@@ -1,10 +1,10 @@
-"""Streamlit-вкладка «Оптимизация» — Galapagos-аналог на Optuna.
+"""Streamlit-вкладка «Оптимизация» (v0.7.3 — 2-колоночный редизайн).
 
 Принцип:
-  - Пользователь выбирает галочками, какие параметры варьировать
-  - Задаёт диапазоны
-  - Нажимает «Запустить» — внизу появляется таблица топ-N сценариев
-  - Любой можно «Добавить в сравнение» одной кнопкой
+  • Слева — галочки «что варьировать». Справа — настройки для каждой
+    включённой галочки (плитки, как на «Параметрах»).
+  • Число испытаний (trials) скрыто — задано с запасом (≤ 1 минуты).
+  • Нажимает «Запустить» → таблица топ-N сценариев + предпросмотр.
 """
 
 from __future__ import annotations
@@ -18,157 +18,180 @@ from urban_model.optimize import SearchSpace, optimize_max_apartments
 from urban_model.optimize.runner import OptimizationReport
 from urban_model.ui.formatting import fmt_int, fmt_m2
 
+# Число испытаний фиксировано на ~1 минуту работы на типовом квартале
+# (Optuna ~100 trials/сек). Если расчёт упирается в скорость — снизим.
+_DEFAULT_TRIALS = 2000
+_DEFAULT_TOP_N = 10
+_DEFAULT_SEED = 42
+
 
 # ---------------------------------------------------------------------------
 # Форма «что варьировать»
 # ---------------------------------------------------------------------------
 
 def _render_search_space_form(base_options: CalculationOptions) -> SearchSpace:
-    st.markdown(
-        "Отметьте параметры, которые **подбирать автоматически**. "
-        "Остальные берутся из текущих настроек слева."
-    )
+    """Двухколоночная форма: слева чекбоксы, справа плитки настроек."""
+    col_left, col_right = st.columns([1, 2], gap="medium")
 
-    c1, c2 = st.columns(2)
-
-    # --- Этажность ---
-    with c1:
-        vary_floors = st.checkbox(
-            "🏠 Этажность",
-            value=True,
-            key="opt_vary_floors",
-        )
-        floors_range = None
-        if vary_floors:
-            lo, hi = st.slider(
-                "Диапазон этажности",
-                min_value=4,
-                max_value=30,
-                value=(8, 25),
-                key="opt_floors_range",
+    # ── ЛЕВАЯ КОЛОНКА: чекбоксы «что варьировать» ──────────────────
+    with col_left:
+        with st.container(border=True):
+            st.markdown("##### Варьируемые параметры")
+            vary_floors = st.checkbox(
+                "🏠 Этажность", value=True, key="opt_vary_floors",
             )
-            floors_range = (int(lo), int(hi))
-
-    # --- Парковки ---
-    PARK_MODE_OPTIM_LABELS = {
-        "Минимум открытых, остальное подземные": "min_open",
-        "Все парковки открытые наземные": "all_open",
-        "Задать доли вручную (custom)": "custom",
-    }
-    with c2:
-        vary_parking = st.checkbox(
-            "🅿️ Режим парковок",
-            value=False,
-            key="opt_vary_parking_mode",
-            help=(
-                "Если отмечено, оптимизатор перебирает разные режимы размещения "
-                "парковок и выбирает тот, где площадь квартир максимальна. "
-                "Иначе используется режим из настроек слева."
-            ),
-        )
-        parking_modes = None
-        if vary_parking:
-            picked_labels = st.multiselect(
-                "Какие режимы перебирать",
-                list(PARK_MODE_OPTIM_LABELS.keys()),
-                default=[
-                    "Минимум открытых, остальное подземные",
-                    "Все парковки открытые наземные",
-                ],
-                key="opt_parking_modes_labels",
-                help="Можно выбрать любое подмножество. Custom активирует слайдеры долей ниже.",
+            vary_parking = st.checkbox(
+                "🅿️ Парковки", value=True, key="opt_vary_parking_mode",
             )
-            parking_modes = [PARK_MODE_OPTIM_LABELS[lbl] for lbl in picked_labels] or None
+            vary_kg = st.checkbox(
+                "🎒 Кол-во ДОО", value=True, key="opt_vary_kg",
+                disabled=not base_options.include_kindergarten,
+            )
+            vary_school = st.checkbox(
+                "🏫 Кол-во СОШ", value=True, key="opt_vary_school",
+                disabled=not base_options.include_school,
+            )
+            try_built_in = st.checkbox(
+                "🏪 ВПП (с/без)", value=True, key="opt_try_vpp",
+            )
+            vary_znop = st.checkbox(
+                "🌳 ЗНОП (ступени по КИТ)", value=True, key="opt_vary_znop",
+            )
 
-    # --- Парковки: подробности custom ---
+    # ── ПРАВАЯ КОЛОНКА: плитки настроек включённых параметров ──────
+    floors_range = None
+    parking_modes = None
     parking_open_range = None
     parking_ml_range = None
     multilevel_levels_range = None
-    if vary_parking and parking_modes and "custom" in parking_modes:
-        with st.expander("⚙️ Детали custom-парковок", expanded=True):
-            st.caption(
-                "При custom-режиме оптимизатор подбирает доли каждого типа "
-                "из заданных диапазонов. Подземные = остаток до 100%."
-            )
-            open_lo, open_hi = st.slider(
-                "Диапазон доли открытых наземных, %",
-                0, 100, (10, 50),
-                key="opt_parking_open",
-                help="Открытые м/м занимают площадь квартала пропорционально количеству.",
-            )
-            parking_open_range = (open_lo / 100, open_hi / 100)
-
-            ml_lo, ml_hi = st.slider(
-                "Диапазон доли многоуровневых наземных, %",
-                0, 100, (0, 40),
-                key="opt_parking_ml",
-                help="Многоуровневые компактнее открытых: пятно делится на число этажей.",
-            )
-            parking_ml_range = (ml_lo / 100, ml_hi / 100)
-
-            ll_lo, ll_hi = st.slider(
-                "Диапазон этажности многоуровневого паркинга",
-                1, 6, (1, 4),
-                key="opt_ml_levels",
-                help="Чем выше — тем компактнее пятно, но дороже строительство.",
-            )
-            multilevel_levels_range = (int(ll_lo), int(ll_hi))
-
-    # --- Соцобъекты ---
-    c3, c4 = st.columns(2)
-    with c3:
-        vary_kg = st.checkbox(
-            "🎒 Кол-во ДОО",
-            value=False,
-            key="opt_vary_kg",
-            disabled=not base_options.include_kindergarten,
-        )
-        kg_range = None
-        if vary_kg and base_options.include_kindergarten:
-            lo, hi = st.slider(
-                "Диапазон кол-ва ДОО",
-                min_value=1,
-                max_value=10,
-                value=(1, 4),
-                key="opt_kg_range",
-            )
-            kg_range = (int(lo), int(hi))
-
-    with c4:
-        vary_school = st.checkbox(
-            "🏫 Кол-во СОШ",
-            value=False,
-            key="opt_vary_school",
-            disabled=not base_options.include_school,
-        )
-        school_range = None
-        if vary_school and base_options.include_school:
-            lo, hi = st.slider(
-                "Диапазон кол-ва СОШ",
-                min_value=1,
-                max_value=5,
-                value=(1, 2),
-                key="opt_school_range",
-            )
-            school_range = (int(lo), int(hi))
-
-    # --- ВПП ---
-    try_built_in = st.checkbox(
-        "🏪 Пробовать с ВПП и без",
-        value=False,
-        key="opt_try_vpp",
-        help="Optuna будет сравнивать варианты с ВПП и без него (используется ВПП из настроек слева как шаблон).",
-    )
+    kg_range = None
+    school_range = None
     built_in_vri_codes = ["4.4"]
-    if try_built_in:
-        built_in_vri_codes = st.multiselect(
-            "ВРИ-коды ВПП для перебора",
-            ["2.6", "3.3", "3.6", "4.4", "4.6"],
-            default=["4.4"],
-            key="opt_vri_codes",
-        )
-        if not built_in_vri_codes:
-            built_in_vri_codes = ["4.4"]
+    znop_choices: list[float] | None = None
+
+    with col_right:
+        # Этажность
+        if vary_floors:
+            with st.container(border=True):
+                st.markdown("##### 🏠 Этажность")
+                lo, hi = st.slider(
+                    "Диапазон этажности",
+                    min_value=4, max_value=30, value=(8, 25),
+                    key="opt_floors_range",
+                )
+                floors_range = (int(lo), int(hi))
+
+        # Парковки — галочками по режимам (вместо selectbox)
+        if vary_parking:
+            with st.container(border=True):
+                st.markdown("##### 🅿️ Парковки")
+                st.caption("Выберите режимы для перебора — отмечайте галочками.")
+                use_min_open = st.checkbox(
+                    "Минимум открытых, остальное подземные",
+                    value=True, key="opt_park_min_open",
+                )
+                use_all_open = st.checkbox(
+                    "Все парковки открытые наземные",
+                    value=True, key="opt_park_all_open",
+                )
+                use_custom = st.checkbox(
+                    "Вручную (custom — с настройкой долей ниже)",
+                    value=False, key="opt_park_custom",
+                )
+                modes = []
+                if use_min_open: modes.append("min_open")
+                if use_all_open: modes.append("all_open")
+                if use_custom: modes.append("custom")
+                parking_modes = modes if modes else None
+
+                if use_custom:
+                    st.markdown("**Диапазоны для custom-режима**")
+                    open_lo, open_hi = st.slider(
+                        "Доля открытых наземных, %",
+                        0, 100, (10, 50),
+                        key="opt_parking_open",
+                    )
+                    parking_open_range = (open_lo / 100, open_hi / 100)
+
+                    ml_lo, ml_hi = st.slider(
+                        "Доля многоуровневых наземных, %",
+                        0, 100, (0, 40),
+                        key="opt_parking_ml",
+                    )
+                    parking_ml_range = (ml_lo / 100, ml_hi / 100)
+
+                    ll_lo, ll_hi = st.slider(
+                        "Этажность многоуровневого паркинга",
+                        1, 6, (1, 4),
+                        key="opt_ml_levels",
+                    )
+                    multilevel_levels_range = (int(ll_lo), int(ll_hi))
+
+        # ДОО
+        if vary_kg and base_options.include_kindergarten:
+            with st.container(border=True):
+                st.markdown("##### 🎒 Кол-во ДОО")
+                lo, hi = st.slider(
+                    "Диапазон кол-ва ДОО",
+                    min_value=1, max_value=10, value=(1, 4),
+                    key="opt_kg_range",
+                )
+                kg_range = (int(lo), int(hi))
+
+        # СОШ
+        if vary_school and base_options.include_school:
+            with st.container(border=True):
+                st.markdown("##### 🏫 Кол-во СОШ")
+                lo, hi = st.slider(
+                    "Диапазон кол-ва СОШ",
+                    min_value=1, max_value=5, value=(1, 2),
+                    key="opt_school_range",
+                )
+                school_range = (int(lo), int(hi))
+
+        # ВПП — галочки по ВРИ-кодам
+        if try_built_in:
+            with st.container(border=True):
+                st.markdown("##### 🏪 ВПП — варианты ВРИ для перебора")
+                st.caption("Optuna будет сравнивать варианты с ВПП и без ВПП.")
+                cc1, cc2, cc3, cc4, cc5 = st.columns(5)
+                use_44 = cc1.checkbox("4.4", value=True, key="opt_vri_44",
+                                      help="Магазины")
+                use_46 = cc2.checkbox("4.6", value=False, key="opt_vri_46",
+                                      help="Общепит")
+                use_33 = cc3.checkbox("3.3", value=False, key="opt_vri_33",
+                                      help="Бытовое обслуживание")
+                use_341 = cc4.checkbox("3.4.1", value=False, key="opt_vri_341",
+                                       help="Поликлиника")
+                use_351 = cc5.checkbox("3.5.1", value=False, key="opt_vri_351",
+                                       help="Школа искусств")
+                codes = []
+                if use_44: codes.append("4.4")
+                if use_46: codes.append("4.6")
+                if use_33: codes.append("3.3")
+                if use_341: codes.append("3.4.1")
+                if use_351: codes.append("3.5.1")
+                built_in_vri_codes = codes if codes else ["4.4"]
+
+        # ЗНОП — нормативные ступени по КИТ
+        if vary_znop:
+            with st.container(border=True):
+                st.markdown("##### 🌳 ЗНОП — значения для перебора")
+                st.caption(
+                    "Нормативные ступени ПЗЗ СПб по КИТ: 0 / 3 / 4 / 6 м²/чел. "
+                    "Отметьте, какие значения перебирать."
+                )
+                cc1, cc2, cc3, cc4 = st.columns(4)
+                use_z0 = cc1.checkbox("0 м²/чел", value=True, key="opt_znop_0")
+                use_z3 = cc2.checkbox("3 м²/чел", value=True, key="opt_znop_3")
+                use_z4 = cc3.checkbox("4 м²/чел", value=True, key="opt_znop_4")
+                use_z6 = cc4.checkbox("6 м²/чел", value=True, key="opt_znop_6")
+                choices = []
+                if use_z0: choices.append(0.0)
+                if use_z3: choices.append(3.0)
+                if use_z4: choices.append(4.0)
+                if use_z6: choices.append(6.0)
+                znop_choices = choices if choices else None
 
     return SearchSpace(
         floors_range=floors_range,
@@ -180,6 +203,7 @@ def _render_search_space_form(base_options: CalculationOptions) -> SearchSpace:
         school_num_objects_range=school_range,
         try_built_in=try_built_in,
         built_in_vri_codes=built_in_vri_codes,
+        znop_per_person_choices=znop_choices,
     )
 
 
@@ -214,6 +238,7 @@ def _report_to_dataframe(report: OptimizationReport) -> pd.DataFrame:
                 "school_num_objects": "СОШ, шт",
                 "use_vpp": "ВПП",
                 "vpp_vri": "ВРИ ВПП",
+                "znop_per_person": "ЗНОП, м²/чел",
             }.get(k, k)
             # Преобразование значений для удобочитаемости
             if k == "parking_mode":
@@ -239,52 +264,20 @@ def render_optimizer_tab(
 ) -> None:
     st.markdown("## 🧬 Оптимизация — поиск лучших ТЭП")
     st.caption(
-        "Аналог Galapagos из Grasshopper. Optuna перебирает значения "
-        "выбранных параметров и находит комбинацию, при которой "
-        "**площадь квартир максимальна** при выполнении всех ограничений."
+        "Optuna перебирает значения выбранных параметров и находит комбинацию, "
+        "при которой **площадь квартир максимальна** при выполнении всех ограничений."
     )
 
-    # ------------------------------------------------------------------
-    # Форма «что варьировать»
-    # ------------------------------------------------------------------
-    with st.expander("⚙️ Что варьировать", expanded=True):
-        space = _render_search_space_form(base_options)
-
-    # ------------------------------------------------------------------
-    # Параметры запуска
-    # ------------------------------------------------------------------
-    c1, c2, c3 = st.columns([2, 1, 1])
-    n_trials = c1.slider(
-        "Число испытаний (trials)",
-        min_value=10,
-        max_value=300,
-        value=50,
-        step=10,
-        key="opt_n_trials",
-        help="Больше = точнее, но дольше. ~100 trials/сек на типовом квартале.",
-    )
-    top_n = c2.number_input(
-        "Топ N",
-        min_value=3,
-        max_value=30,
-        value=10,
-        key="opt_top_n",
-    )
-    seed = c3.number_input(
-        "Seed",
-        min_value=0,
-        max_value=99999,
-        value=42,
-        key="opt_seed",
-    )
+    # ── Форма «что варьировать» (не сворачиваемая) ─────────────────
+    space = _render_search_space_form(base_options)
 
     if space.is_empty():
-        st.info("Отметьте хотя бы один параметр для перебора.")
+        st.info("⬅ Отметьте хотя бы один параметр для перебора.")
         return
 
-    # ------------------------------------------------------------------
-    # Кнопка запуска
-    # ------------------------------------------------------------------
+    st.markdown("---")
+
+    # ── Кнопка запуска (trials/seed зафиксированы) ─────────────────
     if st.button("🚀 Запустить оптимизацию", type="primary", use_container_width=True):
         progress = st.progress(0.0, text="Запускаем оптимизацию...")
 
@@ -295,15 +288,15 @@ def render_optimizer_tab(
                 text=f"Trial {current}/{total} · лучшая площадь квартир: {best:,.0f} м²".replace(",", " "),
             )
 
-        with st.spinner("Optuna перебирает варианты..."):
+        with st.spinner(f"Optuna перебирает варианты (до {_DEFAULT_TRIALS} испытаний)..."):
             report = optimize_max_apartments(
                 site=site,
                 base_options=base_options,
                 norms=norms,
                 space=space,
-                n_trials=int(n_trials),
-                top_n=int(top_n),
-                seed=int(seed),
+                n_trials=_DEFAULT_TRIALS,
+                top_n=_DEFAULT_TOP_N,
+                seed=_DEFAULT_SEED,
                 progress_callback=cb,
             )
         progress.empty()
