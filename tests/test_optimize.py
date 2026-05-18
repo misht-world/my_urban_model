@@ -111,6 +111,38 @@ class TestZnopSearch:
         space = SearchSpace(floors_range=(10, 12))
         assert space.znop_per_person_choices is None
 
+    def test_znop_caps_kit_by_piecewise(self, spb):
+        """v0.7.4: при ZNOP=3 м²/чел КИТ автоматически ограничен 1.79 (piecewise ПЗЗ).
+
+        Раньше override обходил нормативную связь ЗНОП↔КИТ. Теперь
+        effective_kit_max = min(kit_limits, piecewise.up_to(znop_pp)).
+        """
+        from urban_model.models import Site as _Site
+        from urban_model.calculations.znop import kit_cap_for_znop
+        # Проверка функции напрямую
+        assert kit_cap_for_znop(0.0, spb) == 1.59
+        assert kit_cap_for_znop(3.0, spb) == 1.79
+        assert kit_cap_for_znop(4.0, spb) == 1.99
+        assert kit_cap_for_znop(6.0, spb) == 2.50
+        assert kit_cap_for_znop(5.0, spb) is None  # нет ступени со значением 5
+
+    def test_znop_override_limits_kit_in_forward(self, spb):
+        """Через verify_kit при znop_override=3 КИТ должен быть ограничен 1.79."""
+        from urban_model import verify_kit
+        from urban_model.models import Site as _Site
+        site = _Site(area_m2=200_000)
+        # Внутренняя плотность 2.0 → КИТ ПЗЗ может выйти за 1.79
+        # При override=3 это должно вызвать ERROR
+        opts = CalculationOptions(
+            floors=20, planning_doc=True,
+            znop_per_person_override=3.0,
+        )
+        res = verify_kit(2.5, site, opts, spb)
+        # Если КИТ ПЗЗ > 1.79 → status=ERROR
+        if res.kit.value > 1.79 + 1e-3:
+            assert res.kit.status.value == "error"
+            assert any("ЗНОП" in w for w in res.warnings)
+
 
 class TestOptimizerImproves:
     def test_floors_optimization_beats_low_baseline(self, site, spb):

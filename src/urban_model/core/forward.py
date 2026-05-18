@@ -524,24 +524,51 @@ def compute_tep_for_kit(
     park_source = norms.source_of("parking.housing.m2_apartments_per_place")
     per_place = norms.resolve("parking.housing.m2_apartments_per_place")
 
-    # === Сборка TEPResult ===
-    # Статус КИТ: ERROR, если он превышает нормативный потолок (1.4 без ДПТ; 2.5 с ДПТ)
-    kit_status = Status.ERROR if kit_developed > kit_norm_max + 1e-6 else Status.OK
-    if kit_status == Status.ERROR:
-        warnings.append(
-            f"КИТ {kit_developed:.3f} превышает нормативный максимум "
-            f"{kit_norm_max} (ПЗЗ СПб, ДПТ={'да' if options.planning_doc else 'нет'})"
+    # === Эффективный потолок КИТ ===
+    # Базовый — kit_limits (1.4 без ДПТ / 2.5 с ДПТ).
+    # При override ЗНОП piecewise-обратная даёт более жёсткий предел:
+    #   ЗНОП=0 → КИТ ≤ 1.59; =3 → ≤ 1.79; =4 → ≤ 1.99; =6 → ≤ 2.50.
+    # Если override ЗНОП фиксирован, КИТ должен соответствовать ступени.
+    effective_kit_max = kit_norm_max
+    znop_cap = None
+    if options.znop_per_person_override is not None:
+        znop_cap = znop.kit_cap_for_znop(
+            float(options.znop_per_person_override), norms
         )
+        if znop_cap is not None:
+            effective_kit_max = min(kit_norm_max, znop_cap)
+
+    # === Сборка TEPResult ===
+    # Статус КИТ: ERROR, если он превышает effective_kit_max
+    kit_status = Status.ERROR if kit_developed > effective_kit_max + 1e-6 else Status.OK
+    if kit_status == Status.ERROR:
+        if znop_cap is not None and effective_kit_max < kit_norm_max:
+            warnings.append(
+                f"КИТ {kit_developed:.3f} превышает предел {effective_kit_max} "
+                f"для ЗНОП={options.znop_per_person_override} м²/чел "
+                f"(норматив piecewise по ПЗЗ СПб)."
+            )
+        else:
+            warnings.append(
+                f"КИТ {kit_developed:.3f} превышает нормативный максимум "
+                f"{kit_norm_max} (ПЗЗ СПб, ДПТ={'да' if options.planning_doc else 'нет'})"
+            )
 
     return TEPResult(
         profile=norms.profile,
         kit=_F(
             kit_developed,
             status=kit_status,
-            normative=kit_norm_max,
+            normative=effective_kit_max,
             formula=(
                 f"Площадь квартир / ЗУ жилой застройки = "
                 f"{apartments_area_v:,.0f} / {housing_lot_v:,.0f}".replace(",", " ")
+                + (
+                    f" — потолок снижен до {effective_kit_max} из-за ЗНОП "
+                    f"= {options.znop_per_person_override} м²/чел (piecewise ПЗЗ)"
+                    if znop_cap is not None and effective_kit_max < kit_norm_max
+                    else ""
+                )
             ),
             source="ПЗЗ СПб",
         ),
