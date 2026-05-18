@@ -71,6 +71,17 @@ st.markdown("""
       border: 1px solid #BFDBFE !important;
       border-bottom: 2px solid #FFFFFF !important;
   }
+  /* Цветовая дифференциация левого и правого блока на вкладке «Параметры»:
+     левая колонка — нейтральный голубоватый фон (входные данные),
+     правая — нейтральный зеленоватый (плитки настроек включённых компонентов). */
+  div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-child(1) div[data-testid="stVerticalBlockBorderWrapper"] {
+      background-color: #F0F6FB;
+      border-color: #C7DEEE !important;
+  }
+  div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-child(2) div[data-testid="stVerticalBlockBorderWrapper"] {
+      background-color: #F2F8F3;
+      border-color: #CFE2D2 !important;
+  }
   /* Чуть меньше пустоты у containers с border */
   div[data-testid="stVerticalBlockBorderWrapper"] {padding: 0.6rem 0.9rem;}
 </style>
@@ -158,7 +169,8 @@ with tab_calc:
 
     render_header(result)
     render_kpi(result)
-    render_details(result)
+    # v0.7.2: «Добавить в сравнение» — сразу под основными показателями.
+    # Логика: «посмотрели, что основное устраивает — сохранили в сравнение».
     render_actions(
         result,
         default_name=auto_scenario_name(
@@ -169,6 +181,7 @@ with tab_calc:
             verify_kit_value=inputs.verify_kit_value,
         ),
     )
+    render_details(result)
 
 with tab_optimize:
     render_optimizer_tab(

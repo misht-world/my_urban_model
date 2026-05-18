@@ -14,6 +14,7 @@ from urban_model.export import results_to_dataframe, to_xlsx
 from urban_model.export.table import results_to_audit_dataframe
 from urban_model.models.result import Status, TEPField, TEPResult
 from urban_model.ui.formatting import (
+    STATUS_LABEL_RU,
     fmt_float,
     fmt_ga,
     fmt_int,
@@ -62,27 +63,66 @@ def render_header(result: TEPResult) -> None:
 # ---------------------------------------------------------------------------
 
 def render_kpi(result: TEPResult) -> None:
-    # === Ряд 1: главные показатели жилья ===
-    c1, c2, c3, c4 = st.columns(4)
-    kit_help = (
-        "КИТ по ПЗЗ СПб = площадь квартир / ЗУ жилой застройки. "
-        f"Норматив. потолок: {result.kit_normative_max.value} "
-        f"(ДПТ: {'да' if result.kit_normative_max.value == 2.5 else 'нет'})"
-    )
-    c1.metric("КИТ (ПЗЗ)", f"{result.kit.value:.3f}", help=kit_help)
-    c2.metric("Население", fmt_int(result.population.value), help="чел.")
-    c3.metric("Площадь квартир", fmt_m2(result.apartments_area.value))
-    surplus = result.balance.surplus
-    delta_color = "normal" if surplus >= 0 else "inverse"
-    c4.metric(
-        "Резерв баланса",
-        fmt_m2(surplus),
-        delta=("OK" if surplus >= 0 else "ДЕФИЦИТ"),
-        delta_color=delta_color,
-    )
+    # === Основные показатели в едином блоке с возможностью копирования ===
+    with st.container(border=True):
+        header_col, copy_col = st.columns([10, 1])
+        with header_col:
+            st.markdown("##### 📊 Основные показатели")
+        with copy_col:
+            # Сводка в виде plain-text для копирования
+            kit_v = result.kit.value or 0
+            kit_max = result.kit_normative_max.value or 0
+            pop_v = int(result.population.value or 0)
+            apt_v = result.apartments_area.value or 0
+            surplus_v = result.balance.surplus
+            kg_total = int(result.kindergarten_places_accepted.value or 0)
+            sch_total = int(result.school_places_accepted.value or 0)
+            total_pl = int(result.parking_required_places.value or 0)
+            znop_pp = result.znop_per_person.value or 0
+            znop_area = int(result.znop_area.value or 0)
+            summary_text = (
+                f"КИТ (ПЗЗ): {kit_v:.3f} (потолок {kit_max})\n"
+                f"Население: {pop_v:,} чел.\n"
+                f"Площадь квартир: {apt_v:,.0f} м²\n"
+                f"Резерв баланса: {surplus_v:+,.0f} м²\n"
+                f"ДОО: {kg_total} мест\n"
+                f"СОШ: {sch_total} мест\n"
+                f"Парковки: {total_pl} м/м\n"
+                f"ЗНОП: {znop_area:,} м² ({znop_pp:.1f} м²/чел)"
+            ).replace(",", " ")
+            with st.popover("📋", help="Скопировать показатели в виде текста"):
+                st.text_area(
+                    "Сводка (выделите и скопируйте Ctrl+C)",
+                    value=summary_text,
+                    height=200,
+                    key=f"_kpi_copy_{id(result)}",
+                    label_visibility="visible",
+                )
 
-    # === Ряд 2: социалка / парковки / ЗНОП ===
-    c5, c6, c7, c8 = st.columns(4)
+        # === Ряд 1: главные показатели жилья ===
+        c1, c2, c3, c4 = st.columns(4)
+        kit_help = (
+            "КИТ по ПЗЗ СПб = площадь квартир / ЗУ жилой застройки. "
+            f"Норматив. потолок: {result.kit_normative_max.value} "
+            f"(ДПТ: {'да' if result.kit_normative_max.value == 2.5 else 'нет'})"
+        )
+        c1.metric("КИТ (ПЗЗ)", f"{result.kit.value:.3f}", help=kit_help)
+        c2.metric(
+            "Население", f"{fmt_int(result.population.value)} чел.",
+            help="Жилищная обеспеченность: 28 м²/чел (НГП СПб).",
+        )
+        c3.metric("Площадь квартир", fmt_m2(result.apartments_area.value))
+        surplus = result.balance.surplus
+        delta_color = "normal" if surplus >= 0 else "inverse"
+        c4.metric(
+            "Резерв баланса",
+            fmt_m2(surplus),
+            delta=("OK" if surplus >= 0 else "ДЕФИЦИТ"),
+            delta_color=delta_color,
+        )
+
+        # === Ряд 2: социалка / парковки / ЗНОП (внутри того же контейнера) ===
+        c5, c6, c7, c8 = st.columns(4)
 
     # Вспомогательная функция: парсим список вместимостей из formula-строки
     # Формат: «вверх кратно 5 → разбивка по объектам [160, 165, 165]»
@@ -167,7 +207,7 @@ def _row(label: str, field: TEPField, fmt_fn=fmt_int, suffix: str = "") -> dict:
     return {
         "Показатель": label,
         "Значение": f"{val_str}{suffix}",
-        "Статус": field.status.value,
+        "Статус": STATUS_LABEL_RU.get(field.status, field.status.value),
         "Источник": field.source or "",
         "Формула": field.formula or "",
     }
@@ -192,24 +232,25 @@ def render_details(result: TEPResult) -> None:
     with st.expander("🏠 Жильё", expanded=False):
         rows = [
             _row("КИТ ПЗЗ (площадь квартир / ЗУ жилой застройки)", result.kit, fmt_float),
-            _row("Плотность квартала (GFA / S_квартала, внутр.)",
+            _row("Плотность квартала (внутренняя, GFA / площадь квартала)",
                  result.block_density, fmt_float),
             _row("Общая площадь жилых зданий (GFA)", result.gfa, fmt_m2),
             _row("Площадь квартир", result.apartments_area, fmt_m2),
         ]
         if result.built_in_area.value and result.built_in_area.value > 0:
             rows.append(_row(
-                f"ВПП (ВРИ {result.built_in_vri_code})",
+                f"Встроенно-пристроенные помещения (ВПП, ВРИ {result.built_in_vri_code})",
                 result.built_in_area, fmt_m2,
             ))
             rows.append(_row("Парковки ВПП", result.built_in_parking_places,
                              fmt_int, " м/м"))
             rows.append(_row("Озеленение ВПП", result.built_in_greening_area, fmt_m2))
         rows += [
-            _row("Площадь застройки (footprint)", result.housing_footprint, fmt_m2),
+            _row("Площадь застройки", result.housing_footprint, fmt_m2),
             _row("ЗУ жилой застройки", result.housing_lot_area, fmt_m2),
             _row("Население", result.population, fmt_int, " чел."),
-            _row("Плотность", result.density_chel_per_ga, lambda x: f"{x:.1f}", " чел./га"),
+            _row("Плотность (по СП 42.13330, для 20 м²/чел)",
+                 result.density_chel_per_ga, lambda x: f"{x:.1f}", " чел./га"),
         ]
         _show_rows(rows)
 
@@ -235,7 +276,7 @@ def render_details(result: TEPResult) -> None:
 
     # 🏃 Плоскостные спортивные сооружения
     if (result.sport_facilities_plot_area.value or 0) > 0:
-        with st.expander("🏃 Плоскостные спортивные сооружения (ВРИ 5.1.3)", expanded=False):
+        with st.expander("🏃 Плоскостные спортивные сооружения", expanded=False):
             rows = [
                 _row("Площадь сооружений", result.sport_facilities_area, fmt_m2),
                 _row("Озеленение требуется (40%)",
@@ -306,7 +347,7 @@ def render_details(result: TEPResult) -> None:
                 "housing_lot": "ЗУ жилой застройки",
                 "kindergarten_plot": "Участки ДОО",
                 "school_plot": "Участки СОШ",
-                "sport_facilities": "Спортивные сооружения (ВРИ 5.1.3)",
+                "sport_facilities": "Спортивные сооружения",
                 "social_parking_plot": "Парковки соцобъектов (ДОО/СОШ)",
                 "znop": "ЗНОП",
                 "intra_quarter_driveways": "Внутриквартальные проезды",

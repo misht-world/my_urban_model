@@ -540,45 +540,53 @@ def compute_tep_for_kit(
             status=kit_status,
             normative=kit_norm_max,
             formula=(
-                f"S_квартир / S_ЗУ_жилой = {apartments_area_v:.0f} / {housing_lot_v:.0f}"
+                f"Площадь квартир / ЗУ жилой застройки = "
+                f"{apartments_area_v:,.0f} / {housing_lot_v:,.0f}".replace(",", " ")
             ),
             source="ПЗЗ СПб",
         ),
         block_density=_F(
             kit,
-            formula=f"GFA / S_квартала = {gfa_v:.0f} / {site.area_m2:.0f} (внутр. бисекция)",
+            formula=(
+                f"Общая площадь зданий (GFA) / Площадь квартала = "
+                f"{gfa_v:,.0f} / {site.area_m2:,.0f} — внутренняя величина для бисекции"
+            ).replace(",", " "),
         ),
         kit_normative_max=_F(
             kit_norm_max,
             source=norms.source_of(
                 "kit_limits", planning_doc="yes" if options.planning_doc else "no"
             ),
-            formula=f"ПЗЗ СПб, ДПТ={'да' if options.planning_doc else 'нет'}",
+            formula=f"Нормативный потолок по ПЗЗ СПб; ДПТ={'да' if options.planning_doc else 'нет'}",
         ),
         gfa=_F(
             gfa_v,
             unit="m2",
-            formula=f"плотность × S_квартала = {kit:.3f} × {site.area_m2}",
+            formula=(
+                f"Внутренняя плотность × площадь квартала = "
+                f"{kit:.3f} × {site.area_m2:,.0f}"
+            ).replace(",", " "),
         ),
         apartments_area=_F(
             apartments_area_v,
             unit="m2",
             formula=(
-                f"(GFA − ВПП={bi_area:.0f} − ДОО_встр={kg_bld_total:.0f}) × {apt_ratio}"
+                f"(GFA − ВПП {bi_area:,.0f} м² − встроенный ДОО {kg_bld_total:,.0f} м²) "
+                f"× коэф {apt_ratio} (квартиры / общая)"
                 if bi_area > 0 and _kg_builtin_adj
-                else f"(GFA − ДОО_встр={kg_bld_total:.0f}) × {apt_ratio}"
+                else f"(GFA − встроенный ДОО {kg_bld_total:,.0f} м²) × коэф {apt_ratio}"
                 if _kg_builtin_adj
-                else f"(GFA − ВПП={bi_area:.0f}) × {apt_ratio}"
+                else f"(GFA − ВПП {bi_area:,.0f} м²) × коэф {apt_ratio}"
                 if bi_area > 0
-                else f"GFA × (1 − vpp_share={options.vpp_share}) × {apt_ratio}"
-            ),
+                else f"GFA × (1 − доля ВПП {options.vpp_share}) × коэф {apt_ratio}"
+            ).replace(",", " "),
             source=norms.source_of("building_params.apartments_to_gfa_ratio"),
         ),
         built_in_area=_F(
             bi_area,
             unit="m2",
             formula=(
-                f"BuiltInArea(area_m2={bi_area:.0f}, vri={bi_vri})"
+                f"Сумма площадей ВПП: {bi_area:,.0f} м² (первичный ВРИ {bi_vri})".replace(",", " ")
                 if bi_area > 0 else "ВПП не задано"
             ),
         ),
@@ -614,12 +622,17 @@ def compute_tep_for_kit(
             source=norms.source_of("housing_provision_check"),
         ),
         density_chel_per_ga=_F(
-            density_v,
+            density_check_v,
             unit="чел/га",
             normative=density_max,
             status=density_status,
-            formula="население / (S_квартала / 10000)",
-            source=norms.source_of("population_density_max"),
+            formula=(
+                "Формальная плотность по СП 42.13330.2016: "
+                "S_квартир / 20 м²/чел / (S_квартала / 10000). "
+                f"= {pop_check_v:.0f} / {site.area_m2/10000:.2f} га. "
+                "Не должна превышать 450 чел/га для многоэтажной застройки."
+            ),
+            source="СП 42.13330.2016 (расчётная плотность)",
         ),
         kindergarten_places_required=_F(
             kg_required_raw,
