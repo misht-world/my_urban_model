@@ -56,6 +56,14 @@ class SearchSpace(BaseModel):
         description="Варианты ЗНОП в м²/чел для перебора (override); None = не варьировать",
     )
 
+    # Целевая функция оптимизации (v0.8.0):
+    # • "apartments_area" — максимум площади квартир (как было раньше)
+    # • "profit" — максимум прибыли (требует TEPResult.economy != None)
+    objective: str = Field(
+        default="apartments_area",
+        description="Целевая функция: 'apartments_area' или 'profit'",
+    )
+
     def is_empty(self) -> bool:
         """True, если ни одна декорация не задана — оптимизировать нечего."""
         return all(

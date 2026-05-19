@@ -135,6 +135,14 @@ def render_params_tab() -> UserInputs:
             include_custom = st.checkbox(
                 "📦 Дополнительные объекты", value=False, key="include_custom_objects",
             )
+            include_economy = st.checkbox(
+                "💰 Экономика (у.е., оценка прибыли)",
+                value=True, key="include_economy",
+                help=(
+                    "Расчёт стоимости / выручки / прибыли в условных единицах. "
+                    "1.0 у.е. ≈ себестоимость м² жилья 9 эт. монолит standard."
+                ),
+            )
 
     # ─── ПРАВАЯ КОЛОНКА: плитки для активных компонентов ──────────
     with col_right:
@@ -190,10 +198,17 @@ def render_params_tab() -> UserInputs:
         else:
             custom_objects_list = []
 
+        # Экономика (v0.8.0)
+        if include_economy:
+            residential_class = _render_economy_tile()
+        else:
+            residential_class = "comfort"  # дефолт
+
         # Сообщение когда правая колонка пуста
         if not any([
             include_kg, include_school, include_sport, include_parking,
             include_znop, include_vpp, include_intra, include_custom,
+            include_economy,
         ]):
             st.info(
                 "⬅ Выберите хотя бы один компонент в левой колонке, "
@@ -222,6 +237,7 @@ def render_params_tab() -> UserInputs:
         custom_objects=custom_objects_list,
         driveways_intra_share_override=intra_override,
         driveways_lot_share_override=lot_override,
+        residential_class=residential_class,
     )
     return UserInputs(
         site=site, options=options, mode=mode,
@@ -1016,6 +1032,27 @@ def _render_parking_custom() -> ParkingConfig:
     except Exception as e:
         st.error(f"Некорректная конфигурация парковок: {e}")
         return ParkingConfig(mode="min_open")
+
+
+def _render_economy_tile() -> str:
+    """Плитка экономических параметров (v0.8.0). Возвращает residential_class."""
+    with st.container(border=True):
+        st.markdown("##### 💰 Экономика (условные единицы)")
+        st.caption(
+            "Конструктив и отделка — дефолты `monolith` / `standard` из норматива. "
+            "1.0 у.е. ≈ себестоимость м² жилья 9-эт. монолит standard."
+        )
+        cls_label = st.selectbox(
+            "Класс жилья",
+            ["economy", "comfort", "business"],
+            index=1,  # comfort по умолчанию
+            key="residential_class",
+            help=(
+                "Влияет на цену продажи м² квартир: "
+                "economy 1.55, comfort 1.95, business 2.80 у.е./м²."
+            ),
+        )
+    return cls_label
 
 
 def _render_custom_objects_tile() -> list[CustomObject]:

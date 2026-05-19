@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, ConfigDict, Field
 
 from urban_model.models.built_in import BuiltInArea
@@ -64,6 +66,13 @@ class CalculationOptions(BaseModel):
             "Конфигурация парковок: mode='min_open' (по умолчанию) / "
             "'all_open' / 'custom' с долями open/multilevel/underground"
         ),
+    )
+
+    # Экономика (v0.8.0): класс жилья влияет на цену продажи м² квартир.
+    # Конструктив и отделка — пока дефолты из YAML (monolith / standard).
+    residential_class: Literal["economy", "comfort", "business"] = Field(
+        default="comfort",
+        description="Класс жилья — влияет на цену продажи м² квартир.",
     )
 
     # Бисекция КИТ

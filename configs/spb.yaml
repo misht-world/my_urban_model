@@ -421,3 +421,143 @@ sport_facilities:
     value: 1.00
     note: "100% от площади застройки на нежилом ЗУ"
     source: "принято условно"
+
+# === Экономика (v0.8.0): условные единицы ===
+# Базовая единица: 1.0 = себестоимость м² жилья 9-эт. монолита со standard-отделкой.
+# Все стоимости и цены — относительно этого. Подробности — SPEC.md.
+economy:
+  base_unit:
+    type: scalar
+    value: 1.0
+    note: "1.0 = себестоимость м² жилья 9-этажного монолита со standard-отделкой"
+    source: "принято условно (SPEC.md)"
+
+  construction:
+    # Базовая стоимость м² GFA жилых зданий — piecewise по этажности
+    residential_by_floors:
+      type: piecewise
+      argument: floors
+      breakpoints:
+        - { up_to: 5,    value: 0.92 }     # low_5fl кирпич/панель
+        - { up_to: 9,    value: 1.00 }     # mid_9fl monolith (референс)
+        - { up_to: 12,   value: 1.10 }     # high_12fl
+        - { up_to: 17,   value: 1.20 }     # high_17fl
+        - { up_to: 22,   value: 1.35 }     # tower_22fl
+        - { up_to: .inf, value: 1.48 }     # tower_25fl+
+      unit: "unit_per_m2_gfa"
+      source: "SPEC.md (стартовые коэф, типичные пропорции РФ)"
+    vpp_commercial:
+      type: scalar
+      value: 0.78
+      unit: "unit_per_m2_built_in"
+      note: "shell&core коммерческой ВПП (без отделки)"
+      source: "SPEC.md"
+    kindergarten:
+      type: scalar
+      value: 1.40
+      unit: "unit_per_m2_building"
+      source: "SPEC.md (спецтребования к ДОО)"
+    school:
+      type: scalar
+      value: 1.30
+      unit: "unit_per_m2_building"
+      source: "SPEC.md"
+    parking_surface:
+      type: scalar
+      value: 0.20
+      unit: "unit_per_m2"
+      source: "SPEC.md (открытая стоянка с покрытием)"
+    parking_multilevel:
+      type: scalar
+      value: 0.50
+      unit: "unit_per_m2"
+      source: "SPEC.md (упрощённая инженерия, без гидроизоляции)"
+    parking_underground:
+      type: scalar
+      value: 1.00
+      unit: "unit_per_m2"
+      source: "SPEC.md (сложный конструктив, гидроизоляция, рампы)"
+    # все три верхних имеют source — ок
+    # Прогрессия удорожания подземных уровней (level N относительно level 1)
+    underground_progression:
+      type: piecewise
+      argument: level
+      breakpoints:
+        - { up_to: 1,    value: 1.00 }
+        - { up_to: 2,    value: 1.30 }
+        - { up_to: 3,    value: 1.65 }
+        - { up_to: .inf, value: 2.05 }
+      unit: "multiplier"
+      source: "SPEC.md (стартовая прогрессия)"
+
+  overhead:
+    pct_networks:
+      type: scalar
+      value: 0.10
+      note: "сети — 10% от стоимости зданий"
+      source: "принято условно (SPEC.md)"
+    pct_landscaping:
+      type: scalar
+      value: 0.05
+      note: "благоустройство — 5%"
+      source: "принято условно (SPEC.md)"
+    pct_design:
+      type: scalar
+      value: 0.05
+      note: "проектирование/изыскания — 5%"
+      source: "принято условно (SPEC.md)"
+    pct_contingency:
+      type: scalar
+      value: 0.07
+      note: "непредвиденные — 7% от (shell + сети + ландшафт + проект)"
+      source: "принято условно (SPEC.md)"
+
+  sale_prices:
+    # Цена м² квартир по классу жилья
+    residential_by_class:
+      type: conditional
+      argument: residential_class
+      cases:
+        economy:  1.55
+        comfort:  1.95
+        business: 2.80
+      unit: "unit_per_m2_apartments"
+      source: "SPEC.md (типичная маржа РФ для эконома/комфорта/бизнеса)"
+    parking_underground:
+      type: scalar
+      value: 0.50
+      unit: "unit_per_space"
+      source: "SPEC.md"
+    parking_multilevel:
+      type: scalar
+      value: 0.25
+      unit: "unit_per_space"
+      source: "SPEC.md"
+    parking_surface:
+      type: scalar
+      value: 0.10
+      unit: "unit_per_space"
+      source: "SPEC.md"
+    vpp_commercial:
+      type: scalar
+      value: 1.30
+      unit: "unit_per_m2"
+      source: "SPEC.md (shell&core ритейл с отделкой арендатора)"
+
+  # Площадь м/м по типам — для расчёта стоимости через площадь, а не «штуки»
+  parking_areas:
+    underground_m2_per_space:
+      type: scalar
+      value: 35
+      unit: "m2"
+      source: "SPEC.md / СП 113.13330"
+    multilevel_m2_per_space:
+      type: scalar
+      value: 28
+      unit: "m2"
+      source: "SPEC.md"
+    surface_m2_per_space:
+      type: scalar
+      value: 25
+      unit: "m2"
+      source: "СП 113.13330"

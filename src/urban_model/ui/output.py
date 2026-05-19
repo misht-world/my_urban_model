@@ -95,6 +95,17 @@ def render_kpi(result: TEPResult, *, scenario_default_name: str | None = None) -
                 f"Парковки: {total_pl} м/м\n"
                 f"ЗНОП: {znop_area:,} м² ({znop_pp:.1f} м²/чел)"
             ).replace(",", " ")
+            # v0.8.0: экономика добавляется в сводку, если есть
+            if result.economy is not None:
+                e = result.economy
+                summary_text += (
+                    f"\n\n— Экономика (у.е.) —\n"
+                    f"Прибыль: {e.profit:+,.0f}\n"
+                    f"Выручка: {e.revenue.total:,.0f}\n"
+                    f"Себестоимость: {e.cost.total:,.0f}\n"
+                    f"Маржа: {e.margin * 100:.1f}%; ROI: {e.roi * 100:.1f}%\n"
+                    f"Прибыль/м² участка: {e.profit_per_site_m2:+,.2f}"
+                ).replace(",", " ")
             # JS-кнопка: navigator.clipboard.writeText + inline-сообщение
             import json
             js_text = json.dumps(summary_text)
@@ -208,6 +219,38 @@ def render_kpi(result: TEPResult, *, scenario_default_name: str | None = None) -
             delta_color="off",
             help="Общая площадь ЗНОП и норма на жителя.",
         )
+
+        # === Ряд 3: экономика (v0.8.0) — отображается, если result.economy не None ===
+        if result.economy is not None:
+            st.markdown("---")
+            e1, e2, e3, e4 = st.columns(4)
+            e = result.economy
+            profit_help = (
+                "Условные единицы. 1.0 у.е. ≈ себестоимость м² жилья "
+                "9-эт. монолита со standard-отделкой."
+            )
+            e1.metric(
+                "💰 Прибыль",
+                f"{e.profit:+,.0f} у.е.".replace(",", " "),
+                delta=("OK" if e.profit >= 0 else "УБЫТОК"),
+                delta_color=("normal" if e.profit >= 0 else "inverse"),
+                help=profit_help,
+            )
+            e2.metric(
+                "Маржа",
+                f"{e.margin * 100:.1f}%" if e.revenue.total > 0 else "—",
+                help="profit / revenue",
+            )
+            e3.metric(
+                "ROI",
+                f"{e.roi * 100:.1f}%" if e.cost.total > 0 else "—",
+                help="profit / cost",
+            )
+            e4.metric(
+                "Прибыль / м² участка",
+                f"{e.profit_per_site_m2:+,.2f} у.е./м²".replace(",", " "),
+                help="Основная метрика для ранжирования",
+            )
 
         # === Inline-actions: «Добавить в сравнение» + xlsx (внутри блока) ===
         if scenario_default_name is not None:
@@ -394,6 +437,62 @@ def render_details(result: TEPResult) -> None:
         })
         st.dataframe(pd.DataFrame(comp_rows), hide_index=True, use_container_width=True)
         st.caption(f"Площадь квартала: **{fmt_m2(site_area)}**  ·  {fmt_ga(site_area)}")
+
+    # 💰 Экономика (v0.8.0)
+    if result.economy is not None:
+        with st.expander("💰 Экономика (себестоимость / выручка / метрики)", expanded=False):
+            st.caption(
+                "Все значения — в условных единицах. **1.0 у.е. ≈ себестоимость "
+                "м² жилья 9-эт. монолита со standard-отделкой.** Стартовые "
+                "коэффициенты — `configs/spb.yaml`, секция `economy:` (источник SPEC.md). "
+                "Переход к рублям — через множитель (v0.8.x)."
+            )
+            e = result.economy
+            cb = e.cost
+            rb = e.revenue
+
+            # Себестоимость по статьям
+            st.markdown("**Себестоимость**")
+            cost_rows = [
+                {"Статья": "Жильё", "у.е.": f"{cb.residential:,.0f}".replace(",", " ")},
+                {"Статья": "ВПП (коммерция)", "у.е.": f"{cb.vpp:,.0f}".replace(",", " ")},
+                {"Статья": "ДОО (детские сады)", "у.е.": f"{cb.kindergarten:,.0f}".replace(",", " ")},
+                {"Статья": "СОШ (школы)", "у.е.": f"{cb.school:,.0f}".replace(",", " ")},
+                {"Статья": "Парковки открытые", "у.е.": f"{cb.parking_open:,.0f}".replace(",", " ")},
+                {"Статья": "Парковки многоуровневые", "у.е.": f"{cb.parking_multilevel:,.0f}".replace(",", " ")},
+                {"Статья": "Парковки подземные", "у.е.": f"{cb.parking_underground:,.0f}".replace(",", " ")},
+                {"Статья": "— Σ зданий и сооружений", "у.е.": f"{cb.shell_total:,.0f}".replace(",", " ")},
+                {"Статья": "Сети", "у.е.": f"{cb.networks:,.0f}".replace(",", " ")},
+                {"Статья": "Благоустройство", "у.е.": f"{cb.landscaping:,.0f}".replace(",", " ")},
+                {"Статья": "Проектирование", "у.е.": f"{cb.design:,.0f}".replace(",", " ")},
+                {"Статья": "Непредвиденные", "у.е.": f"{cb.contingency:,.0f}".replace(",", " ")},
+                {"Статья": "Земля + ТУ + снос", "у.е.": f"{cb.fixed:,.0f}".replace(",", " ")},
+                {"Статья": "**Итого себестоимость**", "у.е.": f"**{cb.total:,.0f}**".replace(",", " ")},
+            ]
+            st.dataframe(pd.DataFrame(cost_rows), hide_index=True, use_container_width=True)
+
+            # Выручка по источникам
+            st.markdown("**Выручка**")
+            rev_rows = [
+                {"Источник": "Жильё (м² квартир)", "у.е.": f"{rb.residential:,.0f}".replace(",", " ")},
+                {"Источник": "Парковки открытые", "у.е.": f"{rb.parking_open:,.0f}".replace(",", " ")},
+                {"Источник": "Парковки многоуровневые", "у.е.": f"{rb.parking_multilevel:,.0f}".replace(",", " ")},
+                {"Источник": "Парковки подземные", "у.е.": f"{rb.parking_underground:,.0f}".replace(",", " ")},
+                {"Источник": "ВПП коммерческая", "у.е.": f"{rb.vpp_commercial:,.0f}".replace(",", " ")},
+                {"Источник": "**Итого выручка**", "у.е.": f"**{rb.total:,.0f}**".replace(",", " ")},
+            ]
+            st.dataframe(pd.DataFrame(rev_rows), hide_index=True, use_container_width=True)
+
+            # Метрики
+            st.markdown("**Метрики**")
+            mc1, mc2, mc3, mc4 = st.columns(4)
+            mc1.metric("Прибыль", f"{e.profit:+,.0f} у.е.".replace(",", " "))
+            mc2.metric("Маржа", f"{e.margin * 100:.1f}%" if rb.total > 0 else "—")
+            mc3.metric("ROI", f"{e.roi * 100:.1f}%" if cb.total > 0 else "—")
+            mc4.metric(
+                "Прибыль/м² участка",
+                f"{e.profit_per_site_m2:+,.2f}".replace(",", " "),
+            )
 
     # 📋 Полный аудит
     with st.expander("📋 Полный аудит (все TEP-поля + источники)", expanded=False):

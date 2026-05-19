@@ -11,6 +11,9 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
+# economy/result.py не импортирует ничего из models — безопасно прямой импорт
+from urban_model.economy.result import EconomicMetrics
+
 
 class Status(str, Enum):
     OK = "ok"
@@ -141,6 +144,9 @@ class TEPResult(BaseModel):
     limiting_factor: str | None = None
 
     warnings: list[str] = Field(default_factory=list)
+
+    # Экономика (v0.8.0) — None допустимо для unit-тестов чистых расчётов.
+    economy: EconomicMetrics | None = None
 
     def summary(self) -> str:
         lines = [

@@ -204,7 +204,18 @@ def _make_objective(
             feasible=feasible,
         ))
 
-        return apt_area if feasible else -1e6
+        # Целевая функция (v0.8.0):
+        # - "apartments_area" — максимизируем площадь квартир (как было)
+        # - "profit" — максимизируем прибыль из tep.economy
+        if not feasible:
+            return -1e6
+        objective_key = getattr(space, "objective", "apartments_area")
+        if objective_key == "profit":
+            if tep.economy is not None:
+                return float(tep.economy.profit)
+            # Если экономика не задана — деградация к apartments_area
+            return apt_area
+        return apt_area
     return objective
 
 
@@ -291,9 +302,19 @@ def optimize_max_apartments(
     else:
         study.optimize(obj, n_trials=n_trials, show_progress_bar=False)
 
-    # Сортируем сохранённые результаты по убыванию apt_area, оставляем feasible впереди
+    # Сортируем сохранённые результаты — сортировочный ключ зависит от целевой
+    # функции (v0.8.0). По умолчанию — apartments_area.
     feasible = [r for r in storage if r.feasible]
-    feasible.sort(key=lambda r: r.apartments_area, reverse=True)
+    sort_by_profit = getattr(space, "objective", "apartments_area") == "profit"
+    if sort_by_profit:
+        feasible.sort(
+            key=lambda r: (
+                r.tep.economy.profit if r.tep.economy is not None else r.apartments_area
+            ),
+            reverse=True,
+        )
+    else:
+        feasible.sort(key=lambda r: r.apartments_area, reverse=True)
     for i, r in enumerate(feasible, 1):
         r.rank = i
 

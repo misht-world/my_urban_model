@@ -554,7 +554,7 @@ def compute_tep_for_kit(
                 f"{kit_norm_max} (ПЗЗ СПб, ДПТ={'да' if options.planning_doc else 'нет'})"
             )
 
-    return TEPResult(
+    result = TEPResult(
         profile=norms.profile,
         kit=_F(
             kit_developed,
@@ -949,3 +949,15 @@ def compute_tep_for_kit(
         built_in_vri_code=bi_vri,
         warnings=warnings,
     )
+
+    # === Экономика (v0.8.0) ===
+    # После того как ТЭП собран — считаем стоимость / выручку / прибыль
+    # и присоединяем к результату. Экономика никак не влияет на сами ТЭП.
+    try:
+        from urban_model.economy import calc_economy
+        result.economy = calc_economy(result, options, site, norms)
+    except KeyError:
+        # Если секция economy не задана в YAML — пропускаем (результат остаётся
+        # совместимым с тестами, написанными до v0.8.0).
+        result.economy = None
+    return result

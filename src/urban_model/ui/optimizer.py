@@ -33,8 +33,28 @@ def _render_search_space_form(base_options: CalculationOptions) -> SearchSpace:
     """Двухколоночная форма: слева чекбоксы, справа плитки настроек."""
     col_left, col_right = st.columns([1, 2], gap="medium")
 
-    # ── ЛЕВАЯ КОЛОНКА: чекбоксы «что варьировать» ──────────────────
+    # ── ЛЕВАЯ КОЛОНКА: цель + чекбоксы «что варьировать» ──────────────────
     with col_left:
+        with st.container(border=True):
+            st.markdown("##### Цель оптимизации")
+            obj_label = st.radio(
+                "Что максимизировать",
+                [
+                    "Максимум площади квартир (ТЭП)",
+                    "Максимум прибыли (у.е.)",
+                ],
+                index=0, key="opt_objective_label",
+                help=(
+                    "Прибыль учитывает себестоимость соцобъектов, парковок и пр. "
+                    "Иногда выгоднее меньше квартир, но без подземного паркинга."
+                ),
+            )
+            optimizer_objective = (
+                "profit"
+                if obj_label.startswith("Максимум прибыли")
+                else "apartments_area"
+            )
+
         with st.container(border=True):
             st.markdown("##### Варьируемые параметры")
             vary_floors = st.checkbox(
@@ -204,6 +224,7 @@ def _render_search_space_form(base_options: CalculationOptions) -> SearchSpace:
         try_built_in=try_built_in,
         built_in_vri_codes=built_in_vri_codes,
         znop_per_person_choices=znop_choices,
+        objective=optimizer_objective,
     )
 
 
@@ -225,6 +246,9 @@ def _report_to_dataframe(report: OptimizationReport) -> pd.DataFrame:
             "КИТ": round(r.kit, 3),
             "Население, чел.": int(r.tep.population.value or 0),
         }
+        # Экономика (v0.8.0) — если есть, добавляем колонку прибыли
+        if r.tep.economy is not None:
+            row["Прибыль, у.е."] = int(r.tep.economy.profit)
         # Параметры — каждый своим столбцом
         for k, v in r.params.items():
             label = {
