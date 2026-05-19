@@ -89,6 +89,11 @@ st.markdown("""
       border-right-color: #C4DEC8 !important;
       border-bottom-color: #C4DEC8 !important;
   }
+  /* Слайдеры внутри border-блоков (Параметры, Оптимизация) — ограничиваем
+     ширину до ~60% контейнера. По умолчанию они растягиваются на всю ширину. */
+  div[data-testid="stVerticalBlockBorderWrapper"] div[data-testid="stSlider"] {
+      max-width: 70%;
+  }
   /* Чуть меньше пустоты у containers с border */
   div[data-testid="stVerticalBlockBorderWrapper"] {padding: 0.6rem 0.9rem;}
 </style>

@@ -418,6 +418,7 @@ def _render_vpp_tile() -> VppRequest:
         mode_label = st.radio(
             "Вариант размещения",
             list(VPP_MODES.values()),
+            index=4,  # v0.8.0: «50% 1 этажа» по умолчанию
             key="vpp_mode_label",
         )
         # Обратный mapping label → ключ

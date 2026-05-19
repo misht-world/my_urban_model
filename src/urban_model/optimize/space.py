@@ -32,7 +32,17 @@ class SearchSpace(BaseModel):
     # Парковки: доли (применяется только если режим custom попал в выборку)
     parking_open_share_range: tuple[float, float] | None = None
     parking_multilevel_share_range: tuple[float, float] | None = None
+    parking_underground_share_range: tuple[float, float] | None = None
     multilevel_levels_range: tuple[int, int] | None = None
+    underground_levels_range: tuple[int, int] | None = None
+
+    # ВПП (v0.8.0): режим расчёта обязательных ВПП — список из
+    # ["min_only", "min_plus", "custom_only", "full_floor", "half_floor"].
+    # None = режим из base_options.
+    vpp_modes: list[str] | None = Field(
+        default=None,
+        description="Подмножество режимов ВПП для перебора (v0.8.0)",
+    )
 
     # ДОО: число объектов
     kg_num_objects_range: tuple[int, int] | None = None
@@ -64,6 +74,15 @@ class SearchSpace(BaseModel):
         description="Целевая функция: 'apartments_area' или 'profit'",
     )
 
+    # Жёсткая фильтрация сценариев с нарушением вместимости соцобъектов
+    # (например, «9 ДОО по 9 мест при 80 мест общей потребности»).
+    # По умолчанию False — для обратной совместимости со старыми тестами.
+    # UI optimizer.py включает True.
+    strict_social_validation: bool = Field(
+        default=False,
+        description="Отсеивать сценарии с capacity-violation в ДОО/СОШ",
+    )
+
     def is_empty(self) -> bool:
         """True, если ни одна декорация не задана — оптимизировать нечего."""
         return all(
@@ -73,9 +92,12 @@ class SearchSpace(BaseModel):
                 "parking_modes",
                 "parking_open_share_range",
                 "parking_multilevel_share_range",
+                "parking_underground_share_range",
                 "multilevel_levels_range",
+                "underground_levels_range",
                 "kg_num_objects_range",
                 "school_num_objects_range",
+                "vpp_modes",
                 "znop_per_person_choices",
             )
         ) and not self.try_built_in

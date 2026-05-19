@@ -63,6 +63,8 @@ def _build_options_for_trial(
     trial: optuna.Trial,
     base_options: CalculationOptions,
     space: SearchSpace,
+    site: Site | None = None,
+    norms: Normatives | None = None,
 ) -> tuple[CalculationOptions, dict]:
     """Возвращает (модифицированный options, dict сэмплированных параметров)."""
     opts = base_options.model_copy(deep=True)
@@ -106,17 +108,40 @@ def _build_options_for_trial(
         else:
             ml_levels = opts.parking.multilevel_levels
 
-        # Округляем open и ml до 4 знаков, ug вычисляем как остаток
-        # (без отдельного округления — сумма гарантированно = 1.0).
+        # Подземные: либо как остаток до 100%, либо в заданном диапазоне.
+        # Если диапазон задан и сумма не вписывается — пробуем подогнать.
+        if space.parking_underground_share_range:
+            ug_lo, ug_hi = space.parking_underground_share_range
+            ug_target = trial.suggest_float("parking_ug_share", ug_lo, ug_hi)
+            # Нормализуем доли: open + ml + ug = 1.0
+            s = max(open_share + ml_share + ug_target, 1e-9)
+            open_share /= s
+            ml_share /= s
+            ug_target /= s
+            ug_share_final = ug_target
+        else:
+            open_share = open_share
+            ug_share_final = max(0.0, 1.0 - open_share - ml_share)
+
         open_r = round(open_share, 4)
         ml_r = round(ml_share, 4)
         ug_r = max(0.0, 1.0 - open_r - ml_r)
+
+        # Подземные уровни (v0.8.0)
+        if space.underground_levels_range:
+            lo_ug, hi_ug = space.underground_levels_range
+            ug_levels = trial.suggest_int("underground_levels", lo_ug, hi_ug)
+            sampled["underground_levels"] = int(ug_levels)
+        else:
+            ug_levels = getattr(opts.parking, "underground_levels", 1) or 1
+
         opts.parking = ParkingConfig(
             mode="custom",
             open_share=open_r,
             multilevel_share=ml_r,
             underground_share=ug_r,
             multilevel_levels=int(ml_levels),
+            underground_levels=int(ug_levels),
         )
         sampled["parking_open_share"] = round(open_r, 3)
         sampled["parking_ml_share"] = round(ml_r, 3)
@@ -140,17 +165,61 @@ def _build_options_for_trial(
         sampled["school_num_objects"] = n
 
     # --- ВПП ---
-    if space.try_built_in:
+    # v0.8.0: новый механизм — Optuna выбирает один из РЕЖИМОВ ВПП из
+    # space.vpp_modes (как на вкладке «Параметры»). Если vpp_modes задан,
+    # try_built_in игнорируется. Список ВПП собирается через vpp.build_built_ins.
+    if space.vpp_modes and site is not None and norms is not None:
+        from urban_model.calculations import vpp as _vpp
+        vpp_choices = ["off"] + list(space.vpp_modes)
+        chosen = trial.suggest_categorical("vpp_mode", vpp_choices)
+        sampled["vpp_mode"] = chosen
+        if chosen == "off":
+            opts.built_in = None
+            opts.built_in_list = []
+        else:
+            # Для full_floor/half_floor нужен footprint — пробный прогон без ВПП.
+            # Это та же логика, что в state.run_calculation, но локально.
+            if chosen in ("full_floor", "half_floor"):
+                from urban_model import solve_max_kit as _solve
+                opts_step1 = opts.model_copy(deep=True)
+                opts_step1.built_in = None
+                opts_step1.built_in_list = []
+                try:
+                    r0 = _solve(site, opts_step1, norms)
+                    footprint = r0.housing_footprint.value or 0.0
+                    pop = r0.population.value or 0.0
+                except Exception:
+                    footprint = 0.0
+                    pop = 0.0
+            else:
+                # Для min_only/min_plus/custom_only footprint не нужен,
+                # но нужен pop — берём от текущей options оценочно.
+                from urban_model import solve_max_kit as _solve
+                opts_step1 = opts.model_copy(deep=True)
+                opts_step1.built_in = None
+                opts_step1.built_in_list = []
+                try:
+                    r0 = _solve(site, opts_step1, norms)
+                    pop = r0.population.value or 0.0
+                    footprint = r0.housing_footprint.value or 0.0
+                except Exception:
+                    pop = 0.0
+                    footprint = 0.0
+            build = _vpp.build_built_ins(
+                mode=chosen, population=pop, footprint=footprint, norms=norms,
+            )
+            opts.built_in = None
+            opts.built_in_list = build.built_ins
+    elif space.try_built_in:
+        # Legacy: бинарный выбор on/off с одним ВРИ-кодом из base_options
         use_vpp = trial.suggest_categorical("use_vpp", [False, True])
         sampled["use_vpp"] = use_vpp
         if use_vpp:
             vri = trial.suggest_categorical("vpp_vri", space.built_in_vri_codes)
             sampled["vpp_vri"] = vri
-            # Базовая площадь ВПП — оставляем из base_options или ставим нолевую заглушку
             if base_options.built_in is not None:
                 opts.built_in = base_options.built_in.model_copy(update={"vri_code": vri})
             else:
-                # Без явной площади — пользователь должен задать её в base_options
                 opts.built_in = None
         else:
             opts.built_in = None
@@ -180,7 +249,9 @@ def _make_objective(
 ) -> Callable[[optuna.Trial], float]:
     def objective(trial: optuna.Trial) -> float:
         try:
-            opts, sampled = _build_options_for_trial(trial, base_options, space)
+            opts, sampled = _build_options_for_trial(
+                trial, base_options, space, site=site, norms=norms,
+            )
             tep = solve_max_kit(site, opts, norms)
         except Exception as e:
             msg = f"{type(e).__name__}: {e}"
@@ -189,9 +260,24 @@ def _make_objective(
             return -1e9  # инфисимально плохая оценка
 
         # Жёсткие ограничения:
+        # v0.8.0: для оптимизатора дополнительно фильтруем нереалистичные
+        # сценарии — когда расчётная вместимость соцобъекта МЕНЬШЕ норматива
+        # (типа «9 ДОО по 9 мест каждое» при 80 мест общей потребности).
+        # WARNING про «вне списка типовых» не блокируем — это допустимо.
+        def _has_capacity_violation(warnings_list: list[str]) -> bool:
+            keywords = [
+                "меньше минимальной",       # ДОО < 120
+                "меньше минимума отдельно",  # ДОО detached < 160
+                "< нормативного минимума",   # СОШ < 550
+                "превышает принятый максимум",  # ДОО > 350
+            ]
+            return any(any(k in w for k in keywords) for w in warnings_list)
+
+        strict_social = getattr(space, "strict_social_validation", False)
         feasible = (
             tep.balance.is_feasible
             and tep.density_chel_per_ga.status != Status.ERROR
+            and (not strict_social or not _has_capacity_violation(tep.warnings))
         )
         apt_area = tep.apartments_area.value if tep.apartments_area.value else 0.0
 

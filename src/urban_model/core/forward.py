@@ -478,9 +478,15 @@ def compute_tep_for_kit(
         znop_area_v = pop_v * znop_pp
         znop_source_label = f"override = {znop_pp} м²/чел (заменяет норматив)"
     else:
-        znop_pp = znop.znop_per_person(kit_developed, norms)
-        znop_area_v = znop.znop_total_area(pop_v, kit_developed, norms)
-        znop_source_label = norms.source_of("znop_per_person", kit=kit_developed)
+        # Защитный clamp: piecewise ZNOP заканчивается ступенью kit ≤ 2.50.
+        # Если бисекция дала kit > 2.5 (формально невалидно, kit_status станет
+        # ERROR ниже), берём ZNOP с последней ступени.
+        znop_kit_for_lookup = min(kit_developed, 2.50)
+        znop_pp = znop.znop_per_person(znop_kit_for_lookup, norms)
+        znop_area_v = znop.znop_total_area(pop_v, znop_kit_for_lookup, norms)
+        znop_source_label = norms.source_of(
+            "znop_per_person", kit=znop_kit_for_lookup
+        )
 
     # === Баланс квартала ===
     # При include_*=False / only_demand компоненты в баланс не входят (см. выше).

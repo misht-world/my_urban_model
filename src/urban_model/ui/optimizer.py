@@ -83,10 +83,13 @@ def _render_search_space_form(base_options: CalculationOptions) -> SearchSpace:
     parking_modes = None
     parking_open_range = None
     parking_ml_range = None
+    parking_ug_range = None
     multilevel_levels_range = None
+    underground_levels_range = None
     kg_range = None
     school_range = None
     built_in_vri_codes = ["4.4"]
+    vpp_modes: list[str] | None = None
     znop_choices: list[float] | None = None
 
     with col_right:
@@ -126,26 +129,49 @@ def _render_search_space_form(base_options: CalculationOptions) -> SearchSpace:
 
                 if use_custom:
                     st.markdown("**Диапазоны для custom-режима**")
+                    # v0.8.0: step=0.5% чтобы можно было задать ровно 12.5%
                     open_lo, open_hi = st.slider(
                         "Доля открытых наземных, %",
-                        0, 100, (10, 50),
+                        0.0, 100.0, (12.5, 50.0), step=0.5,
                         key="opt_parking_open",
                     )
                     parking_open_range = (open_lo / 100, open_hi / 100)
 
                     ml_lo, ml_hi = st.slider(
                         "Доля многоуровневых наземных, %",
-                        0, 100, (0, 40),
+                        0.0, 100.0, (0.0, 40.0), step=0.5,
                         key="opt_parking_ml",
                     )
                     parking_ml_range = (ml_lo / 100, ml_hi / 100)
 
+                    ug_lo, ug_hi = st.slider(
+                        "Доля подземных, %",
+                        0.0, 100.0, (0.0, 100.0), step=0.5,
+                        key="opt_parking_ug",
+                        help=(
+                            "Подземные считаются как остаток после открытых и "
+                            "многоуровневых, но этот диапазон позволяет ограничить "
+                            "их сверху/снизу (например, выбрать сценарии БЕЗ "
+                            "подземных, поставив верхнюю границу 0%)."
+                        ),
+                    )
+                    parking_ug_range = (ug_lo / 100, ug_hi / 100)
+
                     ll_lo, ll_hi = st.slider(
                         "Этажность многоуровневого паркинга",
-                        1, 6, (1, 4),
+                        1, 9, (1, 4),
                         key="opt_ml_levels",
+                        help="Максимум 9 этажей (типовое для надземных паркингов).",
                     )
                     multilevel_levels_range = (int(ll_lo), int(ll_hi))
+
+                    ug_levels_lo, ug_levels_hi = st.slider(
+                        "Этажность подземного паркинга",
+                        1, 5, (1, 2),
+                        key="opt_ug_levels",
+                        help="Максимум 5 уровней; каждый следующий дороже предыдущего.",
+                    )
+                    underground_levels_range = (int(ug_levels_lo), int(ug_levels_hi))
 
         # ДОО
         if vary_kg and base_options.include_kindergarten:
@@ -169,29 +195,41 @@ def _render_search_space_form(base_options: CalculationOptions) -> SearchSpace:
                 )
                 school_range = (int(lo), int(hi))
 
-        # ВПП — галочки по ВРИ-кодам
+        # ВПП — галочки по РЕЖИМАМ размещения (как на вкладке Параметры)
         if try_built_in:
             with st.container(border=True):
-                st.markdown("##### 🏪 ВПП — варианты ВРИ для перебора")
-                st.caption("Optuna будет сравнивать варианты с ВПП и без ВПП.")
-                cc1, cc2, cc3, cc4, cc5 = st.columns(5)
-                use_44 = cc1.checkbox("4.4", value=True, key="opt_vri_44",
-                                      help="Магазины")
-                use_46 = cc2.checkbox("4.6", value=False, key="opt_vri_46",
-                                      help="Общепит")
-                use_33 = cc3.checkbox("3.3", value=False, key="opt_vri_33",
-                                      help="Бытовое обслуживание")
-                use_341 = cc4.checkbox("3.4.1", value=False, key="opt_vri_341",
-                                       help="Поликлиника")
-                use_351 = cc5.checkbox("3.5.1", value=False, key="opt_vri_351",
-                                       help="Школа искусств")
-                codes = []
-                if use_44: codes.append("4.4")
-                if use_46: codes.append("4.6")
-                if use_33: codes.append("3.3")
-                if use_341: codes.append("3.4.1")
-                if use_351: codes.append("3.5.1")
-                built_in_vri_codes = codes if codes else ["4.4"]
+                st.markdown("##### 🏪 ВПП — варианты размещения")
+                st.caption(
+                    "Выберите режимы ВПП для перебора (те же, что на вкладке "
+                    "«Параметры»). Площади ВРИ собираются автоматически."
+                )
+                use_min_only = st.checkbox(
+                    "Минимум по нормативу (все 5 ВРИ)",
+                    value=False, key="opt_vpp_min_only",
+                )
+                use_min_plus = st.checkbox(
+                    "Минимум + дополнительные 4.4/4.6",
+                    value=False, key="opt_vpp_min_plus",
+                )
+                use_custom_only = st.checkbox(
+                    "Только 4.4 и/или 4.6 вручную",
+                    value=False, key="opt_vpp_custom_only",
+                )
+                use_full_floor = st.checkbox(
+                    "Весь 1 этаж",
+                    value=True, key="opt_vpp_full_floor",
+                )
+                use_half_floor = st.checkbox(
+                    "50% 1 этажа",
+                    value=True, key="opt_vpp_half_floor",
+                )
+                mode_list = []
+                if use_min_only: mode_list.append("min_only")
+                if use_min_plus: mode_list.append("min_plus")
+                if use_custom_only: mode_list.append("custom_only")
+                if use_full_floor: mode_list.append("full_floor")
+                if use_half_floor: mode_list.append("half_floor")
+                vpp_modes = mode_list if mode_list else None
 
         # ЗНОП — нормативные ступени по КИТ
         if vary_znop:
@@ -218,13 +256,17 @@ def _render_search_space_form(base_options: CalculationOptions) -> SearchSpace:
         parking_modes=parking_modes,
         parking_open_share_range=parking_open_range,
         parking_multilevel_share_range=parking_ml_range,
+        parking_underground_share_range=parking_ug_range,
         multilevel_levels_range=multilevel_levels_range,
+        underground_levels_range=underground_levels_range,
         kg_num_objects_range=kg_range,
         school_num_objects_range=school_range,
         try_built_in=try_built_in,
         built_in_vri_codes=built_in_vri_codes,
+        vpp_modes=vpp_modes,
         znop_per_person_choices=znop_choices,
         objective=optimizer_objective,
+        strict_social_validation=True,  # v0.8.0: UI отсекает невалидные ДОО/СОШ
     )
 
 
