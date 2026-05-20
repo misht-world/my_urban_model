@@ -469,9 +469,12 @@ def render_optimizer_tab(
         if tep.znop_area.value else "—",
     )
 
-    # Полный summary под expander
-    with st.expander("Полные параметры и баланс сценария", expanded=False):
-        st.code(tep.summary(), language=None)
+    # v0.8.3: те же раскрывающиеся секции, что и на вкладке «Расчёт»
+    # (🏠 Жильё / 🎒 ДОО / 🏫 СОШ / 🏃 Спорт / 🌳 ЗНОП / 🅿️ Парковки /
+    #  🛣 Проезды / ⚖️ Баланс / 💰 Экономика / 📋 Полный аудит).
+    # Через прямой вызов render_details — никаких дублей кода.
+    from urban_model.ui.output import render_details
+    render_details(tep)
 
     # ------------------------------------------------------------------
     # Добавить в сравнение
