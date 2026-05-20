@@ -97,12 +97,14 @@ def _render_search_space_form(base_options: CalculationOptions) -> SearchSpace:
         if vary_floors:
             with st.container(border=True):
                 st.markdown("##### 🏠 Этажность")
-                lo, hi = st.slider(
-                    "Диапазон этажности",
-                    min_value=4, max_value=30, value=(8, 25),
-                    key="opt_floors_range",
-                )
-                floors_range = (int(lo), int(hi))
+                sld_col, _ = st.columns([2, 1])
+                with sld_col:
+                    lo, hi = st.slider(
+                        "Диапазон этажности",
+                        min_value=4, max_value=30, value=(8, 25),
+                        key="opt_floors_range",
+                    )
+                    floors_range = (int(lo), int(hi))
 
         # Парковки — галочками по режимам (вместо selectbox)
         if vary_parking:
@@ -130,70 +132,76 @@ def _render_search_space_form(base_options: CalculationOptions) -> SearchSpace:
                 if use_custom:
                     st.markdown("**Диапазоны для custom-режима**")
                     # v0.8.0: step=0.5% чтобы можно было задать ровно 12.5%
-                    open_lo, open_hi = st.slider(
-                        "Доля открытых наземных, %",
-                        0.0, 100.0, (12.5, 50.0), step=0.5,
-                        key="opt_parking_open",
-                    )
-                    parking_open_range = (open_lo / 100, open_hi / 100)
+                    # Слайдеры — в 2/3 ширины контейнера для компактности
+                    sld_col, _spacer = st.columns([2, 1])
+                    with sld_col:
+                        open_lo, open_hi = st.slider(
+                            "Доля открытых наземных, %",
+                            0.0, 100.0, (12.5, 50.0), step=0.5,
+                            key="opt_parking_open",
+                        )
+                        parking_open_range = (open_lo / 100, open_hi / 100)
 
-                    ml_lo, ml_hi = st.slider(
-                        "Доля многоуровневых наземных, %",
-                        0.0, 100.0, (0.0, 40.0), step=0.5,
-                        key="opt_parking_ml",
-                    )
-                    parking_ml_range = (ml_lo / 100, ml_hi / 100)
+                        ml_lo, ml_hi = st.slider(
+                            "Доля многоуровневых наземных, %",
+                            0.0, 100.0, (0.0, 40.0), step=0.5,
+                            key="opt_parking_ml",
+                        )
+                        parking_ml_range = (ml_lo / 100, ml_hi / 100)
 
-                    ug_lo, ug_hi = st.slider(
-                        "Доля подземных, %",
-                        0.0, 100.0, (0.0, 100.0), step=0.5,
-                        key="opt_parking_ug",
-                        help=(
-                            "Подземные считаются как остаток после открытых и "
-                            "многоуровневых, но этот диапазон позволяет ограничить "
-                            "их сверху/снизу (например, выбрать сценарии БЕЗ "
-                            "подземных, поставив верхнюю границу 0%)."
-                        ),
-                    )
-                    parking_ug_range = (ug_lo / 100, ug_hi / 100)
+                        ug_lo, ug_hi = st.slider(
+                            "Доля подземных, %",
+                            0.0, 100.0, (0.0, 100.0), step=0.5,
+                            key="opt_parking_ug",
+                            help=(
+                                "Подземные считаются как остаток после открытых и "
+                                "многоуровневых. Можно ограничить (например, "
+                                "верхнюю границу = 0% для запрета подземных)."
+                            ),
+                        )
+                        parking_ug_range = (ug_lo / 100, ug_hi / 100)
 
-                    ll_lo, ll_hi = st.slider(
-                        "Этажность многоуровневого паркинга",
-                        1, 9, (1, 4),
-                        key="opt_ml_levels",
-                        help="Максимум 9 этажей (типовое для надземных паркингов).",
-                    )
-                    multilevel_levels_range = (int(ll_lo), int(ll_hi))
+                        ll_lo, ll_hi = st.slider(
+                            "Этажность многоуровневого паркинга",
+                            1, 9, (1, 4),
+                            key="opt_ml_levels",
+                            help="Максимум 9 этажей (типовое для надземных паркингов).",
+                        )
+                        multilevel_levels_range = (int(ll_lo), int(ll_hi))
 
-                    ug_levels_lo, ug_levels_hi = st.slider(
-                        "Этажность подземного паркинга",
-                        1, 5, (1, 2),
-                        key="opt_ug_levels",
-                        help="Максимум 5 уровней; каждый следующий дороже предыдущего.",
-                    )
-                    underground_levels_range = (int(ug_levels_lo), int(ug_levels_hi))
+                        ug_levels_lo, ug_levels_hi = st.slider(
+                            "Этажность подземного паркинга",
+                            1, 5, (1, 2),
+                            key="opt_ug_levels",
+                            help="Максимум 5 уровней; каждый следующий дороже предыдущего.",
+                        )
+                        underground_levels_range = (int(ug_levels_lo), int(ug_levels_hi))
 
         # ДОО
         if vary_kg and base_options.include_kindergarten:
             with st.container(border=True):
                 st.markdown("##### 🎒 Кол-во ДОО")
-                lo, hi = st.slider(
-                    "Диапазон кол-ва ДОО",
-                    min_value=1, max_value=10, value=(1, 4),
-                    key="opt_kg_range",
-                )
-                kg_range = (int(lo), int(hi))
+                sld_col, _ = st.columns([2, 1])
+                with sld_col:
+                    lo, hi = st.slider(
+                        "Диапазон кол-ва ДОО",
+                        min_value=1, max_value=10, value=(1, 4),
+                        key="opt_kg_range",
+                    )
+                    kg_range = (int(lo), int(hi))
 
         # СОШ
         if vary_school and base_options.include_school:
             with st.container(border=True):
                 st.markdown("##### 🏫 Кол-во СОШ")
-                lo, hi = st.slider(
-                    "Диапазон кол-ва СОШ",
-                    min_value=1, max_value=5, value=(1, 2),
-                    key="opt_school_range",
-                )
-                school_range = (int(lo), int(hi))
+                sld_col, _ = st.columns([2, 1])
+                with sld_col:
+                    lo, hi = st.slider(
+                        "Диапазон кол-ва СОШ",
+                        min_value=1, max_value=5, value=(1, 2),
+                        key="opt_school_range",
+                    )
+                    school_range = (int(lo), int(hi))
 
         # ВПП — галочки по РЕЖИМАМ размещения (как на вкладке Параметры)
         if try_built_in:

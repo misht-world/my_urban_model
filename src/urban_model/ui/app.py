@@ -37,9 +37,13 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
-# Глобальный CSS: крупнее вкладки + плотнее вертикальные интервалы
+# Глобальный CSS: крупнее вкладки + плотнее вертикальные интервалы.
+# Версионный маркер /* v0.8.2 */ помогает отследить обновление CSS при
+# отладке. Если ты видишь старый стиль — это значит браузер кэшировал
+# страницу. Hard refresh (Ctrl+F5) сбрасывает кэш.
 st.markdown("""
 <style>
+  /* v0.8.2 stylesheet marker */
   /* Уменьшаем верхний отступ всего блока */
   div.block-container {padding-top: 1.5rem; padding-bottom: 1rem;}
   /* Плотнее интервалы между виджетами */
@@ -75,24 +79,29 @@ st.markdown("""
      • левая (вводные данные) — голубой акцент слева + светло-голубой фон
      • правая (настройки компонентов) — зелёный акцент слева + светло-зелёный фон
      Усилено !important + border-left для надёжной видимости. */
-  div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:first-child [data-testid="stVerticalBlockBorderWrapper"] {
+  /* Streamlit 1.32+ переименовал data-testid у колонок: column → stColumn.
+     Перечисляем оба для совместимости и обходим возможные изменения DOM. */
+  [data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:first-child [data-testid="stVerticalBlockBorderWrapper"],
+  [data-testid="stHorizontalBlock"] > [data-testid="column"]:first-child [data-testid="stVerticalBlockBorderWrapper"] {
       background-color: #E7F0F8 !important;
       border-left: 4px solid #1565C0 !important;
       border-top-color: #C2D9EC !important;
       border-right-color: #C2D9EC !important;
       border-bottom-color: #C2D9EC !important;
   }
-  div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:last-child [data-testid="stVerticalBlockBorderWrapper"] {
+  [data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:last-child [data-testid="stVerticalBlockBorderWrapper"],
+  [data-testid="stHorizontalBlock"] > [data-testid="column"]:last-child [data-testid="stVerticalBlockBorderWrapper"] {
       background-color: #E8F4EA !important;
       border-left: 4px solid #2E7D32 !important;
       border-top-color: #C4DEC8 !important;
       border-right-color: #C4DEC8 !important;
       border-bottom-color: #C4DEC8 !important;
   }
-  /* Слайдеры внутри border-блоков (Параметры, Оптимизация) — ограничиваем
-     ширину до ~60% контейнера. По умолчанию они растягиваются на всю ширину. */
-  div[data-testid="stVerticalBlockBorderWrapper"] div[data-testid="stSlider"] {
-      max-width: 70%;
+  /* Слайдеры внутри border-блоков — ограничение ширины до ~65%.
+     Перечисляем разные селекторы для надёжности. */
+  [data-testid="stVerticalBlockBorderWrapper"] [data-testid="stSlider"],
+  [data-testid="stVerticalBlockBorderWrapper"] div[data-baseweb="slider"] {
+      max-width: 65% !important;
   }
   /* Чуть меньше пустоты у containers с border */
   div[data-testid="stVerticalBlockBorderWrapper"] {padding: 0.6rem 0.9rem;}
