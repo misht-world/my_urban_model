@@ -283,11 +283,43 @@ def _render_search_space_form(base_options: CalculationOptions) -> SearchSpace:
 # ---------------------------------------------------------------------------
 
 def _report_to_dataframe(report: OptimizationReport) -> pd.DataFrame:
+    """Сводная таблица топ-N.
+
+    v0.8.4: число ДОО/СОШ берётся из ФАКТИЧЕСКОГО результата расчёта
+    (formula = «… → разбивка по объектам [c1, c2, ...]»), а не из
+    params (там попытка Optuna kg_num_objects, которая может быть
+    проигнорирована split_into_objects при отсутствии spec_capacity).
+    """
+    import re as _re
+
     PARK_MODE_RU = {
         "min_open": "минимум открытых",
         "all_open": "все открытые",
         "custom": "вручную",
     }
+    VPP_MODE_RU = {
+        "off": "без ВПП",
+        "min_only": "минимум",
+        "min_plus": "минимум + допы",
+        "custom_only": "только 4.4/4.6",
+        "full_floor": "весь 1 этаж",
+        "half_floor": "50% 1 этажа",
+    }
+
+    def _count_buckets(formula: str | None) -> int:
+        if not formula:
+            return 0
+        m = _re.search(r'\[([^\]]+)\]', formula)
+        if not m:
+            return 0
+        try:
+            return len([x for x in m.group(1).split(",") if x.strip()])
+        except Exception:
+            return 0
+
+    # Колонки, которые из params НЕ выводим (числа объектов берём из tep)
+    params_skip = {"kg_num_objects", "school_num_objects"}
+
     rows = []
     for r in report.top_n:
         row = {
@@ -296,11 +328,19 @@ def _report_to_dataframe(report: OptimizationReport) -> pd.DataFrame:
             "КИТ": round(r.kit, 3),
             "Население, чел.": int(r.tep.population.value or 0),
         }
-        # Экономика (v0.8.0) — если есть, добавляем колонку прибыли
         if r.tep.economy is not None:
             row["Прибыль, у.е."] = int(r.tep.economy.profit)
-        # Параметры — каждый своим столбцом
+
+        # Фактическое число объектов из formula (не из params!)
+        row["ДОО, шт"] = _count_buckets(r.tep.kindergarten_places_accepted.formula)
+        row["ДОО, мест"] = int(r.tep.kindergarten_places_accepted.value or 0)
+        row["СОШ, шт"] = _count_buckets(r.tep.school_places_accepted.formula)
+        row["СОШ, мест"] = int(r.tep.school_places_accepted.value or 0)
+
+        # Остальные параметры — из sampled (исключая ДОО/СОШ количества)
         for k, v in r.params.items():
+            if k in params_skip:
+                continue
             label = {
                 "floors": "Этажность",
                 "parking_mode": "Режим парковок",
@@ -308,20 +348,22 @@ def _report_to_dataframe(report: OptimizationReport) -> pd.DataFrame:
                 "parking_ml_share": "% многоуровневых",
                 "parking_ug_share": "% подземных",
                 "multilevel_levels": "Этажей МП",
-                "kg_num_objects": "ДОО, шт",
-                "school_num_objects": "СОШ, шт",
+                "underground_levels": "Уровней подземки",
                 "use_vpp": "ВПП",
                 "vpp_vri": "ВРИ ВПП",
+                "vpp_mode": "ВПП режим",
                 "znop_per_person": "ЗНОП, м²/чел",
             }.get(k, k)
-            # Преобразование значений для удобочитаемости
             if k == "parking_mode":
                 v = PARK_MODE_RU.get(v, v)
+            elif k == "vpp_mode":
+                v = VPP_MODE_RU.get(v, v)
             elif k.startswith("parking_") and k.endswith("_share"):
                 v = f"{v * 100:.0f}%"
             elif k == "use_vpp":
                 v = "да" if v else "нет"
             row[label] = v
+
         row["Резерв, м²"] = int(r.tep.balance.surplus)
         rows.append(row)
     return pd.DataFrame(rows)

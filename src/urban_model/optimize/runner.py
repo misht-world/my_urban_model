@@ -336,7 +336,10 @@ def optimize_max_apartments(
     """
     # ---- Предполётные проверки пространства поиска ----
     space_warnings: list[str] = []
-    if space.try_built_in and base_options.built_in is None:
+    # Warning только если используется legacy try_built_in (с одним BuiltInArea
+    # из base_options). При новом vpp_modes (v0.8.0) список ВПП собирается
+    # автоматически через vpp.build_built_ins — base_options.built_in не нужен.
+    if space.try_built_in and base_options.built_in is None and not space.vpp_modes:
         # Без базового built_in оптимизатор не знает площадь ВПП — варианты
         # `use_vpp=True` молча выродятся в `built_in=None` и не дадут
         # отличий. Это ловушка для пользователя.
