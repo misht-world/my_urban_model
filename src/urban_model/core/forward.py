@@ -104,15 +104,24 @@ def compute_tep_for_kit(
     density_v = population.density_chel_per_ga(pop_v, site.area_m2)
     density_max = norms.resolve("population_density_max")
 
-    # Проверка плотности (формальная, по 20 м²/чел)
+    # Проверка плотности (формальная, по 20 м²/чел).
+    # v0.8.7: при enforce_density_norm=False статус остаётся OK
+    # (норматив отображается, но не блокирует бисекцию).
     density_check_v = population.density_chel_per_ga(pop_check_v, site.area_m2)
-    density_status = Status.OK if density_check_v <= density_max else Status.ERROR
+    _density_over = density_check_v > density_max
+    if _density_over and options.enforce_density_norm:
+        density_status = Status.ERROR
+    elif _density_over:
+        density_status = Status.WARNING
+    else:
+        density_status = Status.OK
 
     warnings: list[str] = []
-    if density_status == Status.ERROR:
+    if _density_over:
+        soft = "" if options.enforce_density_norm else " (норматив отключён пользователем)"
         warnings.append(_wcprefix(
             WC.DENSITY_ABOVE_LIMIT,
-            f"Плотность {density_check_v:.0f} чел/га > норматива {density_max} (по 20 м²/чел)",
+            f"Плотность {density_check_v:.0f} чел/га > норматива {density_max} (по 20 м²/чел){soft}",
         ))
 
     # === ДОО ===
@@ -531,11 +540,17 @@ def compute_tep_for_kit(
     greening_actual_total = (
         znop_in_balance + green_housing_v + bi_greening_v + custom_total_greening
     )
+    # v0.8.7: при выключенной проверке озеленения квартала передаём
+    # greening_required=0 — фактическое значение всё равно записывается
+    # в TEPResult для аудита, но feasible не блокируется.
+    _greening_required_check = (
+        green_quarter_req_v if options.enforce_quarter_greening_norm else 0.0
+    )
     bal = balance.compute_balance(
         site.area_m2,
         components,
         greening_actual=greening_actual_total,
-        greening_required=green_quarter_req_v,
+        greening_required=_greening_required_check,
     )
 
     # === Формула парковки для аудит-трейла ===

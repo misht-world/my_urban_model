@@ -47,10 +47,31 @@ def render_header(result: TEPResult) -> None:
             f"См. рекомендации ниже."
         )
     else:
-        st.error(
-            f"❌ **Дефицит баланса территории.** КИТ = {kit_v:.3f}"
-            f"  ·  Не хватает: {fmt_int(-result.balance.surplus)} м²"
-        )
+        # v0.8.7: surplus > 0, но feasible=False → нарушен норматив озеленения
+        # квартала. Это самая частая ловушка на малых кварталах.
+        bal = result.balance
+        if bal.surplus >= 0 and bal.greening_actual < bal.greening_required - 1e-3:
+            deficit = bal.greening_required - bal.greening_actual
+            st.error(
+                f"❌ **Норматив озеленения квартала не выполняется.** "
+                f"Требуется ≥ {fmt_int(bal.greening_required)} м² "
+                f"(25% от квартала), факт {fmt_int(bal.greening_actual)} м² — "
+                f"дефицит {fmt_int(deficit)} м². "
+                f"Резерв территории есть ({fmt_int(bal.surplus)} м²), но "
+                f"норматив не пускает увеличивать жильё."
+            )
+            st.info(
+                "💡 Возможные действия: (1) включите **ЗНОП** в левой колонке "
+                "— добавит озеленение по нормативу; "
+                "(2) увеличьте площадь квартала; "
+                "(3) отключите **«Соблюдать норматив 25% озеленения»** — "
+                "если зелень компенсируется вне границ территории."
+            )
+        else:
+            st.error(
+                f"❌ **Дефицит баланса территории.** КИТ = {kit_v:.3f}"
+                f"  ·  Не хватает: {fmt_int(-bal.surplus)} м²"
+            )
 
     if result.limiting_factor:
         st.caption(f"🔻 **Ограничивающий фактор:** {result.limiting_factor}")

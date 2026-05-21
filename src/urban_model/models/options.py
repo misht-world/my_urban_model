@@ -50,6 +50,27 @@ class CalculationOptions(BaseModel):
         default=True, description="Учитывать внутриквартальные проезды в балансе"
     )
 
+    # v0.8.7: «мягкие» нормативы — пользователь может отключить проверку.
+    # На малых кварталах (< 0.5 га) норматив 25% озеленения и норматив
+    # плотности 450 чел/га физически противоречивы, бисекция падает в
+    # kit_search_min. Отключение даёт пользователю режим «физический
+    # потолок» — модель максимизирует КИТ только в рамках территории.
+    enforce_quarter_greening_norm: bool = Field(
+        default=True,
+        description=(
+            "Соблюдать норматив 25% озеленения квартала "
+            "(СП 42.13330). Отключите для малых кварталов или при компенсации "
+            "озеленения вне границ территории."
+        ),
+    )
+    enforce_density_norm: bool = Field(
+        default=True,
+        description=(
+            "Соблюдать норматив плотности 450 чел/га (по 20 м²/чел). "
+            "Отключите для малых кварталов или экспериментальных сценариев."
+        ),
+    )
+
     kindergarten: KindergartenSpec = Field(default_factory=KindergartenSpec)
     school: SchoolSpec = Field(default_factory=SchoolSpec)
 

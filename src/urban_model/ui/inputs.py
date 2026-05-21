@@ -144,6 +144,32 @@ def render_params_tab() -> UserInputs:
                 ),
             )
 
+        # v0.8.7: «мягкие» нормативы для малых кварталов.
+        with st.container(border=True):
+            st.markdown("##### Нормативы-ограничения")
+            st.caption(
+                "На малых кварталах (< 0.5 га) эти два норматива физически "
+                "противоречивы — модель не находит решения. Можно отключить."
+            )
+            enforce_greening_norm = st.checkbox(
+                "🌿 Соблюдать норматив 25% озеленения квартала",
+                value=True, key="enforce_quarter_greening_norm",
+                help=(
+                    "СП 42.13330: минимум 25% площади квартала под "
+                    "озеленение. Выключите, если озеленение компенсируется "
+                    "вне границ территории."
+                ),
+            )
+            enforce_density_norm = st.checkbox(
+                "👥 Соблюдать норматив 450 чел/га",
+                value=True, key="enforce_density_norm",
+                help=(
+                    "СП 42.13330: предельная плотность населения для "
+                    "многоэтажной застройки. Выключите для физического "
+                    "максимума КИТ без нормативного ограничения."
+                ),
+            )
+
     # ─── ПРАВАЯ КОЛОНКА: плитки для активных компонентов ──────────
     with col_right:
         # ДОО
@@ -238,6 +264,8 @@ def render_params_tab() -> UserInputs:
         driveways_intra_share_override=intra_override,
         driveways_lot_share_override=lot_override,
         residential_class=residential_class,
+        enforce_quarter_greening_norm=enforce_greening_norm,
+        enforce_density_norm=enforce_density_norm,
     )
     return UserInputs(
         site=site, options=options, mode=mode,
