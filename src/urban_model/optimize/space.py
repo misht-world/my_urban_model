@@ -83,6 +83,15 @@ class SearchSpace(BaseModel):
         description="Отсеивать сценарии с capacity-violation в ДОО/СОШ",
     )
 
+    # v0.9.1: использовать RandomSampler вместо TPE для равномерного
+    # покрытия пространства параметров. Включается в Парето-рекомендациях,
+    # чтобы получить ТИПОЛОГИЧЕСКИ разные варианты, а не концентрацию
+    # вокруг одного максимума.
+    diversify_sampler: bool = Field(
+        default=False,
+        description="True = RandomSampler (разнообразие), False = TPE (максимум)",
+    )
+
     def is_empty(self) -> bool:
         """True, если ни одна декорация не задана — оптимизировать нечего."""
         return all(

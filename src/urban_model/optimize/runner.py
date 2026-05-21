@@ -409,7 +409,15 @@ def optimize_max_apartments(
 
     storage: list[OptimizationResult] = []
     exception_log: list[str] = []
-    sampler = optuna.samplers.TPESampler(seed=seed)
+    # v0.9.1: режим diversify (флаг space.diversify_sampler) — используем
+    # RandomSampler вместо TPE. Это даёт равномерное покрытие пространства
+    # параметров, а не концентрацию на лучшем результате. Используется
+    # в `pareto.py::generate_pareto_recommendations` для типологически
+    # разных рекомендаций.
+    if getattr(space, "diversify_sampler", False):
+        sampler = optuna.samplers.RandomSampler(seed=seed)
+    else:
+        sampler = optuna.samplers.TPESampler(seed=seed)
     study = optuna.create_study(direction="maximize", sampler=sampler)
 
     # AUDIT P0-2: общий кэш preview-solve для всех trials в study.

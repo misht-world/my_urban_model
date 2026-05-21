@@ -28,6 +28,7 @@ from urban_model.optimize.runner import OptimizationReport
 from urban_model.optimize.scans import (
     ScanResult,
     scan_floors,
+    scan_parking_multilevel_share,
     scan_parking_underground_share,
     scan_znop_steps,
 )
@@ -208,6 +209,14 @@ def _cached_scan_parking(_norms_key: str, opts_json: str, site_area: float):
 
 
 @st.cache_data(show_spinner=False)
+def _cached_scan_parking_ml(_norms_key: str, opts_json: str, site_area: float):
+    norms = _get_norms_resolver()
+    opts = CalculationOptions.model_validate_json(opts_json)
+    site = Site(area_m2=site_area)
+    return scan_parking_multilevel_share(site, opts, norms)
+
+
+@st.cache_data(show_spinner=False)
 def _cached_scan_znop(_norms_key: str, opts_json: str, site_area: float):
     norms = _get_norms_resolver()
     opts = CalculationOptions.model_validate_json(opts_json)
@@ -344,6 +353,13 @@ def _render_what_to_improve_section(
             _render_scan_card(scan)
         except Exception as e:
             st.error(f"Ошибка скана парковок: {e}")
+
+    with st.expander("🏗 Парковки: доля многоуровневых", expanded=False):
+        try:
+            scan = _cached_scan_parking_ml(norms_key, opts_json, site.area_m2)
+            _render_scan_card(scan)
+        except Exception as e:
+            st.error(f"Ошибка скана многоуровневых: {e}")
 
     with st.expander("🌳 ЗНОП: норматив м²/чел", expanded=False):
         try:

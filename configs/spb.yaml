@@ -532,21 +532,30 @@ economy:
         business: 2.80
       unit: "unit_per_m2_apartments"
       source: "SPEC.md (типичная маржа РФ для эконома/комфорта/бизнеса)"
+    # v0.9.1: калибровка по СПб 2024. Раньше (0.10/0.25/0.50) — кратно
+    # заниженные значения из SPEC.md, давшие убыток у всех типов парковок.
+    # Новые значения отражают реальные цены продажи м/м в СПб:
+    #   подземное 1.5-2.5 млн руб ≈ 18 × P_comfort
+    #   многоуровневое 0.8-1.2 млн руб ≈ 10 × P_comfort
+    #   открытое 0.2-0.4 млн руб ≈ 3 × P_comfort
     parking_underground:
       type: scalar
-      value: 0.50
+      value: 18.0
       unit: "unit_per_space"
-      source: "SPEC.md"
+      note: "1.5-2.5 млн руб ≈ 18 у.е. (через P_comfort = 1.95 у.е./м²)"
+      source: "СПб 2024, средняя по проектам комфорт-класса"
     parking_multilevel:
       type: scalar
-      value: 0.25
+      value: 10.0
       unit: "unit_per_space"
-      source: "SPEC.md"
+      note: "0.8-1.2 млн руб ≈ 10 у.е."
+      source: "СПб 2024"
     parking_surface:
       type: scalar
-      value: 0.10
+      value: 3.0
       unit: "unit_per_space"
-      source: "SPEC.md"
+      note: "0.2-0.4 млн руб ≈ 3 у.е."
+      source: "СПб 2024"
     vpp_commercial:
       type: scalar
       value: 1.30

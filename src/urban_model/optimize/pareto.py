@@ -147,26 +147,64 @@ def _delta(
 # Выборка трёх рекомендаций из top_n
 # ---------------------------------------------------------------------------
 
+def _parking_archetype(r: OptimizationResult) -> str:
+    """Грубая категория парковки для стратификации рекомендаций.
+
+    Используется чтобы 3 карточки показывали ТИПОЛОГИЧЕСКИ разные сценарии,
+    даже когда Optuna сходится в одну точку по основной метрике.
+    """
+    p = r.params
+    mode = p.get("parking_mode", "")
+    if mode != "custom":
+        return mode  # "min_open" / "all_open"
+    ug = float(p.get("parking_ug_share", 0.0))
+    ml = float(p.get("parking_ml_share", 0.0))
+    if ug >= 0.6:
+        return "custom_deep_underground"  # ≥60% подземки
+    if ml >= 0.4:
+        return "custom_multilevel"        # ≥40% многоуровневых
+    return "custom_surface"               # преимущественно открытые
+
+
+def _params_fingerprint(r: OptimizationResult) -> tuple:
+    """Семантический ключ варианта — для точного дедупа по параметрам."""
+    p = r.params
+    return (
+        int(p.get("floors", 0)),
+        _parking_archetype(r),
+        str(p.get("vpp_mode", "")),
+        round(float(p.get("znop_per_person", -1.0)), 1),
+        int(p.get("kg_num_objects", 0)),
+        int(p.get("school_num_objects", 0)),
+    )
+
+
 def _select_three(
     top_n: list[OptimizationResult],
     base_tep: TEPResult,
     base_options: CalculationOptions,
 ) -> list[Recommendation]:
-    """Из топа выбирает 3 лучших по разным критериям + DeltaSummary."""
+    """Из топа выбирает 3 лучших по разным критериям + DeltaSummary.
+
+    v0.9.1: дедуп по семантическому fingerprint параметров — если два
+    разных Optuna-trial попали в одну и ту же точку пространства параметров
+    (что часто бывает у TPE-сэмплера), для второй рекомендации берётся
+    следующий «отличающийся» вариант.
+    """
     feasible = [r for r in top_n if r.feasible and r.apartments_area > 0]
     if not feasible:
         return []
 
-    # 1. Максимум площади
-    apt_best = max(feasible, key=lambda r: r.apartments_area)
-
-    # 2. Максимум прибыли (только среди тех, у кого экономика посчиталась)
     with_econ = [r for r in feasible if r.tep.economy is not None]
-    profit_best = (
-        max(with_econ, key=lambda r: r.tep.economy.profit) if with_econ else apt_best
+
+    # Заготовим отсортированные пулы для каждого критерия
+    apt_sorted = sorted(feasible, key=lambda r: r.apartments_area, reverse=True)
+    profit_sorted = (
+        sorted(with_econ, key=lambda r: r.tep.economy.profit, reverse=True)
+        if with_econ else apt_sorted
     )
 
-    # 3. Сбалансированный — нормировка min-max по top_n, выбор argmax(0.5*apt + 0.5*profit)
+    # Balanced: нормировка min-max → argmax 0.5*apt + 0.5*profit
     if with_econ and len(with_econ) >= 2:
         apts = [r.apartments_area for r in with_econ]
         profits = [r.tep.economy.profit for r in with_econ]
@@ -180,9 +218,9 @@ def _select_three(
             p_n = (r.tep.economy.profit - p_min) / p_range
             return 0.5 * apt_n + 0.5 * p_n
 
-        balanced = max(with_econ, key=score)
+        balanced_sorted = sorted(with_econ, key=score, reverse=True)
     else:
-        balanced = apt_best
+        balanced_sorted = apt_sorted
 
     rationales = {
         "Максимум площади": "Наибольшая площадь квартир — максимальный выход ТЭП.",
@@ -190,36 +228,43 @@ def _select_three(
         "Сбалансированный": "Компромисс между площадью квартир и прибылью.",
     }
 
+    def _pick(
+        pool: list[OptimizationResult],
+        seen_fps: set[tuple],
+        seen_archetypes: set[str],
+        require_new_archetype: bool,
+    ) -> OptimizationResult | None:
+        """Выбрать первый из pool, удовлетворяющий условиям дедупликации."""
+        # Сначала пробуем с new archetype (для типологического разнообразия)
+        if require_new_archetype:
+            for r in pool:
+                arch = _parking_archetype(r)
+                fp = _params_fingerprint(r)
+                if fp not in seen_fps and arch not in seen_archetypes:
+                    seen_fps.add(fp); seen_archetypes.add(arch)
+                    return r
+        # Fallback: любой уникальный fp (даже если архетип повторяется)
+        for r in pool:
+            fp = _params_fingerprint(r)
+            if fp not in seen_fps:
+                seen_fps.add(fp); seen_archetypes.add(_parking_archetype(r))
+                return r
+        return None
+
     recs: list[Recommendation] = []
-    # Используем dict-keys для дедупликации: если apt_best == profit_best,
-    # «Максимум прибыли» сольётся с «Максимум площади».
-    seen: set[int] = set()
-    for label, picked in [
-        ("Максимум площади", apt_best),
-        ("Максимум прибыли", profit_best),
-        ("Сбалансированный", balanced),
-    ]:
-        # id-based дедупликация: если тот же объект Optuna-trial — пропускаем,
-        # т.к. рекомендация будет идентична уже добавленной.
-        if id(picked) in seen and len(recs) >= 1:
-            # Подбираем следующий лучший по этому критерию (если есть).
-            # Простая стратегия: берём ВТОРОЙ по метрике с тем же критерием.
-            alternatives = [r for r in feasible if id(r) not in seen]
-            if not alternatives:
-                continue
-            if label == "Максимум прибыли" and with_econ:
-                alts_econ = [r for r in alternatives if r.tep.economy is not None]
-                if alts_econ:
-                    picked = max(alts_econ, key=lambda r: r.tep.economy.profit)
-                else:
-                    continue
-            elif label == "Сбалансированный":
-                if not alternatives:
-                    continue
-                picked = alternatives[0]  # уже отсортирован Optuna по основной метрике
-            else:
-                picked = max(alternatives, key=lambda r: r.apartments_area)
-        seen.add(id(picked))
+    seen_fps: set[tuple] = set()
+    seen_arch: set[str] = set()
+    for i, (label, pool) in enumerate([
+        ("Максимум площади", apt_sorted),
+        ("Максимум прибыли", profit_sorted),
+        ("Сбалансированный", balanced_sorted),
+    ]):
+        # Первая рекомендация — без ограничения архетипа.
+        # Вторая и третья — стараемся выбрать другой архетип парковки,
+        # чтобы предложить типологически различающиеся сценарии.
+        picked = _pick(pool, seen_fps, seen_arch, require_new_archetype=(i > 0))
+        if picked is None:
+            continue
         recs.append(Recommendation(
             label=label,
             rationale=rationales[label],
@@ -257,8 +302,13 @@ def generate_pareto_recommendations(
         multilevel_levels_range=(1, 5),
         underground_levels_range=(1, 3),
         znop_per_person_choices=[0.0, 3.0, 4.0, 6.0],
-        objective="apartments_area",  # сортируем по apt, потом выберем по разным критериям
+        objective="apartments_area",
         strict_social_validation=False,
+        # v0.9.1: RandomSampler даёт равномерное покрытие пространства,
+        # а не концентрацию на лучшем. Это нужно для типологически
+        # различных рекомендаций — TPE отлично находит максимум, но
+        # все его кандидаты «лежат рядом» в параметрах.
+        diversify_sampler=True,
     )
     report: OptimizationReport = optimize_max_apartments(
         site=site,
@@ -266,7 +316,9 @@ def generate_pareto_recommendations(
         norms=norms,
         space=space,
         n_trials=n_trials,
-        top_n=50,
+        # top_n=300 — берём широкий пул, чтобы при стратификации по архетипу
+        # парковки точно нашлись варианты разных типов.
+        top_n=300,
         seed=seed,
     )
     recs = _select_three(report.top_n, base_tep, base_options)

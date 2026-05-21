@@ -190,6 +190,63 @@ def scan_parking_underground_share(
     )
 
 
+def scan_parking_multilevel_share(
+    site: Site,
+    base_options: CalculationOptions,
+    norms: Normatives,
+    steps: int = 11,
+    metric: Metric = "apartments_area",
+) -> ScanResult:
+    """Скан по доле МНОГОУРОВНЕВЫХ парковок: 0..100% шагом 100%/(steps-1).
+
+    Остальное — пропорционально:
+      • open = 12.5% (норматив СПб)
+      • underground = max(0, 1 - 0.125 - multilevel)
+    При multilevel > 87.5% open пропорционально снижается через нормализацию.
+    """
+    base_ml = float(base_options.parking.multilevel_share)
+
+    points: list[ScanPoint] = []
+    for i in range(steps):
+        ml = i / (steps - 1)
+        open_share = _PARK_OPEN_NORM
+        ug = max(0.0, 1.0 - open_share - ml)
+        # Если ml > 1 - open_share, нормализуем
+        s = open_share + ml + ug
+        if s > 0:
+            open_n, ml_n, ug_n = open_share / s, ml / s, ug / s
+        else:
+            open_n, ml_n, ug_n = 1.0, 0.0, 0.0
+
+        opts = base_options.model_copy(deep=True)
+        opts.parking = ParkingConfig(
+            mode="custom",
+            open_share=open_n,
+            multilevel_share=ml_n,
+            underground_share=ug_n,
+            multilevel_levels=base_options.parking.multilevel_levels,
+            underground_levels=base_options.parking.underground_levels,
+        )
+        try:
+            tep = solve_max_kit(site, opts, norms)
+        except Exception:
+            continue
+        points.append(_point_from_tep(
+            x_value=ml, x_label=f"{ml*100:.0f}%", tep=tep,
+        ))
+
+    base, recommended = _mark_base_and_recommended(points, base_ml, metric)
+    return ScanResult(
+        factor="parking_multilevel",
+        title="Парковки: доля многоуровневых",
+        x_axis_label="Доля многоуровневых, %",
+        points=points,
+        base_point=base,
+        recommended_point=recommended,
+        metric=metric,
+    )
+
+
 # ---------------------------------------------------------------------------
 # ЗНОП: 4 нормативные ступени по ПЗЗ СПб
 # ---------------------------------------------------------------------------
