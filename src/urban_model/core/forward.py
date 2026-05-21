@@ -34,6 +34,7 @@ from urban_model.calculations import (
 from urban_model.calculations.allowed_capacities import (
     build_warnings as _build_allowed_warnings,
 )
+from urban_model.calculations.warning_codes import WC, prefix as _wcprefix
 from urban_model.calculations.parking import compute_parking_breakdown
 from urban_model.models.built_in import BuiltInArea
 from urban_model.models.options import CalculationOptions
@@ -109,9 +110,10 @@ def compute_tep_for_kit(
 
     warnings: list[str] = []
     if density_status == Status.ERROR:
-        warnings.append(
-            f"Плотность {density_check_v:.0f} чел/га > норматива {density_max} (по 20 м²/чел)"
-        )
+        warnings.append(_wcprefix(
+            WC.DENSITY_ABOVE_LIMIT,
+            f"Плотность {density_check_v:.0f} чел/га > норматива {density_max} (по 20 м²/чел)",
+        ))
 
     # === ДОО ===
     # Резолвим нормативы заранее, чтобы они были доступны для formula-строк
@@ -160,29 +162,29 @@ def compute_tep_for_kit(
         for c in kg_buckets:
             if c < kg_cap_min_builtin:
                 kg_status = Status.WARNING
-                warnings.append(
+                warnings.append(_wcprefix(WC.SOC_CAP_MIN_BELOW,
                     f"ДОО: расчётная вместимость {c} мест меньше минимальной "
                     f"нормативной наполняемости ({kg_cap_min_builtin} мест"
                     + (f", {kg_src_min}" if kg_src_min else "") + "). "
                     "Запроектировать ДОО на такое число мест невозможно."
-                )
+                ))
             elif kg_btype == "detached" and c < kg_cap_min_detached:
                 kg_status = Status.WARNING
-                warnings.append(
+                warnings.append(_wcprefix(WC.SOC_CAP_MIN_DETACHED_HINT,
                     f"ДОО: вместимость {c} мест меньше минимума отдельно стоящего "
                     f"ДОО ({kg_cap_min_detached} мест"
                     + (f", {kg_src_min}" if kg_src_min else "") + "). "
                     "Рекомендуется выбрать тип «встроенно-пристроенный ДОО» "
                     f"(минимум {kg_cap_min_builtin} мест)."
-                )
+                ))
             elif c > kg_cap_max:
                 kg_status = Status.WARNING
-                warnings.append(
+                warnings.append(_wcprefix(WC.SOC_CAP_MAX_ABOVE,
                     f"ДОО: вместимость {c} мест превышает принятый максимум "
                     f"{kg_cap_max} мест"
                     + (f" ({kg_src_max})" if kg_src_max else "")
                     + " — рекомендуется разбить на большее число объектов."
-                )
+                ))
         # Проверка списка допустимых вместимостей (типовые по данным КС).
         try:
             kg_allowed = norms.resolve("social_objects.kindergarten.allowed_capacities")
@@ -282,12 +284,12 @@ def compute_tep_for_kit(
             sch_status = Status.WARNING
             offenders_lo = [c for c in sch_buckets if c < sch_cap_min]
             src_str = f" ({sch_cap_min_src})" if sch_cap_min_src else ""
-            warnings.append(
+            warnings.append(_wcprefix(WC.SOC_CAP_MIN_BELOW,
                 f"СОШ: расчётная вместимость {offenders_lo} < нормативного минимума "
                 f"{sch_cap_min} мест{src_str} — стандартная отдельно стоящая СОШ невозможна, "
                 "необходимо размещение начальной СОШ или стандартной СОШ "
                 "вне границ территории."
-            )
+            ))
         # Проверка списка допустимых вместимостей (параллели II–IX по данным КС).
         # Не дублируем для c < sch_cap_min (уже предупреждено выше).
         try:
@@ -426,6 +428,26 @@ def compute_tep_for_kit(
         additional_places=bi_parking_places + custom_total_parking_places,
     )
 
+    # === Проверка реалистичности подземного паркинга (v0.8.5, AUDIT P0-7) ===
+    # Если на 1 уровне подземки физически слишком много мест — добавляем WARNING.
+    # Норматив `parking.underground_capacity_per_level` (по умолчанию 400)
+    # задаёт максимум на уровень; при превышении рекомендуется увеличить
+    # underground_levels или вынести часть м/м в наземные.
+    if park.underground_places > 0:
+        try:
+            ug_cap_per_level = norms.resolve("parking.underground_capacity_per_level")
+        except KeyError:
+            ug_cap_per_level = None
+        ug_levels = getattr(options.parking, "underground_levels", 1) or 1
+        if ug_cap_per_level and park.underground_places > ug_cap_per_level * ug_levels:
+            warnings.append(_wcprefix(WC.PARKING_UG_OVERPACKED,
+                f"Подземный паркинг: {park.underground_places} м/м на {ug_levels} "
+                f"уровн. — нагрузка {park.underground_places / ug_levels:.0f} м/м/уровень "
+                f"превышает ориентир {ug_cap_per_level}. "
+                f"Увеличьте `underground_levels` или перенесите часть м/м "
+                "в наземные/многоуровневые."
+            ))
+
     # === Проезды ===
     drive_intra_share = (
         options.driveways_intra_share_override
@@ -549,16 +571,16 @@ def compute_tep_for_kit(
     kit_status = Status.ERROR if kit_developed > effective_kit_max + 1e-6 else Status.OK
     if kit_status == Status.ERROR:
         if znop_cap is not None and effective_kit_max < kit_norm_max:
-            warnings.append(
+            warnings.append(_wcprefix(WC.KIT_ABOVE_LIMIT,
                 f"КИТ {kit_developed:.3f} превышает предел {effective_kit_max} "
                 f"для ЗНОП={options.znop_per_person_override} м²/чел "
                 f"(норматив piecewise по ПЗЗ СПб)."
-            )
+            ))
         else:
-            warnings.append(
+            warnings.append(_wcprefix(WC.KIT_ABOVE_LIMIT,
                 f"КИТ {kit_developed:.3f} превышает нормативный максимум "
                 f"{kit_norm_max} (ПЗЗ СПб, ДПТ={'да' if options.planning_doc else 'нет'})"
-            )
+            ))
 
     result = TEPResult(
         profile=norms.profile,

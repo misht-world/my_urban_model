@@ -37,7 +37,17 @@ def calc_revenue(tep, options, norms: Normatives) -> RevenueBreakdown:
     r_ug = n_ug * p_ug
     r_vpp = bi_area * p_vpp
 
-    total = r_res + r_open + r_ml + r_ug + r_vpp
+    # AUDIT P0-6: кастомные коммерческие объекты (ВРИ 4.x) дают выручку
+    # по той же ставке, что ВПП commercial. Соцобъекты (3.x) — соцнагрузка.
+    r_custom = 0.0
+    for obj in (getattr(options, "custom_objects", None) or []):
+        vri = (obj.vri_code or "").strip()
+        floor_area = float(obj.floor_area_m2 or obj.plot_area_m2 or 0.0)
+        if vri.startswith("4."):
+            r_custom += floor_area * p_vpp
+        # 3.x → 0 (соцнагрузка); прочие — 0 (страхуемся)
+
+    total = r_res + r_open + r_ml + r_ug + r_vpp + r_custom
 
     return RevenueBreakdown(
         residential=r_res,
@@ -45,5 +55,6 @@ def calc_revenue(tep, options, norms: Normatives) -> RevenueBreakdown:
         parking_multilevel=r_ml,
         parking_underground=r_ug,
         vpp_commercial=r_vpp,
+        custom_commercial=r_custom,
         total=total,
     )

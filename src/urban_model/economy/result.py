@@ -18,6 +18,11 @@ class CostBreakdown(BaseModel):
     parking_multilevel: float = Field(0.0, description="Многоуровневые наземные паркинги")
     parking_underground: float = Field(0.0, description="Подземные паркинги (с прогрессией уровней)")
 
+    # AUDIT P0-6: ранее экономика игнорировала эти статьи.
+    social_parking: float = Field(0.0, description="Парковки ДОО/СОШ (открытые на ЗУ соцобъекта)")
+    sport: float = Field(0.0, description="Плоскостные спорт. сооружения (ВРИ 5.1.3)")
+    custom_objects: float = Field(0.0, description="Кастомные объекты (офис/ФОК/поликлиника)")
+
     # Подытоги
     shell_total: float = Field(0.0, description="Σ зданий и сооружений")
     networks: float = Field(0.0, description="Сети (% от shell)")
@@ -38,6 +43,9 @@ class RevenueBreakdown(BaseModel):
     parking_multilevel: float = Field(0.0, description="Многоуровневые м/м × цена/м.м.")
     parking_underground: float = Field(0.0, description="Подземные м/м × цена/м.м.")
     vpp_commercial: float = Field(0.0, description="Площадь ВПП × цена/м² коммерции")
+    # AUDIT P0-6: коммерческие кастомные объекты дают выручку. Соцобъекты
+    # (ДОО/СОШ/спорт) — соцнагрузка, выручка = 0.
+    custom_commercial: float = Field(0.0, description="Кастомные коммерческие объекты")
 
     total: float = Field(0.0, description="Σ всех источников выручки")
 

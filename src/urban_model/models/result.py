@@ -7,12 +7,16 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
-# economy/result.py не импортирует ничего из models — безопасно прямой импорт
-from urban_model.economy.result import EconomicMetrics
+# P0-4: ленивый импорт EconomicMetrics. economy/result.py не импортирует
+# ничего из models, поэтому прямой импорт работает, но создаёт жёсткую
+# связность: поломка в economy уронит весь TEPResult. TYPE_CHECKING-импорт
+# + строковая аннотация поля + model_rebuild() в конце развязывает это.
+if TYPE_CHECKING:
+    from urban_model.economy.result import EconomicMetrics
 
 
 class Status(str, Enum):
@@ -146,7 +150,7 @@ class TEPResult(BaseModel):
     warnings: list[str] = Field(default_factory=list)
 
     # Экономика (v0.8.0) — None допустимо для unit-тестов чистых расчётов.
-    economy: EconomicMetrics | None = None
+    economy: "EconomicMetrics | None" = None
 
     def summary(self) -> str:
         lines = [
@@ -188,3 +192,18 @@ class TEPResult(BaseModel):
         for w in self.warnings:
             lines.append(f"  ⚠ {w}")
         return "\n".join(lines)
+
+
+# P0-4: разрешаем forward-ref `EconomicMetrics`. Импорт выполняется здесь
+# (после объявления TEPResult), чтобы избежать круговых зависимостей и
+# сохранить «ленивость» — если economy сломан, TEPResult всё равно
+# импортируется (рухнет только rebuild при первом использовании).
+def _rebuild_with_economy() -> None:
+    from urban_model.economy.result import EconomicMetrics  # noqa: F401
+    TEPResult.model_rebuild()
+
+
+try:
+    _rebuild_with_economy()
+except Exception:  # pragma: no cover — деградация без экономики
+    pass

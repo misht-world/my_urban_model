@@ -71,7 +71,11 @@ def calc_cost(tep, options, norms: Normatives) -> CostBreakdown:
     c_ml = float(norms.resolve("economy.construction.parking_multilevel"))
     c_ug = float(norms.resolve("economy.construction.parking_underground"))
 
-    m2_open = float(norms.resolve("economy.parking_areas.surface_m2_per_space"))
+    # P0-1: площадь открытого м/м берём из основного норматива parking.*,
+    # чтобы себестоимость и баланс ссылались на одно и то же значение.
+    # Дубль `economy.parking_areas.surface_m2_per_space` оставлен в YAML для
+    # обратной совместимости, но не используется (см. AUDIT.md P0-1).
+    m2_open = float(norms.resolve("parking.open_space_per_place"))
     m2_ml = float(norms.resolve("economy.parking_areas.multilevel_m2_per_space"))
     m2_ug = float(norms.resolve("economy.parking_areas.underground_m2_per_space"))
 
@@ -108,10 +112,40 @@ def calc_cost(tep, options, norms: Normatives) -> CostBreakdown:
     ug_levels = getattr(options.parking, "underground_levels", None) or 1
     cost_ug = _cost_underground_parking(n_ug, int(ug_levels), m2_ug, c_ug, norms)
 
+    # --- Парковки соцобъектов (P0-6): открытые на ЗУ соцобъекта, та же ---
+    # удельная стоимость, что у обычных открытых парковок (c_surface).
+    soc_park_area = float(tep.social_parking_area.value or 0.0)
+    cost_soc_park = soc_park_area * c_surface
+
+    # --- Спортивные сооружения (P0-6): плоскостные, ВРИ 5.1.3. ---
+    # Берём ту же удельную стоимость, что у парковки surface — это
+    # покрытие/благоустройство без капитальных конструкций. Подходящего
+    # отдельного норматива в economy/* пока нет; уточним при v0.9.
+    sport_area = float(tep.sport_facilities_area.value or 0.0)
+    cost_sport = sport_area * c_surface
+
+    # --- Кастомные объекты (P0-6): площадь × коммерческая ставка ВПП. ---
+    # Кастомные объекты бывают коммерческими (офис, торговля) и социальными
+    # (поликлиника, ФОК). На v0.8 различаем по флагу `is_commercial` если
+    # есть, иначе считаем коммерческими по умолчанию.
+    cost_custom = 0.0
+    for obj in (getattr(options, "custom_objects", None) or []):
+        floor_area = float(obj.floor_area_m2 or obj.plot_area_m2 or 0.0)
+        # Коммерческие → как ВПП commercial; некоммерческие → как ДОО.
+        # Эвристика по ВРИ: 3.x = соц (медицина/спорт), 4.x = коммерция.
+        vri = (obj.vri_code or "").strip()
+        if vri.startswith("4."):
+            cost_custom += floor_area * c_vpp
+        elif vri.startswith("3."):
+            cost_custom += floor_area * c_kg  # социальные — по ставке ДОО
+        else:
+            cost_custom += floor_area * c_vpp  # по умолчанию — коммерция
+
     # --- Подытоги ---
     shell_total = (
         cost_residential + cost_vpp + cost_kg + cost_sch
         + cost_open + cost_ml + cost_ug
+        + cost_soc_park + cost_sport + cost_custom
     )
     networks = shell_total * pct_networks
     landscaping = shell_total * pct_landscape
@@ -119,14 +153,10 @@ def calc_cost(tep, options, norms: Normatives) -> CostBreakdown:
     contingency = (shell_total + networks + landscaping + design) * pct_cont
 
     # --- Фиксированные затраты ---
-    # Поля earth/connection/demolition пока без UI — берём 0.
-    fixed = (
-        getattr(options, "land_cost", 0.0) or 0.0
-    ) + (
-        getattr(options, "connection_costs", 0.0) or 0.0
-    ) + (
-        getattr(options, "demolition_costs", 0.0) or 0.0
-    )
+    # P0-5: поля land_cost/connection_costs/demolition_costs в CalculationOptions
+    # не объявлены, getattr всегда возвращал 0. Блок зарезервирован под v0.8.1
+    # (земля/ТУ/снос с UI). Пока — 0.
+    fixed = 0.0
 
     total = shell_total + networks + landscaping + design + contingency + fixed
 
@@ -138,6 +168,9 @@ def calc_cost(tep, options, norms: Normatives) -> CostBreakdown:
         parking_open=cost_open,
         parking_multilevel=cost_ml,
         parking_underground=cost_ug,
+        social_parking=cost_soc_park,
+        sport=cost_sport,
+        custom_objects=cost_custom,
         shell_total=shell_total,
         networks=networks,
         landscaping=landscaping,

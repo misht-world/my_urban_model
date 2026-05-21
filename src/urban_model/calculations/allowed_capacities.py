@@ -10,6 +10,8 @@ from __future__ import annotations
 
 from typing import Callable, Iterable
 
+from urban_model.calculations.warning_codes import WC, prefix as _wcprefix
+
 
 def build_warnings(
     buckets: Iterable[int],
@@ -48,9 +50,9 @@ def build_warnings(
             parts.append(f"больше: {nearest_hi}")
         hint = "; ".join(parts) if parts else "нет ближайших"
         src_str = f" (источник списка: {source})" if source else ""
-        out.append(
+        out.append(_wcprefix(WC.SOC_CAP_NOT_TYPICAL,
             f"{label}: вместимость {c} мест не входит в список типовых{src_str}. "
             f"Ближайшие — {hint}. "
             "Рекомендуется привести к одной из типовых вместимостей."
-        )
+        ))
     return out

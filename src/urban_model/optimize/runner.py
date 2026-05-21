@@ -59,12 +59,38 @@ class OptimizationReport:
 # Сэмплинг: применить trial к копии base_options
 # ---------------------------------------------------------------------------
 
+def _vpp_preview_key(opts: CalculationOptions) -> tuple:
+    """Ключ для кэша preview-solve без ВПП.
+
+    AUDIT P0-2: при vpp_modes Optuna раньше вызывал solve_max_kit ДВАЖДЫ
+    на каждый trial (preview без ВПП → построение списка ВПП → основной solve).
+    Кэшируем preview по тем параметрам, которые на него реально влияют:
+    этажность, планировочный документ, парковки, ЗНОП-override, флаги.
+    """
+    p = opts.parking
+    return (
+        int(opts.floors),
+        bool(opts.planning_doc),
+        p.mode, p.open_share, p.multilevel_share, p.underground_share,
+        p.multilevel_levels, p.underground_levels,
+        opts.znop_per_person_override,
+        opts.znop_total_area_override,
+        bool(opts.include_kindergarten),
+        bool(opts.include_school),
+        bool(opts.include_parking),
+        bool(opts.include_znop),
+        bool(opts.include_intra_driveways),
+        bool(opts.include_sport_facilities),
+    )
+
+
 def _build_options_for_trial(
     trial: optuna.Trial,
     base_options: CalculationOptions,
     space: SearchSpace,
     site: Site | None = None,
     norms: Normatives | None = None,
+    vpp_preview_cache: dict | None = None,
 ) -> tuple[CalculationOptions, dict]:
     """Возвращает (модифицированный options, dict сэмплированных параметров)."""
     opts = base_options.model_copy(deep=True)
@@ -177,34 +203,33 @@ def _build_options_for_trial(
             opts.built_in = None
             opts.built_in_list = []
         else:
-            # Для full_floor/half_floor нужен footprint — пробный прогон без ВПП.
-            # Это та же логика, что в state.run_calculation, но локально.
-            if chosen in ("full_floor", "half_floor"):
+            # AUDIT P0-2: preview-solve кэшируем по _vpp_preview_key(opts).
+            # И footprint, и pop зависят только от опций «без ВПП» и геометрии
+            # квартала — один preview можно переиспользовать для всех 5 режимов
+            # ВПП при тех же параметрах жилья.
+            opts_step1 = opts.model_copy(deep=True)
+            opts_step1.built_in = None
+            opts_step1.built_in_list = []
+            cache_key = _vpp_preview_key(opts_step1)
+            cached = vpp_preview_cache.get(cache_key) if vpp_preview_cache is not None else None
+            if cached is None:
                 from urban_model import solve_max_kit as _solve
-                opts_step1 = opts.model_copy(deep=True)
-                opts_step1.built_in = None
-                opts_step1.built_in_list = []
                 try:
                     r0 = _solve(site, opts_step1, norms)
                     footprint = r0.housing_footprint.value or 0.0
                     pop = r0.population.value or 0.0
-                except Exception:
+                except (ValueError, KeyError) as e:
+                    # Молча проглатывали Exception — теперь хотя бы логируем.
+                    logging.warning(
+                        "Optuna preview-solve failed: %s — fallback to footprint=0,pop=0",
+                        e,
+                    )
                     footprint = 0.0
                     pop = 0.0
+                if vpp_preview_cache is not None:
+                    vpp_preview_cache[cache_key] = (footprint, pop)
             else:
-                # Для min_only/min_plus/custom_only footprint не нужен,
-                # но нужен pop — берём от текущей options оценочно.
-                from urban_model import solve_max_kit as _solve
-                opts_step1 = opts.model_copy(deep=True)
-                opts_step1.built_in = None
-                opts_step1.built_in_list = []
-                try:
-                    r0 = _solve(site, opts_step1, norms)
-                    pop = r0.population.value or 0.0
-                    footprint = r0.housing_footprint.value or 0.0
-                except Exception:
-                    pop = 0.0
-                    footprint = 0.0
+                footprint, pop = cached
             build = _vpp.build_built_ins(
                 mode=chosen, population=pop, footprint=footprint, norms=norms,
             )
@@ -246,11 +271,13 @@ def _make_objective(
     space: SearchSpace,
     storage: list[OptimizationResult],
     exception_log: list[str],
+    vpp_preview_cache: dict | None = None,
 ) -> Callable[[optuna.Trial], float]:
     def objective(trial: optuna.Trial) -> float:
         try:
             opts, sampled = _build_options_for_trial(
                 trial, base_options, space, site=site, norms=norms,
+                vpp_preview_cache=vpp_preview_cache,
             )
             tep = solve_max_kit(site, opts, norms)
         except Exception as e:
@@ -263,21 +290,24 @@ def _make_objective(
         # v0.8.0: для оптимизатора дополнительно фильтруем нереалистичные
         # сценарии — когда расчётная вместимость соцобъекта МЕНЬШЕ норматива
         # (типа «9 ДОО по 9 мест каждое» при 80 мест общей потребности).
-        # WARNING про «вне списка типовых» не блокируем — это допустимо.
-        def _has_capacity_violation(warnings_list: list[str]) -> bool:
-            keywords = [
-                "меньше минимальной",       # ДОО < 120
-                "меньше минимума отдельно",  # ДОО detached < 160
-                "< нормативного минимума",   # СОШ < 550
-                "превышает принятый максимум",  # ДОО > 350
-            ]
-            return any(any(k in w for k in keywords) for w in warnings_list)
+        # WARNING про «вне списка типовых» (SOC_CAP_NOT_TYPICAL) НЕ блокируем —
+        # это допустимо в проекте.
+        # AUDIT P0-3: фильтрация по кодам warning_codes.WC, а не по подстрокам.
+        from urban_model.calculations.warning_codes import WC, any_with_code
+        _BLOCKING_CAPACITY_CODES = (
+            WC.SOC_CAP_MIN_BELOW,
+            WC.SOC_CAP_MIN_DETACHED_HINT,
+            WC.SOC_CAP_MAX_ABOVE,
+        )
 
         strict_social = getattr(space, "strict_social_validation", False)
         feasible = (
             tep.balance.is_feasible
             and tep.density_chel_per_ga.status != Status.ERROR
-            and (not strict_social or not _has_capacity_violation(tep.warnings))
+            and (
+                not strict_social
+                or not any_with_code(tep.warnings, *_BLOCKING_CAPACITY_CODES)
+            )
         )
         apt_area = tep.apartments_area.value if tep.apartments_area.value else 0.0
 
@@ -381,7 +411,12 @@ def optimize_max_apartments(
     sampler = optuna.samplers.TPESampler(seed=seed)
     study = optuna.create_study(direction="maximize", sampler=sampler)
 
-    obj = _make_objective(site, base_options, norms, space, storage, exception_log)
+    # AUDIT P0-2: общий кэш preview-solve для всех trials в study.
+    vpp_preview_cache: dict = {}
+    obj = _make_objective(
+        site, base_options, norms, space, storage, exception_log,
+        vpp_preview_cache=vpp_preview_cache,
+    )
 
     if progress_callback is not None:
         def _cb(study: optuna.Study, trial: optuna.FrozenTrial) -> None:
