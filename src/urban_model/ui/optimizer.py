@@ -245,6 +245,131 @@ def _render_recommendations_section(
         with cols[i]:
             _render_recommendation_card(rec, i)
 
+    # v0.9.5: сравнительная диаграмма «Площадь квартир × Прибыль»
+    # — наглядный визуальный компромисс: где база, где рекомендации,
+    # кто выигрывает в чём.
+    _render_apt_profit_scatter(cached_bundle)
+
+
+def _render_apt_profit_scatter(bundle: ParetoBundle) -> None:
+    """Scatter «Площадь квартир × Прибыль» с базой и рекомендациями (v0.9.5).
+
+    Помогает увидеть компромисс: рекомендация с max apt обычно справа
+    (большая площадь), max profit — выше (большая прибыль). База обычно
+    где-то в центре. Точки подписаны метками.
+    """
+    base_tep = bundle.base_tep
+    if base_tep.economy is None:
+        return  # без экономики сравнивать нечего
+
+    import altair as alt
+
+    rows = [{
+        "label": "База",
+        "apt": float(base_tep.apartments_area.value or 0.0),
+        "profit": float(base_tep.economy.profit),
+        "kit": float(base_tep.kit.value or 0.0),
+        "color": "#475569",  # серый
+        "kind": "base",
+    }]
+    palette = {
+        "Максимум площади":  "#1565C0",  # синий
+        "Максимум прибыли":  "#2E7D32",  # зелёный
+        "Сбалансированный":  "#B45309",  # янтарь
+    }
+    for rec in bundle.recommendations:
+        if rec.tep.economy is None:
+            continue
+        rows.append({
+            "label": rec.label,
+            "apt": float(rec.tep.apartments_area.value or 0.0),
+            "profit": float(rec.tep.economy.profit),
+            "kit": float(rec.tep.kit.value or 0.0),
+            "color": palette.get(rec.label, "#7C3AED"),
+            "kind": "rec",
+        })
+
+    if len(rows) < 2:
+        return
+
+    df = pd.DataFrame(rows)
+    with st.container(border=True):
+        st.markdown("##### 📈 Площадь квартир × Прибыль")
+        st.caption(
+            "Точки рекомендаций vs точка базы. Чем правее — тем больше "
+            "площадь квартир; чем выше — тем больше прибыль. «База» — серая, "
+            "рекомендации — цветные."
+        )
+
+        # Точки
+        points = (
+            alt.Chart(df)
+            .mark_circle(size=320, stroke="white", strokeWidth=2)
+            .encode(
+                x=alt.X("apt:Q", title="Площадь квартир, м²"),
+                y=alt.Y("profit:Q", title="Прибыль, у.е."),
+                color=alt.Color(
+                    "label:N", legend=alt.Legend(title=""),
+                    scale=alt.Scale(
+                        domain=list(df["label"]),
+                        range=list(df["color"]),
+                    ),
+                ),
+                tooltip=[
+                    alt.Tooltip("label:N", title="Сценарий"),
+                    alt.Tooltip("apt:Q", title="Площадь квартир", format=",.0f"),
+                    alt.Tooltip("profit:Q", title="Прибыль, у.е.", format=",.0f"),
+                    alt.Tooltip("kit:Q", title="КИТ ПЗЗ", format=".3f"),
+                ],
+            )
+        )
+        # Подписи рядом с точками
+        labels = (
+            alt.Chart(df)
+            .mark_text(align="left", dx=10, dy=-10, fontSize=12, fontWeight=600)
+            .encode(
+                x="apt:Q", y="profit:Q", text="label:N",
+                color=alt.Color("label:N", legend=None,
+                                scale=alt.Scale(
+                                    domain=list(df["label"]),
+                                    range=list(df["color"]))),
+            )
+        )
+        chart = (points + labels).properties(height=320)
+        st.altair_chart(chart, use_container_width=True)
+
+
+def _tep_details_caption(tep: TEPResult) -> str:
+    """Сводная подпись по ТЭП-результату: парковки/ДОО/СОШ/ЗНОП (v0.9.5).
+
+    Используется в карточках рекомендаций — даёт пользователю быстрый
+    взгляд на «что внутри» сценария, не открывая полный отчёт.
+    """
+    parts: list[str] = []
+    # Парковки разбивка
+    op = int(tep.parking_open_places.value or 0)
+    ml = int(tep.parking_multilevel_places.value or 0)
+    ug = int(tep.parking_underground_places.value or 0)
+    if op + ml + ug > 0:
+        parts.append(f"🅿 откр.={op} · многоур.={ml} · подз.={ug}")
+    # Соцобъекты
+    kg = int(tep.kindergarten_places_accepted.value or 0)
+    if kg > 0:
+        parts.append(f"🎒 ДОО={kg} мест")
+    sch = int(tep.school_places_accepted.value or 0)
+    if sch > 0:
+        parts.append(f"🏫 СОШ={sch} мест")
+    # ЗНОП
+    zpp = tep.znop_per_person.value or 0
+    zarea = tep.znop_area.value or 0
+    if zarea > 0:
+        parts.append(f"🌳 ЗНОП={zpp:.0f} м²/чел ({int(zarea):,} м²)".replace(",", " "))
+    # ВПП
+    bi = tep.built_in_area.value or 0
+    if bi > 0:
+        parts.append(f"🏪 ВПП={int(bi):,} м²".replace(",", " "))
+    return "  ·  ".join(parts)
+
 
 def _render_recommendation_card(rec: Recommendation, idx: int) -> None:
     """Одна карточка рекомендации."""
@@ -270,13 +395,18 @@ def _render_recommendation_card(rec: Recommendation, idx: int) -> None:
         st.metric("КИТ ПЗЗ", f"{rec.tep.kit.value:.3f}",
                   delta=f"{d.d_kit_abs:+.3f}")
 
-        # Список изменений
+        # Список изменений (что отличается от базы)
         if d.key_changes:
             st.markdown("**Что изменено:**")
             for c in d.key_changes:
                 st.caption(f"• {c}")
-        else:
-            st.caption("Параметры почти совпадают с базой.")
+
+        # v0.9.5: компактные данные сценария — парковки, ДОО, СОШ, ЗНОП, ВПП.
+        # Видно «что внутри» без раскрытия полного отчёта.
+        details = _tep_details_caption(rec.tep)
+        if details:
+            st.markdown("**Сценарий:**")
+            st.caption(details)
 
         if st.button("➕ В сравнение", key=f"add_rec_{idx}", use_container_width=True):
             st.session_state.scenarios.append((f"opt:{rec.label}", rec.tep))
