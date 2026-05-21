@@ -124,6 +124,12 @@ def run_calculation(
     # Сохраняем население для VPP-превью в UI
     if result.population.value is not None:
         st.session_state["_last_population"] = float(result.population.value)
+    # v0.9.0: ТЭП-результат с вкладки Расчёт используется на вкладке Оптимизация
+    # как «база» для сравнения. Сохраняем целиком TEPResult + хэш опций
+    # (чтобы Оптимизатор понимал, не устарела ли база).
+    st.session_state["last_calc_result"] = result
+    st.session_state["last_calc_options"] = options.model_copy(deep=True)
+    st.session_state["last_calc_site_area"] = float(site.area_m2)
     return result
 
 
