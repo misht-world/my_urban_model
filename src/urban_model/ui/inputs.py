@@ -47,12 +47,22 @@ class UserInputs:
 _VRI_OPTIONS = ["3.4", "3.5", "3.6", "3.7", "4.0", "4.1", "4.4", "4.5", "4.6", "5.1"]
 
 
+def _close_tile_cb(include_key: str) -> None:
+    """on_click callback для крестика плитки.
+
+    Streamlit запрещает менять st.session_state[key] после того, как
+    соответствующий widget уже создан в этот run. Callback'и выполняются
+    ДО следующего цикла render — это разрешённое место для записи.
+    """
+    st.session_state[include_key] = False
+
+
 def _tile_header(title: str, include_key: str | None = None) -> None:
     """Заголовок плитки с опциональным крестиком «✕» справа (v0.8.8).
 
-    Если передан `include_key` — справа отрисовывается маленькая кнопка
-    «✕», которая ставит `st.session_state[include_key] = False` и
-    делает rerun(). Это альтернатива снятию галочки в левой колонке.
+    Если передан `include_key` — справа отрисовывается кнопка «✕»,
+    которая через on_click-callback ставит `include_key = False` (тот же
+    эффект, что снять галочку слева).
     """
     if include_key is None:
         st.markdown(f"##### {title}")
@@ -61,19 +71,21 @@ def _tile_header(title: str, include_key: str | None = None) -> None:
     with col_t:
         st.markdown(f"##### {title}")
     with col_x:
-        if st.button("✕", key=f"close_{include_key}", help="Скрыть блок"):
-            st.session_state[include_key] = False
-            st.rerun()
+        st.button(
+            "✕", key=f"close_{include_key}",
+            on_click=_close_tile_cb, args=(include_key,),
+            help="Скрыть блок (равнозначно снятию галочки слева)",
+        )
 
 
-def _only_demand_badge() -> None:
-    """Серая метка «только потребность» — визуальный маркер режима (v0.8.8)."""
-    st.markdown(
-        '<div style="background:#E2E8F0;color:#475569;padding:2px 8px;'
-        'border-radius:4px;font-size:0.78rem;display:inline-block;'
-        'margin:2px 0 6px 0;">📐 только расчёт потребности</div>',
-        unsafe_allow_html=True,
-    )
+def _only_demand_toggle(label: str, key: str, help_text: str) -> bool:
+    """v0.8.9: «Только рассчитать потребность» как st.toggle, без бейджа.
+
+    Toggle визуально отличается от обычной галочки и подразумевает
+    переключение режима. На «выскакивающее сообщение» бейдж заменён
+    штатным внешним видом toggle.
+    """
+    return st.toggle(label, value=False, key=key, help=help_text)
 
 
 def render_params_tab() -> UserInputs:
@@ -272,17 +284,15 @@ def _render_sport_tile() -> SportFacilitiesSpec:
     """Плитка настроек плоскостных спортивных сооружений (без чекбокса 'Учитывать')."""
     with st.container(border=True):
         _tile_header("🏃 Плоскостные спортивные сооружения", "include_sport")
-        only_demand = st.checkbox(
+        only_demand = _only_demand_toggle(
             "Только рассчитать потребность",
-            value=False, key="sport_only_demand",
-            help=(
+            key="sport_only_demand",
+            help_text=(
                 "Показать площади, но НЕ учитывать ЗУ спортсооружений в "
                 "балансе квартала. Полезно, если они размещаются за пределами "
                 "квартала или уже существуют."
             ),
         )
-        if only_demand:
-            _only_demand_badge()
         size_mode = st.radio(
             "Площадь спортплощадок",
             ["По нормативу (1000 м²/1000 чел)", "Задать вручную"],
@@ -518,17 +528,15 @@ def _render_znop_tile() -> tuple[float | None, float | None, bool]:
     """
     with st.container(border=True):
         _tile_header("🌳 ЗНОП — зелёные насаждения общего пользования", "include_znop")
-        only_demand = st.checkbox(
+        only_demand = _only_demand_toggle(
             "Только рассчитать потребность",
-            value=False, key="znop_only_demand",
-            help=(
+            key="znop_only_demand",
+            help_text=(
                 "Показать площадь ЗНОП, но НЕ учитывать в балансе квартала "
                 "и в нормативе озеленения. Полезно, если ЗНОП размещается "
                 "за пределами квартала."
             ),
         )
-        if only_demand:
-            _only_demand_badge()
         znop_mode = st.radio(
             "Источник значения",
             [
@@ -581,17 +589,15 @@ def _render_kg_tile() -> KindergartenSpec:
     """
     with st.container(border=True):
         _tile_header("🎒 Дошкольные образовательные организации (ДОО)", "include_kg")
-        kg_only_demand = st.checkbox(
+        kg_only_demand = _only_demand_toggle(
             "Только рассчитать потребность",
-            value=False, key="kg_only_demand",
-            help=(
+            key="kg_only_demand",
+            help_text=(
                 "Показать число мест и площади объектов, но НЕ учитывать ЗУ "
                 "и здание ДОО в балансе квартала. Полезно, если ДОО размещается "
                 "за пределами квартала или уже существует."
             ),
         )
-        if kg_only_demand:
-            _only_demand_badge()
         kg_btype_label = st.selectbox(
             "Тип здания ДОО",
             ["Отдельно стоящее", "Встроенно-пристроенное"],
@@ -636,17 +642,15 @@ def _render_school_tile() -> SchoolSpec:
     """Плитка настроек СОШ (без внешнего чекбокса «Учитывать»)."""
     with st.container(border=True):
         _tile_header("🏫 Средние общеобразовательные школы (СОШ)", "include_school")
-        sch_only_demand = st.checkbox(
+        sch_only_demand = _only_demand_toggle(
             "Только рассчитать потребность",
-            value=False, key="sch_only_demand",
-            help=(
+            key="sch_only_demand",
+            help_text=(
                 "Показать число мест и площадь СОШ, но НЕ учитывать ЗУ "
                 "в балансе квартала. Полезно, если СОШ размещается "
                 "за пределами квартала или уже существует."
             ),
         )
-        if sch_only_demand:
-            _only_demand_badge()
         # Вертикально, чтобы вторая галочка не терялась в узкой правой колонке
         school_pool = st.checkbox(
             "С бассейном (+0.2 га)", value=True, key="school_pool",
