@@ -239,7 +239,12 @@ def _get_norms_resolver():
 
 
 def _scan_to_dataframe(scan: ScanResult) -> pd.DataFrame:
-    """ScanResult → DataFrame для altair-графика."""
+    """ScanResult → DataFrame для altair-графика.
+
+    v0.9.2: is_base/is_recommended сохраняются как int (0/1), а не bool —
+    vega-lite корректно фильтрует int, но с pandas-bool иногда даёт
+    непредсказуемое поведение в transform_filter.
+    """
     rows = []
     for p in scan.points:
         rows.append({
@@ -248,9 +253,9 @@ def _scan_to_dataframe(scan: ScanResult) -> pd.DataFrame:
             "apt": p.apartments_area,
             "profit": p.profit if p.profit is not None else 0.0,
             "kit": p.kit,
-            "feasible": p.feasible,
-            "is_base": p.is_base,
-            "is_recommended": p.is_recommended,
+            "feasible": bool(p.feasible),
+            "is_base": 1 if p.is_base else 0,
+            "is_recommended": 1 if p.is_recommended else 0,
         })
     return pd.DataFrame(rows)
 
@@ -276,13 +281,16 @@ def _render_scan_chart(scan: ScanResult) -> None:
         ],
     )
     line = base_chart.mark_line(color="#1565C0", point=True)
+    # v0.9.2: фильтр по int 0/1 — vega-lite надёжнее обрабатывает,
+    # чем pandas-bool после JSON-сериализации.
     base_dot = (
-        base_chart.transform_filter("datum.is_base")
+        base_chart.transform_filter("datum.is_base == 1")
         .mark_point(color="#D32F2F", size=200, filled=True)
     )
     rec_dot = (
-        base_chart.transform_filter("datum.is_recommended")
-        .mark_point(color="#2E7D32", size=300, shape="star", filled=True)
+        base_chart.transform_filter("datum.is_recommended == 1")
+        .mark_point(color="#2E7D32", size=300, shape="diamond", filled=True,
+                    stroke="white", strokeWidth=2)
     )
     chart = (line + base_dot + rec_dot).properties(height=240)
     st.altair_chart(chart, use_container_width=True)
@@ -341,7 +349,7 @@ def _render_what_to_improve_section(
     st.markdown("### 🔬 Что улучшить — пофакторный анализ")
     st.caption(
         "Каждая карточка варьирует ОДИН параметр при остальных зафиксированных. "
-        "Красная точка — текущее значение базы, зелёная звезда — рекомендуемое."
+        "🔴 — текущее значение базы, 🟢 — рекомендуемое."
     )
 
     opts_json = base_options.model_dump_json()

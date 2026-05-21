@@ -67,6 +67,13 @@ def run_calculation(
     """
     from urban_model.calculations import vpp as _vpp
 
+    # v0.9.2: запоминаем ОРИГИНАЛЬНЫЕ опции (до двухпроходного VPP-расчёта),
+    # чтобы хэш на вкладке «Оптимизация» совпал с тем, что приходит из
+    # inputs.options. Если этого не сделать, Оптимизатор будет считать
+    # базу с РАЗНЫМИ опциями (без ВПП), что даёт ложное расхождение
+    # площади квартир между Расчётом и Оптимизацией.
+    options_for_hash = options.model_copy(deep=True)
+
     if vpp_auto_one_floor and options.built_in is not None:
         # Legacy: 1 ВПП = footprint
         opts_step1 = options.model_copy(deep=True)
@@ -124,11 +131,12 @@ def run_calculation(
     # Сохраняем население для VPP-превью в UI
     if result.population.value is not None:
         st.session_state["_last_population"] = float(result.population.value)
-    # v0.9.0: ТЭП-результат с вкладки Расчёт используется на вкладке Оптимизация
-    # как «база» для сравнения. Сохраняем целиком TEPResult + хэш опций
-    # (чтобы Оптимизатор понимал, не устарела ли база).
+    # v0.9.0/0.9.2: ТЭП-результат с вкладки Расчёт используется на вкладке
+    # Оптимизация как «база» для сравнения. Сохраняем result (он уже учитывает
+    # ВПП-постобработку) + ОРИГИНАЛЬНЫЕ опции (до vpp.build_built_ins), чтобы
+    # хэш сошёлся с inputs.options в Оптимизаторе.
     st.session_state["last_calc_result"] = result
-    st.session_state["last_calc_options"] = options.model_copy(deep=True)
+    st.session_state["last_calc_options"] = options_for_hash
     st.session_state["last_calc_site_area"] = float(site.area_m2)
     return result
 
