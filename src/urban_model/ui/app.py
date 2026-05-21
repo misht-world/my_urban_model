@@ -43,7 +43,7 @@ st.set_page_config(
 # страницу. Hard refresh (Ctrl+F5) сбрасывает кэш.
 st.markdown("""
 <style>
-  /* v0.8.2 stylesheet marker */
+  /* v0.8.6 stylesheet marker — bump на каждом релизе, чтобы инвалидировать кэш */
   /* Уменьшаем верхний отступ всего блока */
   div.block-container {padding-top: 1.5rem; padding-bottom: 1rem;}
   /* Плотнее интервалы между виджетами */
@@ -79,10 +79,17 @@ st.markdown("""
      • левая (вводные данные) — голубой акцент слева + светло-голубой фон
      • правая (настройки компонентов) — зелёный акцент слева + светло-зелёный фон
      Усилено !important + border-left для надёжной видимости. */
-  /* Streamlit 1.32+ переименовал data-testid у колонок: column → stColumn.
-     Перечисляем оба для совместимости и обходим возможные изменения DOM. */
+  /* v0.8.6: цветовая дифференциация колонок «Параметры».
+     Стратегия — 3 яруса селекторов от наиболее специфичного к самому
+     универсальному, чтобы пережить переименования testid в Streamlit:
+        1. data-testid="stColumn"   (1.32+)
+        2. data-testid="column"      (legacy)
+        3. :nth-child через прямого ребёнка stHorizontalBlock (всегда работает)
+  */
+  /* — первый ярус: stColumn — */
   [data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:first-child [data-testid="stVerticalBlockBorderWrapper"],
-  [data-testid="stHorizontalBlock"] > [data-testid="column"]:first-child [data-testid="stVerticalBlockBorderWrapper"] {
+  [data-testid="stHorizontalBlock"] > [data-testid="column"]:first-child [data-testid="stVerticalBlockBorderWrapper"],
+  [data-testid="stHorizontalBlock"] > :first-child div[class*="VerticalBlock"][data-testid$="BorderWrapper"] {
       background-color: #E7F0F8 !important;
       border-left: 4px solid #1565C0 !important;
       border-top-color: #C2D9EC !important;
@@ -90,7 +97,8 @@ st.markdown("""
       border-bottom-color: #C2D9EC !important;
   }
   [data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:last-child [data-testid="stVerticalBlockBorderWrapper"],
-  [data-testid="stHorizontalBlock"] > [data-testid="column"]:last-child [data-testid="stVerticalBlockBorderWrapper"] {
+  [data-testid="stHorizontalBlock"] > [data-testid="column"]:last-child [data-testid="stVerticalBlockBorderWrapper"],
+  [data-testid="stHorizontalBlock"] > :last-child div[class*="VerticalBlock"][data-testid$="BorderWrapper"] {
       background-color: #E8F4EA !important;
       border-left: 4px solid #2E7D32 !important;
       border-top-color: #C4DEC8 !important;

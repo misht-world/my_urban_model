@@ -59,3 +59,10 @@ def has_code(warning: str, *codes: WC) -> bool:
 def any_with_code(warnings_list: list[str], *codes: WC) -> bool:
     """True, если в списке warnings есть хотя бы одна строка с одним из кодов."""
     return any(has_code(w, *codes) for w in warnings_list)
+
+
+def strip_code(warning: str) -> str:
+    """Убрать ведущий тег `[CODE] ` для отображения пользователю."""
+    if warning.startswith("[") and "] " in warning:
+        return warning.split("] ", 1)[1]
+    return warning

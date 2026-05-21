@@ -54,6 +54,16 @@ def _render_search_space_form(base_options: CalculationOptions) -> SearchSpace:
                 if obj_label.startswith("Максимум прибыли")
                 else "apartments_area"
             )
+            strict_social = st.checkbox(
+                "Строгий отсев соцобъектов",
+                value=False,
+                key="opt_strict_social",
+                help=(
+                    "Если включено — отбрасываем сценарии, где расчётная вместимость "
+                    "одного ДОО/СОШ ниже норматива или превышает максимум. "
+                    "Может отсечь все варианты на малых кварталах — тогда выключите."
+                ),
+            )
 
         with st.container(border=True):
             st.markdown("##### Варьируемые параметры")
@@ -274,7 +284,10 @@ def _render_search_space_form(base_options: CalculationOptions) -> SearchSpace:
         vpp_modes=vpp_modes,
         znop_per_person_choices=znop_choices,
         objective=optimizer_objective,
-        strict_social_validation=True,  # v0.8.0: UI отсекает невалидные ДОО/СОШ
+        # v0.8.6: пользователь сам решает, отсекать ли невалидные ДОО/СОШ.
+        # Дефолт False — иначе на малых кварталах все варианты могут быть
+        # отсеяны и пользователь увидит «нет feasible результатов».
+        strict_social_validation=strict_social,
     )
 
 

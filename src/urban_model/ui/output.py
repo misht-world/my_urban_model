@@ -54,8 +54,11 @@ def render_header(result: TEPResult) -> None:
 
     if result.limiting_factor:
         st.caption(f"🔻 **Ограничивающий фактор:** {result.limiting_factor}")
+    # v0.8.6: префиксы [CODE] из warning_codes.WC прячем от пользователя —
+    # они служат для машинной фильтрации (Optuna feasibility, тесты).
+    from urban_model.calculations.warning_codes import strip_code
     for w in result.warnings:
-        st.warning(f"⚠️ {w}")
+        st.warning(f"⚠️ {strip_code(w)}")
 
 
 # ---------------------------------------------------------------------------

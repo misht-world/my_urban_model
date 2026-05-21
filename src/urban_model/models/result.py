@@ -189,8 +189,10 @@ class TEPResult(BaseModel):
         ]
         if self.limiting_factor:
             lines.append(f"Ограничивающий фактор:   {self.limiting_factor}")
+        # v0.8.6: префиксы [CODE] прячем; они для машинной фильтрации.
+        from urban_model.calculations.warning_codes import strip_code
         for w in self.warnings:
-            lines.append(f"  ⚠ {w}")
+            lines.append(f"  ⚠ {strip_code(w)}")
         return "\n".join(lines)
 
 

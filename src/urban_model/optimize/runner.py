@@ -293,10 +293,11 @@ def _make_objective(
         # WARNING про «вне списка типовых» (SOC_CAP_NOT_TYPICAL) НЕ блокируем —
         # это допустимо в проекте.
         # AUDIT P0-3: фильтрация по кодам warning_codes.WC, а не по подстрокам.
+        # v0.8.6: SOC_CAP_MIN_DETACHED_HINT — это РЕКОМЕНДАЦИЯ перейти на
+        # built_in, а не запрет. Не блокируем.
         from urban_model.calculations.warning_codes import WC, any_with_code
         _BLOCKING_CAPACITY_CODES = (
             WC.SOC_CAP_MIN_BELOW,
-            WC.SOC_CAP_MIN_DETACHED_HINT,
             WC.SOC_CAP_MAX_ABOVE,
         )
 
