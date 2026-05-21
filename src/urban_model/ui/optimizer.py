@@ -512,38 +512,66 @@ def _render_scan_chart(scan: ScanResult) -> None:
 
 
 def _render_scan_summary(scan: ScanResult) -> None:
-    """Текстовое резюме скана + кнопка «в сравнение»."""
+    """Текстовое резюме скана (v0.9.7).
+
+    Показывает ДВА оптимума:
+      • Лучший по ПЛОЩАДИ квартир (это `recommended_point` в ScanResult)
+      • Лучший по ПРИБЫЛИ (вычисляется здесь среди feasible-точек)
+    Иногда они совпадают, иногда нет — пользователю важно видеть оба,
+    чтобы понять компромисс этого фактора в локальном контексте базы.
+    """
     base = scan.base_point
-    rec = scan.recommended_point
-    if base is None or rec is None:
-        st.info("Не удалось вычислить базовую или рекомендованную точку.")
+    if base is None:
+        st.info("Не удалось вычислить базовую точку.")
         return
 
-    # Дельта по apt
-    d_apt = rec.apartments_area - base.apartments_area
-    d_apt_pct = (d_apt / base.apartments_area * 100.0) if base.apartments_area > 1e-9 else 0.0
-
-    # Дельта по profit
-    d_profit_str = "—"
-    if rec.profit is not None and base.profit is not None and abs(base.profit) > 1e-9:
-        d_profit_pct = (rec.profit - base.profit) / abs(base.profit) * 100.0
-        d_profit_str = f"{rec.profit - base.profit:+,.0f} ({d_profit_pct:+.1f}%)".replace(",", " ")
+    feasible = [p for p in scan.points if p.feasible]
+    best_apt = max(feasible, key=lambda p: p.apartments_area) if feasible else None
+    feasible_with_profit = [p for p in feasible if p.profit is not None]
+    best_profit = (
+        max(feasible_with_profit, key=lambda p: p.profit)
+        if feasible_with_profit else None
+    )
 
     st.markdown(f"**База:** {base.x_label}")
-    st.markdown(f"**Рекомендация:** {rec.x_label}")
     st.markdown("---")
-    st.markdown(f"**Δ площадь квартир:** {d_apt:+,.0f} м² ({d_apt_pct:+.1f}%)".replace(",", " "))
-    if d_profit_str != "—":
-        st.markdown(f"**Δ прибыль:** {d_profit_str} у.е.")
 
-    if rec.is_recommended and not rec.is_base:
+    # Лучший по площади
+    if best_apt is not None:
+        d_apt = best_apt.apartments_area - base.apartments_area
+        d_apt_pct = (d_apt / base.apartments_area * 100.0) if base.apartments_area > 1e-9 else 0.0
+        st.markdown(
+            f"🟢 **Лучший по площади:** {best_apt.x_label}  \n"
+            f"Δ площадь: {d_apt:+,.0f} м² ({d_apt_pct:+.1f}%)".replace(",", " ")
+        )
+
+    # Лучший по прибыли — если отличается
+    if best_profit is not None and base.profit is not None and abs(base.profit) > 1e-9:
+        d_profit = best_profit.profit - base.profit
+        d_profit_pct = d_profit / abs(base.profit) * 100.0
+        # Если оптимумы совпадают — упрощаем
+        same_as_apt = (
+            best_apt is not None
+            and abs(best_profit.x_value - best_apt.x_value) < 1e-6
+        )
+        if same_as_apt:
+            st.caption(f"💰 По прибыли — то же значение: {best_profit.x_label}")
+        else:
+            st.markdown(
+                f"💰 **Лучший по прибыли:** {best_profit.x_label}  \n"
+                f"Δ прибыль: {d_profit:+,.0f} ({d_profit_pct:+.1f}%) у.е.".replace(",", " ")
+            )
+
+    # Кнопка добавить в сравнение — добавляет «лучший по площади» (как и раньше)
+    rec_for_btn = best_apt
+    if rec_for_btn is not None and not rec_for_btn.is_base:
         if st.button(
-            "➕ Лучший вариант в сравнение",
+            "➕ Лучший по площади в сравнение",
             key=f"add_scan_{scan.factor}",
             use_container_width=True,
         ):
             st.session_state.scenarios.append(
-                (f"scan:{scan.factor}={rec.x_label}", rec.tep)
+                (f"scan:{scan.factor}={rec_for_btn.x_label}", rec_for_btn.tep)
             )
             st.toast(f"Добавлен лучший вариант скана «{scan.title}»", icon="✅")
 
@@ -563,8 +591,10 @@ def _render_what_to_improve_section(
     """3 expander'а с one-factor сканами."""
     st.markdown("### 🔬 Что улучшить — пофакторный анализ")
     st.caption(
-        "Каждая карточка варьирует ОДИН параметр при остальных зафиксированных. "
-        "🔴 — текущее значение базы, 🟢 — рекомендуемое."
+        "Каждая карточка варьирует **ОДИН параметр**, остальные — как в базе. "
+        "Это **локальный** анализ; Парето-рекомендации сверху могут давать другие "
+        "значения, т.к. меняют параметры в комбинации. 🔴 — база, 🟢 — лучшее "
+        "по площади квартир."
     )
 
     opts_json = base_options.model_dump_json()
