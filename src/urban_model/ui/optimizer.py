@@ -21,6 +21,7 @@ from urban_model.normatives import Normatives
 from urban_model.optimize import SearchSpace, optimize_max_apartments
 from urban_model.optimize.pareto import (
     ParetoBundle,
+    ParetoConstraints,
     Recommendation,
     generate_pareto_recommendations,
 )
@@ -74,7 +75,7 @@ def _get_base_tep(
 def _render_base_snapshot(
     base_tep: TEPResult, base_options: CalculationOptions, synced: bool,
 ) -> None:
-    """5 метрик базы + indicator синхронизации."""
+    """База: 10 метрик в 2 рядах + indicator синхронизации (v0.9.3)."""
     with st.container(border=True):
         if synced:
             st.markdown("##### 📋 База (с вкладки «Расчёт»)")
@@ -85,21 +86,103 @@ def _render_base_snapshot(
                 "результатом на «Расчёте». Откройте «Расчёт» для синхронизации."
             )
 
+        # Ряд 1: главные показатели ТЭП
         c1, c2, c3, c4, c5 = st.columns(5)
         c1.metric("КИТ ПЗЗ", f"{base_tep.kit.value:.3f}")
         c2.metric("Площадь квартир", fmt_m2(base_tep.apartments_area.value))
+        c3.metric("Этажность", str(base_options.floors))
+        c4.metric("Население", f"{int(base_tep.population.value or 0):,}".replace(",", " ") + " чел")
+        c5.metric("Резерв баланса", fmt_m2(base_tep.balance.surplus))
+
+        # Ряд 2: экономика + парковки + соцобъекты
+        c6, c7, c8, c9, c10 = st.columns(5)
         if base_tep.economy is not None:
-            c3.metric("Прибыль, у.е.", f"{int(base_tep.economy.profit):,}".replace(",", " "))
+            c6.metric(
+                "Прибыль, у.е.",
+                f"{int(base_tep.economy.profit):,}".replace(",", " "),
+            )
+            c7.metric("Маржа", f"{base_tep.economy.margin*100:.1f}%")
         else:
-            c3.metric("Прибыль, у.е.", "—")
-        c4.metric("Этажность", str(base_options.floors))
-        ug = float(base_options.parking.underground_share)
-        c5.metric("Подземн. парк.", f"{ug*100:.0f}%")
+            c6.metric("Прибыль, у.е.", "—")
+            c7.metric("Маржа", "—")
+        c8.metric(
+            "Парковки",
+            f"{int(base_tep.parking_required_places.value or 0):,}".replace(",", " ") + " м/м",
+        )
+        kg_total = int(base_tep.kindergarten_places_accepted.value or 0)
+        c9.metric("ДОО", f"{kg_total} мест" if kg_total else "—")
+        sch_total = int(base_tep.school_places_accepted.value or 0)
+        c10.metric("СОШ", f"{sch_total} мест" if sch_total else "—")
+
+        # Доп. контекст: парковки по типам, ВПП, ЗНОП — компактно одной строкой
+        ext_parts = []
+        op = int(base_tep.parking_open_places.value or 0)
+        ml = int(base_tep.parking_multilevel_places.value or 0)
+        ug = int(base_tep.parking_underground_places.value or 0)
+        if op + ml + ug > 0:
+            ext_parts.append(f"🅿 откр.={op} · многоур.={ml} · подз.={ug}")
+        bi = base_tep.built_in_area.value or 0
+        if bi > 0:
+            ext_parts.append(f"🏪 ВПП={int(bi):,} м²".replace(",", " "))
+        znop_pp = base_tep.znop_per_person.value or 0
+        znop_area = base_tep.znop_area.value or 0
+        if znop_area > 0:
+            ext_parts.append(f"🌳 ЗНОП={znop_pp:.1f} м²/чел ({int(znop_area):,} м²)".replace(",", " "))
+        if ext_parts:
+            st.caption("  ·  ".join(ext_parts))
 
 
 # ---------------------------------------------------------------------------
 # Секция 2: Топ-3 рекомендации
 # ---------------------------------------------------------------------------
+
+def _render_pareto_constraints() -> ParetoConstraints:
+    """Сворачиваемый блок с ограничениями подбора Парето (v0.9.3).
+
+    Возвращает ParetoConstraints. Все значения по умолчанию = без ограничений
+    (5..25 этажей, все типы парковок разрешены).
+    """
+    with st.expander("⚙ Настройки подбора (необязательно)", expanded=False):
+        st.caption(
+            "Здесь можно ограничить пространство перебора — например, задать "
+            "узкий диапазон этажности или запретить подземные парковки."
+        )
+
+        c1, c2 = st.columns(2)
+        with c1:
+            st.markdown("**Этажность**")
+            lo, hi = st.slider(
+                "Диапазон", 4, 30, (5, 25),
+                key="pareto_floors_range",
+                help="Optuna будет рассматривать только этажность в этом диапазоне.",
+            )
+            floors_range = (int(lo), int(hi))
+
+        with c2:
+            st.markdown("**Разрешённые типы парковок**")
+            allow_open = st.checkbox(
+                "🅿 Открытые наземные", value=True, key="pareto_allow_open",
+                help="Самые дешёвые, но требуют пятна на квартале (≥12.5% по нормативу).",
+            )
+            allow_multilevel = st.checkbox(
+                "🏗 Многоуровневые наземные", value=True, key="pareto_allow_ml",
+                help="Компактнее открытых, средняя себестоимость.",
+            )
+            allow_underground = st.checkbox(
+                "🚇 Подземные", value=True, key="pareto_allow_ug",
+                help=(
+                    "Не занимают пятно квартала, но дороже всех. Можно исключить, "
+                    "если по проекту или нормативам не разрешены."
+                ),
+            )
+
+        return ParetoConstraints(
+            floors_range=floors_range,
+            allow_open=allow_open,
+            allow_multilevel=allow_multilevel,
+            allow_underground=allow_underground,
+        )
+
 
 def _render_recommendations_section(
     site: Site, base_options: CalculationOptions, norms: Normatives, base_tep: TEPResult,
@@ -110,10 +193,15 @@ def _render_recommendations_section(
         "разным критериям. Дельты — относительно базы выше."
     )
 
+    constraints = _render_pareto_constraints()
+
     # Ключ для определения «устарел ли bundle»: hash от base_options + site_area
+    # + constraints (если поменялся диапазон/разрешения — пересчитываем)
     bundle_key = (
         base_options.model_dump_json()
         + f"|site={site.area_m2}"
+        + f"|floors={constraints.floors_range}"
+        + f"|park={constraints.allow_open}{constraints.allow_multilevel}{constraints.allow_underground}"
     )
     cached_bundle: ParetoBundle | None = st.session_state.get("pareto_bundle")
     cached_key: str | None = st.session_state.get("pareto_bundle_key")
@@ -134,7 +222,7 @@ def _render_recommendations_section(
                 f"({cached_bundle.n_trials_feasible}/{cached_bundle.n_trials_total} feasible)."
             )
         elif cached_bundle is not None and is_stale:
-            st.caption("⚠️ Параметры изменились — пересчитайте рекомендации.")
+            st.caption("⚠️ Параметры/ограничения изменились — пересчитайте рекомендации.")
         else:
             st.caption("Нажмите кнопку, чтобы запустить подбор.")
 
@@ -143,6 +231,7 @@ def _render_recommendations_section(
             bundle = generate_pareto_recommendations(
                 site=site, base_options=base_options, norms=norms,
                 base_tep=base_tep, n_trials=400, seed=42,
+                constraints=constraints,
             )
         st.session_state["pareto_bundle"] = bundle
         st.session_state["pareto_bundle_key"] = bundle_key

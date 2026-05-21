@@ -59,6 +59,19 @@ class ParetoBundle:
     n_trials_feasible: int
 
 
+@dataclass(frozen=True)
+class ParetoConstraints:
+    """Ограничения подбора (v0.9.3).
+
+    Позволяет пользователю исключить из перебора Optuna нежелательные
+    варианты: задать диапазон этажности, запретить подземные парковки и т.п.
+    """
+    floors_range: tuple[int, int] = (5, 25)
+    allow_open: bool = True
+    allow_multilevel: bool = True
+    allow_underground: bool = True
+
+
 # ---------------------------------------------------------------------------
 # Текстовая дельта параметров (для подписи «что изменилось»)
 # ---------------------------------------------------------------------------
@@ -279,6 +292,45 @@ def _select_three(
 # Главная точка входа
 # ---------------------------------------------------------------------------
 
+def _build_search_space(constraints: ParetoConstraints) -> SearchSpace:
+    """SearchSpace с учётом пользовательских ограничений."""
+    # Режимы парковок: если запрещены все «нестандартные» — оставляем что есть.
+    parking_modes: list[str] = []
+    if constraints.allow_open:
+        parking_modes.append("all_open")  # 100% открытые
+    # min_open включаем, только если разрешены подземные (он = 12.5% open + 87.5% ug)
+    if constraints.allow_underground:
+        parking_modes.append("min_open")
+    # custom — нужен, если разрешён хоть один из multilevel/underground
+    if constraints.allow_multilevel or constraints.allow_underground:
+        parking_modes.append("custom")
+    if not parking_modes:
+        # Запретили всё — оставляем хотя бы all_open, иначе ничего не построится
+        parking_modes = ["all_open"]
+
+    # Диапазоны долей: если тип запрещён — фиксируем 0..0
+    ug_range = (0.0, 1.0) if constraints.allow_underground else (0.0, 0.0)
+    ml_range = (0.0, 0.5) if constraints.allow_multilevel else (0.0, 0.0)
+    # Open: минимум 12.5% (норматив). Если разрешено всё подземное — открытые
+    # могут быть на минимуме; если же открытые запрещены — не получится
+    # (норматив требует ≥12.5%), здесь open_share_range игнорируется.
+    open_range = (0.125, 0.5) if constraints.allow_open else (0.125, 0.125)
+
+    return SearchSpace(
+        floors_range=constraints.floors_range,
+        parking_modes=parking_modes,
+        parking_open_share_range=open_range,
+        parking_multilevel_share_range=ml_range,
+        parking_underground_share_range=ug_range,
+        multilevel_levels_range=(1, 5) if constraints.allow_multilevel else None,
+        underground_levels_range=(1, 3) if constraints.allow_underground else None,
+        znop_per_person_choices=[0.0, 3.0, 4.0, 6.0],
+        objective="apartments_area",
+        strict_social_validation=False,
+        diversify_sampler=True,
+    )
+
+
 def generate_pareto_recommendations(
     site: Site,
     base_options: CalculationOptions,
@@ -286,30 +338,17 @@ def generate_pareto_recommendations(
     base_tep: TEPResult,
     n_trials: int = 400,
     seed: int | None = 42,
+    constraints: ParetoConstraints | None = None,
 ) -> ParetoBundle:
     """Запускает один Optuna-прогон в широком SearchSpace и возвращает
     3 рекомендации, привязанные к разным критериям, с дельтами vs `base_tep`.
 
-    Это первая итерация v0.9.0 MVP — простая стратегия: одна Optuna,
-    три выборки из top_n. Парето-фронт (DEAP/NSGA-II) — на v0.10.
+    v0.9.3: добавлен параметр `constraints` (ParetoConstraints) — пользователь
+    может ограничить диапазон этажности и запретить отдельные типы парковок.
     """
-    space = SearchSpace(
-        floors_range=(5, 25),
-        parking_modes=["min_open", "all_open", "custom"],
-        parking_open_share_range=(0.125, 0.5),
-        parking_multilevel_share_range=(0.0, 0.5),
-        parking_underground_share_range=(0.0, 1.0),
-        multilevel_levels_range=(1, 5),
-        underground_levels_range=(1, 3),
-        znop_per_person_choices=[0.0, 3.0, 4.0, 6.0],
-        objective="apartments_area",
-        strict_social_validation=False,
-        # v0.9.1: RandomSampler даёт равномерное покрытие пространства,
-        # а не концентрацию на лучшем. Это нужно для типологически
-        # различных рекомендаций — TPE отлично находит максимум, но
-        # все его кандидаты «лежат рядом» в параметрах.
-        diversify_sampler=True,
-    )
+    if constraints is None:
+        constraints = ParetoConstraints()
+    space = _build_search_space(constraints)
     report: OptimizationReport = optimize_max_apartments(
         site=site,
         base_options=base_options,
