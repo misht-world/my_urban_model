@@ -521,7 +521,9 @@ def compute_tep_for_kit(
 
     # === Баланс квартала ===
     # При include_*=False / only_demand компоненты в баланс не входят (см. выше).
-    znop_in_balance = 0.0 if not options.include_znop else znop_area_v
+    # v0.8.8: znop_only_demand — площадь считается, но не в балансе/озеленении.
+    _znop_off = (not options.include_znop) or options.znop_only_demand
+    znop_in_balance = 0.0 if _znop_off else znop_area_v
     components = {
         "housing_lot": housing_lot_v,
         "kindergarten_plot": kg_plot_in_balance,

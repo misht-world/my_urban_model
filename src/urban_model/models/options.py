@@ -46,6 +46,17 @@ class CalculationOptions(BaseModel):
     # отсутствуют (плотная городская застройка с уличными проездами).
     include_parking: bool = Field(default=True, description="Учитывать парковки в балансе")
     include_znop: bool = Field(default=True, description="Учитывать ЗНОП в балансе и озеленении")
+    # v0.8.8: ЗНОП «только потребность» — площадь рассчитывается, отображается
+    # в результате, но НЕ входит в баланс и НЕ засчитывается в озеленение
+    # квартала. Симметрично KindergartenSpec.only_demand / SchoolSpec.only_demand.
+    znop_only_demand: bool = Field(
+        default=False,
+        description=(
+            "ЗНОП только для расчёта потребности: площадь считается и "
+            "показывается, но не входит в баланс и не зачитывается в "
+            "норматив озеленения квартала."
+        ),
+    )
     include_intra_driveways: bool = Field(
         default=True, description="Учитывать внутриквартальные проезды в балансе"
     )

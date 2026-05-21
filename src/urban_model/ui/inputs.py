@@ -47,6 +47,35 @@ class UserInputs:
 _VRI_OPTIONS = ["3.4", "3.5", "3.6", "3.7", "4.0", "4.1", "4.4", "4.5", "4.6", "5.1"]
 
 
+def _tile_header(title: str, include_key: str | None = None) -> None:
+    """Заголовок плитки с опциональным крестиком «✕» справа (v0.8.8).
+
+    Если передан `include_key` — справа отрисовывается маленькая кнопка
+    «✕», которая ставит `st.session_state[include_key] = False` и
+    делает rerun(). Это альтернатива снятию галочки в левой колонке.
+    """
+    if include_key is None:
+        st.markdown(f"##### {title}")
+        return
+    col_t, col_x = st.columns([10, 1])
+    with col_t:
+        st.markdown(f"##### {title}")
+    with col_x:
+        if st.button("✕", key=f"close_{include_key}", help="Скрыть блок"):
+            st.session_state[include_key] = False
+            st.rerun()
+
+
+def _only_demand_badge() -> None:
+    """Серая метка «только потребность» — визуальный маркер режима (v0.8.8)."""
+    st.markdown(
+        '<div style="background:#E2E8F0;color:#475569;padding:2px 8px;'
+        'border-radius:4px;font-size:0.78rem;display:inline-block;'
+        'margin:2px 0 6px 0;">📐 только расчёт потребности</div>',
+        unsafe_allow_html=True,
+    )
+
+
 def render_params_tab() -> UserInputs:
     """Двухколоночная форма параметров (v0.6.7).
 
@@ -105,7 +134,10 @@ def render_params_tab() -> UserInputs:
 
     # ─── ЛЕВАЯ КОЛОНКА: общие сведения + чекбоксы ──────────────────
     with col_left:
-        site, floors, planning_doc, lot_override = _render_essentials()
+        (
+            site, floors, planning_doc, lot_override,
+            enforce_greening_norm, enforce_density_norm,
+        ) = _render_essentials()
 
         with st.container(border=True):
             st.markdown("##### Учитывать в расчёте")
@@ -144,102 +176,57 @@ def render_params_tab() -> UserInputs:
                 ),
             )
 
-        # v0.8.7: «мягкие» нормативы для малых кварталов.
-        with st.container(border=True):
-            st.markdown("##### Нормативы-ограничения")
-            st.caption(
-                "На малых кварталах (< 0.5 га) эти два норматива физически "
-                "противоречивы — модель не находит решения. Можно отключить."
-            )
-            enforce_greening_norm = st.checkbox(
-                "🌿 Соблюдать норматив 25% озеленения квартала",
-                value=True, key="enforce_quarter_greening_norm",
-                help=(
-                    "СП 42.13330: минимум 25% площади квартала под "
-                    "озеленение. Выключите, если озеленение компенсируется "
-                    "вне границ территории."
-                ),
-            )
-            enforce_density_norm = st.checkbox(
-                "👥 Соблюдать норматив 450 чел/га",
-                value=True, key="enforce_density_norm",
-                help=(
-                    "СП 42.13330: предельная плотность населения для "
-                    "многоэтажной застройки. Выключите для физического "
-                    "максимума КИТ без нормативного ограничения."
-                ),
-            )
+    # ─── ПРАВАЯ КОЛОНКА: плитки в 2 колонки (v0.8.8) ────────────────
+    # Дефолты ставим заранее — на случай если тайл не активен.
+    kg_spec = KindergartenSpec()
+    school_spec = SchoolSpec()
+    sport_spec = SportFacilitiesSpec()
+    parking = ParkingConfig(mode="min_open")
+    znop_pp_override = None
+    znop_total_override = None
+    znop_only_demand = False
+    vpp_request = None
+    built_in = None
+    vpp_auto = False
+    intra_override = None
+    custom_objects_list: list = []
+    residential_class = "comfort"
 
-    # ─── ПРАВАЯ КОЛОНКА: плитки для активных компонентов ──────────
+    # Активные тайлы: (key, render-callable). Раскладываются по 2 столбцам.
+    active_tiles: list[tuple[str, "callable"]] = []
+    if include_kg:       active_tiles.append(("kg", _render_kg_tile))
+    if include_school:   active_tiles.append(("school", _render_school_tile))
+    if include_sport:    active_tiles.append(("sport", _render_sport_tile))
+    if include_parking:  active_tiles.append(("parking", _render_parking_tile))
+    if include_znop:     active_tiles.append(("znop", _render_znop_tile))
+    if include_vpp:      active_tiles.append(("vpp", _render_vpp_tile))
+    if include_intra:    active_tiles.append(("intra", _render_intra_driveways_tile))
+    if include_custom:   active_tiles.append(("custom", _render_custom_objects_tile))
+    if include_economy:  active_tiles.append(("economy", _render_economy_tile))
+
     with col_right:
-        # ДОО
-        if include_kg:
-            kg_spec = _render_kg_tile()
-        else:
-            kg_spec = KindergartenSpec()
-
-        # СОШ
-        if include_school:
-            school_spec = _render_school_tile()
-        else:
-            school_spec = SchoolSpec()
-
-        # Плоскостные спортивные сооружения
-        if include_sport:
-            sport_spec = _render_sport_tile()
-        else:
-            sport_spec = SportFacilitiesSpec()
-
-        # Парковки
-        if include_parking:
-            parking = _render_parking_tile()
-        else:
-            parking = ParkingConfig(mode="min_open")
-
-        # ЗНОП
-        if include_znop:
-            znop_pp_override, znop_total_override = _render_znop_tile()
-        else:
-            znop_pp_override, znop_total_override = None, None
-
-        # ВПП — новый механизм с 5 вариантами (v0.7.1)
-        if include_vpp:
-            vpp_request = _render_vpp_tile()
-            built_in = None      # legacy single — больше не используется
-            vpp_auto = False     # legacy auto-floor — больше не используется
-        else:
-            vpp_request = None
-            built_in = None
-            vpp_auto = False
-
-        # Внутриквартальные проезды
-        if include_intra:
-            intra_override = _render_intra_driveways_tile()
-        else:
-            intra_override = None
-
-        # Дополнительные объекты
-        if include_custom:
-            custom_objects_list = _render_custom_objects_tile()
-        else:
-            custom_objects_list = []
-
-        # Экономика (v0.8.0)
-        if include_economy:
-            residential_class = _render_economy_tile()
-        else:
-            residential_class = "comfort"  # дефолт
-
-        # Сообщение когда правая колонка пуста
-        if not any([
-            include_kg, include_school, include_sport, include_parking,
-            include_znop, include_vpp, include_intra, include_custom,
-            include_economy,
-        ]):
+        if not active_tiles:
             st.info(
                 "⬅ Выберите хотя бы один компонент в левой колонке, "
                 "чтобы увидеть его настройки здесь."
             )
+        else:
+            results: dict[str, object] = {}
+            sub_cols = st.columns(2, gap="small")
+            for i, (key, fn) in enumerate(active_tiles):
+                with sub_cols[i % 2]:
+                    results[key] = fn()
+
+            kg_spec = results.get("kg", kg_spec)
+            school_spec = results.get("school", school_spec)
+            sport_spec = results.get("sport", sport_spec)
+            parking = results.get("parking", parking)
+            if "znop" in results:
+                znop_pp_override, znop_total_override, znop_only_demand = results["znop"]
+            vpp_request = results.get("vpp", vpp_request)
+            intra_override = results.get("intra", intra_override)
+            custom_objects_list = results.get("custom", custom_objects_list)
+            residential_class = results.get("economy", residential_class)
 
     # ==================================================================
     # Сборка опций
@@ -260,6 +247,7 @@ def render_params_tab() -> UserInputs:
         built_in=built_in,
         znop_per_person_override=znop_pp_override,
         znop_total_area_override=znop_total_override,
+        znop_only_demand=znop_only_demand,
         custom_objects=custom_objects_list,
         driveways_intra_share_override=intra_override,
         driveways_lot_share_override=lot_override,
@@ -283,7 +271,7 @@ def render_params_tab() -> UserInputs:
 def _render_sport_tile() -> SportFacilitiesSpec:
     """Плитка настроек плоскостных спортивных сооружений (без чекбокса 'Учитывать')."""
     with st.container(border=True):
-        st.markdown("##### 🏃 Плоскостные спортивные сооружения")
+        _tile_header("🏃 Плоскостные спортивные сооружения", "include_sport")
         only_demand = st.checkbox(
             "Только рассчитать потребность",
             value=False, key="sport_only_demand",
@@ -293,6 +281,8 @@ def _render_sport_tile() -> SportFacilitiesSpec:
                 "квартала или уже существуют."
             ),
         )
+        if only_demand:
+            _only_demand_badge()
         size_mode = st.radio(
             "Площадь спортплощадок",
             ["По нормативу (1000 м²/1000 чел)", "Задать вручную"],
@@ -330,7 +320,7 @@ def _render_sport_tile() -> SportFacilitiesSpec:
 def _render_intra_driveways_tile() -> float | None:
     """Плитка настроек внутриквартальных проездов. Override на долю."""
     with st.container(border=True):
-        st.markdown("##### 🛣 Внутриквартальные проезды")
+        _tile_header("🛣 Внутриквартальные проезды", "include_intra_driveways")
         use_override = st.checkbox(
             "Задать долю вручную (вместо норматива)",
             value=False, key="drive_intra_override",
@@ -346,14 +336,14 @@ def _render_intra_driveways_tile() -> float | None:
         return intra_pct / 100
 
 
-def _render_essentials() -> tuple[Site, int, bool]:
-    """Общие сведения о территории: площадь, ДПТ, этажность.
+def _render_essentials() -> tuple[Site, int, bool, "float | None", bool, bool]:
+    """Общие сведения о территории + нормативы-ограничения.
 
-    Возвращает (site, floors, planning_doc).
+    v0.8.8: блок свёртываемый (st.expander), нормативы 25%/450 чел/га
+    встроены сюда же. Возвращает
+    (site, floors, planning_doc, lot_override, enforce_greening, enforce_density).
     """
-    with st.container(border=True):
-        st.markdown("##### Общие сведения о территории")
-
+    with st.expander("Общие сведения о территории", expanded=True):
         # Площадь квартала
         unit = st.radio(
             "Единицы площади", ["м²", "га"],
@@ -376,33 +366,14 @@ def _render_essentials() -> tuple[Site, int, bool]:
                 key="area_input_m2",
             )
 
-        # v0.8.6: предупреждение о слишком малой площади квартала.
-        # Меньше 5000 м² (0.5 га) — на квартале практически невозможно
-        # разместить нормативный жилой дом с минимальными парковками,
-        # ДОО/СОШ (даже с only_demand спорт-площадка займёт >50% при
-        # 50+ жителях). Это не баг модели, а реальность нормативов.
-        if area_m2 < 5_000:
-            st.warning(
-                f"⚠️ Площадь {area_m2:.0f} м² (= {area_m2/10000:.2f} га) — "
-                "крайне мала для городского квартала. Типичный квартал в "
-                "СПб — 1-5 га. Жильё получится ≤10% от площади, или модель "
-                "вернёт 0 (площадку занимают нормативные парковки, проезды "
-                "и спорт). Используйте от 0.5 га."
-            )
-
-        # ДПТ
+        # ДПТ — caption под чекбоксом убран (v0.8.8): и так понятно
         planning_doc = st.checkbox(
             "ДПТ (документация по планировке территории)",
             value=True, key="planning_doc",
             help="Без ДПТ нормативный потолок КИТ = 1.4; с ДПТ = 2.5.",
         )
-        if not planning_doc:
-            st.caption(
-                "Без ДПТ КИТ ≤ 1.4 — на типичной этажности (≥7) этого "
-                "добиться сложно. Включите ДПТ или уменьшите этажность."
-            )
 
-        # Этажность (средняя по застройке)
+        # Этажность
         floors = st.number_input(
             "Этажность (средняя)",
             min_value=1, max_value=40, value=12, step=1,
@@ -413,7 +384,30 @@ def _render_essentials() -> tuple[Site, int, bool]:
         # Проезды на ЗУ — свёрнутый expander
         lot_override = _render_lot_share_expander()
 
-    return Site(area_m2=area_m2), int(floors), planning_doc, lot_override
+        # v0.8.8: нормативы-ограничения встроены в этот же блок.
+        st.markdown("**Нормативы-ограничения**")
+        enforce_greening = st.checkbox(
+            "🌿 Соблюдать норматив 25% озеленения квартала",
+            value=True, key="enforce_quarter_greening_norm",
+            help=(
+                "СП 42.13330: минимум 25% площади квартала под озеленение. "
+                "Выключите для малых кварталов или при компенсации озеленения "
+                "вне границ территории."
+            ),
+        )
+        enforce_density = st.checkbox(
+            "👥 Соблюдать норматив 450 чел/га",
+            value=True, key="enforce_density_norm",
+            help=(
+                "СП 42.13330: предельная плотность населения для многоэтажной "
+                "застройки. Выключите для физического максимума КИТ."
+            ),
+        )
+
+    return (
+        Site(area_m2=area_m2), int(floors), planning_doc, lot_override,
+        enforce_greening, enforce_density,
+    )
 
 
 def _render_lot_share_expander() -> float | None:
@@ -443,7 +437,7 @@ def _render_vpp_tile() -> VppRequest:
     через двухпроходный расчёт (нужны footprint и population).
     """
     with st.container(border=True):
-        st.markdown("##### 🏪 Встроенно-пристроенные помещения (ВПП)")
+        _tile_header("🏪 Встроенно-пристроенные помещения (ВПП)", "include_vpp")
         st.caption(
             "Обязательные ВПП по НГП СПб: 4.4 торговля, 4.6 общепит, "
             "3.3 быт.обсл., 3.4.1 поликлиника, 3.5.1 школа искусств. "
@@ -517,13 +511,24 @@ def _render_vpp_tile() -> VppRequest:
     return VppRequest(mode=mode, custom_4_4_m2=custom_44, custom_4_6_m2=custom_46)
 
 
-def _render_znop_tile() -> tuple[float | None, float | None]:
+def _render_znop_tile() -> tuple[float | None, float | None, bool]:
     """Плитка настроек ЗНОП (без внешнего чекбокса «Учитывать»).
 
-    Возвращает (znop_per_person_override, znop_total_area_override).
+    Возвращает (znop_per_person_override, znop_total_area_override, only_demand).
     """
     with st.container(border=True):
-        st.markdown("##### 🌳 ЗНОП — зелёные насаждения общего пользования")
+        _tile_header("🌳 ЗНОП — зелёные насаждения общего пользования", "include_znop")
+        only_demand = st.checkbox(
+            "Только рассчитать потребность",
+            value=False, key="znop_only_demand",
+            help=(
+                "Показать площадь ЗНОП, но НЕ учитывать в балансе квартала "
+                "и в нормативе озеленения. Полезно, если ЗНОП размещается "
+                "за пределами квартала."
+            ),
+        )
+        if only_demand:
+            _only_demand_badge()
         znop_mode = st.radio(
             "Источник значения",
             [
@@ -535,7 +540,7 @@ def _render_znop_tile() -> tuple[float | None, float | None]:
             help="По нормативу СПб: ЗНОП зависит от КИТ ступенями 0 / 3 / 4 / 6 м²/чел.",
         )
         if znop_mode == "По нормативу":
-            return None, None
+            return None, None, only_demand
         if znop_mode.startswith("Задать вручную: м²/чел"):
             znop_pp = st.number_input(
                 "ЗНОП, м²/чел",
@@ -543,7 +548,7 @@ def _render_znop_tile() -> tuple[float | None, float | None]:
                 value=6.0, step=0.5,
                 key="znop_value_pp",
             )
-            return float(znop_pp), None
+            return float(znop_pp), None, only_demand
         # «Задать вручную: общая площадь»
         c1, c2 = st.columns(2)
         znop_unit = c1.radio(
@@ -566,7 +571,7 @@ def _render_znop_tile() -> tuple[float | None, float | None]:
                 value=5_000.0, step=100.0,
                 key="znop_total_m2",
             )
-        return None, float(znop_total)
+        return None, float(znop_total), only_demand
 
 
 def _render_kg_tile() -> KindergartenSpec:
@@ -575,7 +580,7 @@ def _render_kg_tile() -> KindergartenSpec:
     Управляется снаружи: вызывается только если include_kg=True.
     """
     with st.container(border=True):
-        st.markdown("##### 🎒 Дошкольные образовательные организации (ДОО)")
+        _tile_header("🎒 Дошкольные образовательные организации (ДОО)", "include_kg")
         kg_only_demand = st.checkbox(
             "Только рассчитать потребность",
             value=False, key="kg_only_demand",
@@ -585,6 +590,8 @@ def _render_kg_tile() -> KindergartenSpec:
                 "за пределами квартала или уже существует."
             ),
         )
+        if kg_only_demand:
+            _only_demand_badge()
         kg_btype_label = st.selectbox(
             "Тип здания ДОО",
             ["Отдельно стоящее", "Встроенно-пристроенное"],
@@ -628,7 +635,7 @@ def _render_kg_tile() -> KindergartenSpec:
 def _render_school_tile() -> SchoolSpec:
     """Плитка настроек СОШ (без внешнего чекбокса «Учитывать»)."""
     with st.container(border=True):
-        st.markdown("##### 🏫 Средние общеобразовательные школы (СОШ)")
+        _tile_header("🏫 Средние общеобразовательные школы (СОШ)", "include_school")
         sch_only_demand = st.checkbox(
             "Только рассчитать потребность",
             value=False, key="sch_only_demand",
@@ -638,6 +645,8 @@ def _render_school_tile() -> SchoolSpec:
                 "за пределами квартала или уже существует."
             ),
         )
+        if sch_only_demand:
+            _only_demand_badge()
         # Вертикально, чтобы вторая галочка не терялась в узкой правой колонке
         school_pool = st.checkbox(
             "С бассейном (+0.2 га)", value=True, key="school_pool",
@@ -675,7 +684,7 @@ def _render_school_tile() -> SchoolSpec:
 def _render_parking_tile() -> ParkingConfig:
     """Парковки — пресеты + расширенный custom с типами и count×capacity."""
     with st.container(border=True):
-        st.markdown("##### 🅿️ Парковки")
+        _tile_header("🅿️ Парковки", "include_parking")
         PARK_MODE_LABELS = {
             "Минимум открытых, остальное подземные (по умолчанию)": "min_open",
             "Все парковки открытые наземные": "all_open",
@@ -1080,7 +1089,7 @@ def _render_parking_custom() -> ParkingConfig:
 def _render_economy_tile() -> str:
     """Плитка экономических параметров (v0.8.0). Возвращает residential_class."""
     with st.container(border=True):
-        st.markdown("##### 💰 Экономика (условные единицы)")
+        _tile_header("💰 Экономика (условные единицы)", "include_economy")
         st.caption(
             "Конструктив и отделка — дефолты `monolith` / `standard` из норматива. "
             "1.0 у.е. ≈ себестоимость м² жилья 9-эт. монолит standard."
@@ -1101,7 +1110,7 @@ def _render_economy_tile() -> str:
 def _render_custom_objects_tile() -> list[CustomObject]:
     """Табличный редактор для дополнительных объектов на территории."""
     with st.container(border=True):
-        st.markdown("##### 📦 Дополнительные объекты на территории квартала")
+        _tile_header("📦 Дополнительные объекты на территории квартала", "include_custom_objects")
         st.caption(
             "Объекты вне базовых классов (офис, ФОК, поликлиника, "
             "торговля). Каждый занимает свой ЗУ и считается по ВРИ-коду. "
