@@ -75,7 +75,11 @@ def _get_base_tep(
 def _render_base_snapshot(
     base_tep: TEPResult, base_options: CalculationOptions, synced: bool,
 ) -> None:
-    """База: 10 метрик в 2 рядах + indicator синхронизации (v0.9.3)."""
+    """База (snapshot вкладки Расчёт) в едином формате KPI (v0.9.6).
+
+    Тот же `_render_kpi_block`, что и в карточках рекомендаций — это даёт
+    возможность сравнить визуально по строкам.
+    """
     with st.container(border=True):
         if synced:
             st.markdown("##### 📋 База (с вкладки «Расчёт»)")
@@ -85,51 +89,7 @@ def _render_base_snapshot(
                 "Параметры на вкладке «Параметры» не совпадают с последним "
                 "результатом на «Расчёте». Откройте «Расчёт» для синхронизации."
             )
-
-        # Ряд 1: главные показатели ТЭП
-        c1, c2, c3, c4, c5 = st.columns(5)
-        c1.metric("КИТ ПЗЗ", f"{base_tep.kit.value:.3f}")
-        c2.metric("Площадь квартир", fmt_m2(base_tep.apartments_area.value))
-        c3.metric("Этажность", str(base_options.floors))
-        c4.metric("Население", f"{int(base_tep.population.value or 0):,}".replace(",", " ") + " чел")
-        c5.metric("Резерв баланса", fmt_m2(base_tep.balance.surplus))
-
-        # Ряд 2: экономика + парковки + соцобъекты
-        c6, c7, c8, c9, c10 = st.columns(5)
-        if base_tep.economy is not None:
-            c6.metric(
-                "Прибыль, у.е.",
-                f"{int(base_tep.economy.profit):,}".replace(",", " "),
-            )
-            c7.metric("Маржа", f"{base_tep.economy.margin*100:.1f}%")
-        else:
-            c6.metric("Прибыль, у.е.", "—")
-            c7.metric("Маржа", "—")
-        c8.metric(
-            "Парковки",
-            f"{int(base_tep.parking_required_places.value or 0):,}".replace(",", " ") + " м/м",
-        )
-        kg_total = int(base_tep.kindergarten_places_accepted.value or 0)
-        c9.metric("ДОО", f"{kg_total} мест" if kg_total else "—")
-        sch_total = int(base_tep.school_places_accepted.value or 0)
-        c10.metric("СОШ", f"{sch_total} мест" if sch_total else "—")
-
-        # Доп. контекст: парковки по типам, ВПП, ЗНОП — компактно одной строкой
-        ext_parts = []
-        op = int(base_tep.parking_open_places.value or 0)
-        ml = int(base_tep.parking_multilevel_places.value or 0)
-        ug = int(base_tep.parking_underground_places.value or 0)
-        if op + ml + ug > 0:
-            ext_parts.append(f"🅿 откр.={op} · многоур.={ml} · подз.={ug}")
-        bi = base_tep.built_in_area.value or 0
-        if bi > 0:
-            ext_parts.append(f"🏪 ВПП={int(bi):,} м²".replace(",", " "))
-        znop_pp = base_tep.znop_per_person.value or 0
-        znop_area = base_tep.znop_area.value or 0
-        if znop_area > 0:
-            ext_parts.append(f"🌳 ЗНОП={znop_pp:.1f} м²/чел ({int(znop_area):,} м²)".replace(",", " "))
-        if ext_parts:
-            st.caption("  ·  ".join(ext_parts))
+        _render_kpi_block(base_tep, base_options)
 
 
 # ---------------------------------------------------------------------------
@@ -243,170 +203,206 @@ def _render_recommendations_section(
     cols = st.columns(len(cached_bundle.recommendations))
     for i, rec in enumerate(cached_bundle.recommendations):
         with cols[i]:
-            _render_recommendation_card(rec, i)
+            _render_recommendation_card(rec, i, base_options)
 
-    # v0.9.5: сравнительная диаграмма «Площадь квартир × Прибыль»
-    # — наглядный визуальный компромисс: где база, где рекомендации,
-    # кто выигрывает в чём.
-    _render_apt_profit_scatter(cached_bundle)
+    # v0.9.6: сравнительная таблица «База ↔ Рекомендации» — все варианты
+    # рядом по столбцам, с подсветкой лучшего значения в каждой строке.
+    # Это удобнее scatter-графика для выбора варианта: видны все KPI
+    # сразу, без необходимости угадывать что лучше.
+    _render_comparison_table(cached_bundle, base_options)
 
 
-def _render_apt_profit_scatter(bundle: ParetoBundle) -> None:
-    """Scatter «Площадь квартир × Прибыль» с базой и рекомендациями (v0.9.5).
+def _render_comparison_table(
+    bundle: ParetoBundle, base_options: CalculationOptions,
+) -> None:
+    """Сводная таблица «База ↔ Рекомендации» с подсветкой лучшего (v0.9.6).
 
-    Помогает увидеть компромисс: рекомендация с max apt обычно справа
-    (большая площадь), max profit — выше (большая прибыль). База обычно
-    где-то в центре. Точки подписаны метками.
+    Все 4 варианта рядом по столбцам, по строкам — те же KPI что в карточках.
+    В каждой строке выделяется ячейка с лучшим значением (зелёный фон).
     """
     base_tep = bundle.base_tep
-    if base_tep.economy is None:
-        return  # без экономики сравнивать нечего
 
-    import altair as alt
+    # Какие поля — и направление «лучшего» (max/min/none)
+    # Используем те же KPI что и в _extract_kpi_fields, но с числовыми значениями
+    # для подсветки.
+    def _val(tep: TEPResult, opts: CalculationOptions, key: str):
+        op = int(tep.parking_open_places.value or 0)
+        ml = int(tep.parking_multilevel_places.value or 0)
+        ug = int(tep.parking_underground_places.value or 0)
+        if key == "apt":         return float(tep.apartments_area.value or 0.0)
+        if key == "kit":         return float(tep.kit.value or 0.0)
+        if key == "floors":      return int(opts.floors)
+        if key == "open":        return op
+        if key == "ml":          return ml
+        if key == "ug":          return ug
+        if key == "kg":          return int(tep.kindergarten_places_accepted.value or 0)
+        if key == "sch":         return int(tep.school_places_accepted.value or 0)
+        if key == "znop":        return float(tep.znop_per_person.value or 0.0)
+        if key == "profit":      return (
+            float(tep.economy.profit) if tep.economy is not None else None
+        )
+        return None
 
-    rows = [{
-        "label": "База",
-        "apt": float(base_tep.apartments_area.value or 0.0),
-        "profit": float(base_tep.economy.profit),
-        "kit": float(base_tep.kit.value or 0.0),
-        "color": "#475569",  # серый
-        "kind": "base",
-    }]
-    palette = {
-        "Максимум площади":  "#1565C0",  # синий
-        "Максимум прибыли":  "#2E7D32",  # зелёный
-        "Сбалансированный":  "#B45309",  # янтарь
-    }
+    # Список вариантов: (label, tep, options)
+    variants: list[tuple[str, TEPResult, CalculationOptions]] = [
+        ("База", base_tep, base_options),
+    ]
     for rec in bundle.recommendations:
-        if rec.tep.economy is None:
-            continue
-        rows.append({
-            "label": rec.label,
-            "apt": float(rec.tep.apartments_area.value or 0.0),
-            "profit": float(rec.tep.economy.profit),
-            "kit": float(rec.tep.kit.value or 0.0),
-            "color": palette.get(rec.label, "#7C3AED"),
-            "kind": "rec",
-        })
+        opts = _rec_options_from_params(base_options, rec.params)
+        variants.append((rec.label, rec.tep, opts))
 
-    if len(rows) < 2:
-        return
+    # Описание строк: (заголовок, ключ, формат, best_direction)
+    # best_direction: "max" — больше лучше, "min" — меньше лучше, None — без выделения.
+    fields = [
+        ("Площадь квартир, м²",        "apt",    lambda v: f"{int(v):,}".replace(",", " "), "max"),
+        ("КИТ ПЗЗ",                    "kit",    lambda v: f"{v:.3f}",                      None),
+        ("Этажность",                  "floors", lambda v: str(v),                          None),
+        ("Парковки — открытые, м/м",   "open",   lambda v: f"{int(v):,}".replace(",", " "), None),
+        ("    — многоуровневые, м/м",  "ml",     lambda v: f"{int(v):,}".replace(",", " "), None),
+        ("    — подземные, м/м",       "ug",     lambda v: f"{int(v):,}".replace(",", " "), "min"),
+        ("ДОО, мест",                  "kg",     lambda v: f"{int(v):,}".replace(",", " "), None),
+        ("СОШ, мест",                  "sch",    lambda v: f"{int(v):,}".replace(",", " "), None),
+        ("ЗНОП, м²/чел",               "znop",   lambda v: f"{v:.0f}",                      None),
+        ("Прибыль, у.е.",              "profit", lambda v: f"{int(v):,}".replace(",", " ") if v is not None else "—", "max"),
+    ]
 
-    df = pd.DataFrame(rows)
+    # DataFrame: индекс = показатель, колонки = варианты, ячейки = строки.
+    data = {label: [] for label, _, _ in variants}
+    best_idx_per_row: list[int | None] = []  # индекс лучшего в каждой строке
+    row_labels: list[str] = []
+    for row_label, key, fmt, best_dir in fields:
+        raw_values = [_val(tep, opts, key) for _, tep, opts in variants]
+        row_labels.append(row_label)
+        # Подсветка лучшего
+        valid = [(i, v) for i, v in enumerate(raw_values) if v is not None]
+        best_i: int | None = None
+        if best_dir == "max" and valid:
+            best_i = max(valid, key=lambda iv: iv[1])[0]
+        elif best_dir == "min" and valid:
+            best_i = min(valid, key=lambda iv: iv[1])[0]
+        best_idx_per_row.append(best_i)
+        for (label, _, _), v in zip(variants, raw_values):
+            data[label].append(fmt(v) if v is not None else "—")
+
+    df = pd.DataFrame(data, index=row_labels)
+
+    # Styler: подсветка лучшей ячейки в каждой строке
+    def _highlight(row):
+        styles = [""] * len(row)
+        ridx = row_labels.index(row.name)
+        bi = best_idx_per_row[ridx]
+        if bi is not None:
+            styles[bi] = "background-color: #DCFCE7; font-weight: 700;"  # светло-зелёный
+        # База — серый фон во всех ячейках столбца, кроме подсвеченных
+        if styles[0] == "":
+            styles[0] = "background-color: #F1F5F9;"  # светло-серый
+        return styles
+
+    styler = df.style.apply(_highlight, axis=1)
+
     with st.container(border=True):
-        st.markdown("##### 📈 Площадь квартир × Прибыль")
+        st.markdown("##### 📊 Сравнительная таблица")
         st.caption(
-            "Точки рекомендаций vs точка базы. Чем правее — тем больше "
-            "площадь квартир; чем выше — тем больше прибыль. «База» — серая, "
-            "рекомендации — цветные."
+            "Все варианты рядом. Зелёным выделено лучшее значение в строке "
+            "(где это применимо: max для площади/прибыли, min для подземки). "
+            "База — серый фон."
         )
-
-        # Точки
-        points = (
-            alt.Chart(df)
-            .mark_circle(size=320, stroke="white", strokeWidth=2)
-            .encode(
-                x=alt.X("apt:Q", title="Площадь квартир, м²"),
-                y=alt.Y("profit:Q", title="Прибыль, у.е."),
-                color=alt.Color(
-                    "label:N", legend=alt.Legend(title=""),
-                    scale=alt.Scale(
-                        domain=list(df["label"]),
-                        range=list(df["color"]),
-                    ),
-                ),
-                tooltip=[
-                    alt.Tooltip("label:N", title="Сценарий"),
-                    alt.Tooltip("apt:Q", title="Площадь квартир", format=",.0f"),
-                    alt.Tooltip("profit:Q", title="Прибыль, у.е.", format=",.0f"),
-                    alt.Tooltip("kit:Q", title="КИТ ПЗЗ", format=".3f"),
-                ],
-            )
-        )
-        # Подписи рядом с точками
-        labels = (
-            alt.Chart(df)
-            .mark_text(align="left", dx=10, dy=-10, fontSize=12, fontWeight=600)
-            .encode(
-                x="apt:Q", y="profit:Q", text="label:N",
-                color=alt.Color("label:N", legend=None,
-                                scale=alt.Scale(
-                                    domain=list(df["label"]),
-                                    range=list(df["color"]))),
-            )
-        )
-        chart = (points + labels).properties(height=320)
-        st.altair_chart(chart, use_container_width=True)
+        st.dataframe(styler, use_container_width=True)
 
 
-def _tep_details_caption(tep: TEPResult) -> str:
-    """Сводная подпись по ТЭП-результату: парковки/ДОО/СОШ/ЗНОП (v0.9.5).
+def _extract_kpi_fields(
+    tep: TEPResult, options: CalculationOptions | None = None,
+) -> list[tuple[str, str]]:
+    """Единый набор KPI-полей для сценария (v0.9.6).
 
-    Используется в карточках рекомендаций — даёт пользователю быстрый
-    взгляд на «что внутри» сценария, не открывая полный отчёт.
+    Возвращает [(label, formatted_value), ...] в фиксированном порядке.
+    Используется во всех типовых карточках (база, рекомендации, scan)
+    чтобы пользователь мог сравнивать визуально.
     """
-    parts: list[str] = []
-    # Парковки разбивка
+    def _fmt_int(v: float | int | None) -> str:
+        if v is None:
+            return "—"
+        return f"{int(v):,}".replace(",", " ")
+
     op = int(tep.parking_open_places.value or 0)
     ml = int(tep.parking_multilevel_places.value or 0)
     ug = int(tep.parking_underground_places.value or 0)
-    if op + ml + ug > 0:
-        parts.append(f"🅿 откр.={op} · многоур.={ml} · подз.={ug}")
-    # Соцобъекты
     kg = int(tep.kindergarten_places_accepted.value or 0)
-    if kg > 0:
-        parts.append(f"🎒 ДОО={kg} мест")
     sch = int(tep.school_places_accepted.value or 0)
-    if sch > 0:
-        parts.append(f"🏫 СОШ={sch} мест")
-    # ЗНОП
     zpp = tep.znop_per_person.value or 0
-    zarea = tep.znop_area.value or 0
-    if zarea > 0:
-        parts.append(f"🌳 ЗНОП={zpp:.0f} м²/чел ({int(zarea):,} м²)".replace(",", " "))
-    # ВПП
-    bi = tep.built_in_area.value or 0
-    if bi > 0:
-        parts.append(f"🏪 ВПП={int(bi):,} м²".replace(",", " "))
-    return "  ·  ".join(parts)
+    floors = options.floors if options is not None else "—"
+    profit = (
+        _fmt_int(tep.economy.profit) + " у.е."
+        if tep.economy is not None else "—"
+    )
+
+    return [
+        ("Площадь квартир",      f"{_fmt_int(tep.apartments_area.value)} м²"),
+        ("КИТ ПЗЗ",              f"{(tep.kit.value or 0):.3f}"),
+        ("Этажность",            str(floors)),
+        ("Парковки — открытые",  f"{op} м/м" if op + ml + ug > 0 else "—"),
+        ("    многоуровневые",   f"{ml} м/м"),
+        ("    подземные",        f"{ug} м/м"),
+        ("ДОО",                  f"{kg} мест" if kg > 0 else "—"),
+        ("СОШ",                  f"{sch} мест" if sch > 0 else "—"),
+        ("ЗНОП",                 f"{zpp:.0f} м²/чел" if zpp > 0 else "0 м²/чел"),
+        ("Прибыль",              profit),
+    ]
 
 
-def _render_recommendation_card(rec: Recommendation, idx: int) -> None:
-    """Одна карточка рекомендации."""
+def _render_kpi_block(
+    tep: TEPResult, options: CalculationOptions | None = None,
+) -> None:
+    """Единая компактная карточка KPI (v0.9.6) — markdown-таблица из
+    `_extract_kpi_fields`. Один и тот же формат в snapshot базы и в
+    карточках рекомендаций → можно сравнивать визуально по строкам.
+    """
+    rows = _extract_kpi_fields(tep, options)
+    md = "| Показатель | Значение |\n|---|---|\n"
+    for label, value in rows:
+        md += f"| {label} | **{value}** |\n"
+    st.markdown(md)
+
+
+def _rec_options_from_params(
+    base_options: CalculationOptions, params: dict,
+) -> CalculationOptions:
+    """Восстановить CalculationOptions сценария из base + sampled params.
+
+    Нужно чтобы в KPI-карточке корректно показать `Этажность` сценария
+    (она может отличаться от base.floors).
+    """
+    opts = base_options.model_copy(deep=True)
+    if "floors" in params:
+        opts.floors = int(params["floors"])
+    return opts
+
+
+def _render_recommendation_card(
+    rec: Recommendation, idx: int, base_options: CalculationOptions,
+) -> None:
+    """Одна карточка рекомендации — единый формат KPI (v0.9.6)."""
     with st.container(border=True):
         st.markdown(f"#### {rec.label}")
         st.caption(rec.rationale)
 
+        # Краткая «верхняя» сводка дельт — чтобы за секунду понять «лучше/хуже»
         d = rec.delta_vs_base
-        # Δ площади
-        st.metric(
-            "Площадь квартир",
-            fmt_m2(rec.tep.apartments_area.value),
-            delta=f"{d.d_apt_abs:+,.0f} м² ({d.d_apt_pct:+.1f}%)".replace(",", " "),
-        )
-        # Δ прибыли
-        if d.d_profit_abs is not None and rec.tep.economy is not None:
-            st.metric(
-                "Прибыль, у.е.",
-                f"{int(rec.tep.economy.profit):,}".replace(",", " "),
-                delta=f"{d.d_profit_abs:+,.0f} ({d.d_profit_pct:+.1f}%)".replace(",", " "),
-            )
-        # КИТ
-        st.metric("КИТ ПЗЗ", f"{rec.tep.kit.value:.3f}",
-                  delta=f"{d.d_kit_abs:+.3f}")
+        delta_lines = [f"Δ площадь: **{d.d_apt_pct:+.1f}%**"]
+        if d.d_profit_pct is not None:
+            delta_lines.append(f"Δ прибыль: **{d.d_profit_pct:+.1f}%**")
+        delta_lines.append(f"Δ КИТ: **{d.d_kit_abs:+.3f}**")
+        st.markdown("  ·  ".join(delta_lines))
 
-        # Список изменений (что отличается от базы)
+        # Унифицированный KPI-блок — тот же набор полей что в snapshot базы.
+        rec_options = _rec_options_from_params(base_options, rec.params)
+        _render_kpi_block(rec.tep, rec_options)
+
+        # Что отличается от базы (текстом, как было)
         if d.key_changes:
-            st.markdown("**Что изменено:**")
-            for c in d.key_changes:
-                st.caption(f"• {c}")
-
-        # v0.9.5: компактные данные сценария — парковки, ДОО, СОШ, ЗНОП, ВПП.
-        # Видно «что внутри» без раскрытия полного отчёта.
-        details = _tep_details_caption(rec.tep)
-        if details:
-            st.markdown("**Сценарий:**")
-            st.caption(details)
+            with st.expander("📝 Что изменено vs база", expanded=False):
+                for c in d.key_changes:
+                    st.markdown(f"• {c}")
 
         if st.button("➕ В сравнение", key=f"add_rec_{idx}", use_container_width=True):
             st.session_state.scenarios.append((f"opt:{rec.label}", rec.tep))
