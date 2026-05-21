@@ -324,7 +324,12 @@ def _build_search_space(constraints: ParetoConstraints) -> SearchSpace:
         parking_underground_share_range=ug_range,
         multilevel_levels_range=(1, 5) if constraints.allow_multilevel else None,
         underground_levels_range=(1, 3) if constraints.allow_underground else None,
-        znop_per_person_choices=[0.0, 3.0, 4.0, 6.0],
+        # v0.9.4: ЗНОП НЕ варьируется в Парето — он считается по нормативу
+        # piecewise(КИТ ПЗЗ). Принудительный ЗНОП имеет смысл ТОЛЬКО когда
+        # бисекция упирается в потолок КИТ; если КИТ ниже нормативной ступени,
+        # принудительный ЗНОП лишь «проедает» квартал зеленью без пользы.
+        # Анализ влияния ЗНОП остаётся в карточке «🌳 ЗНОП» Пофакторного.
+        znop_per_person_choices=None,
         objective="apartments_area",
         strict_social_validation=False,
         diversify_sampler=True,
