@@ -135,12 +135,22 @@ def _render_pareto_constraints() -> ParetoConstraints:
                     "если по проекту или нормативам не разрешены."
                 ),
             )
+            restrict_combos = st.checkbox(
+                "Не сочетать МУ + подземные",
+                value=True, key="pareto_restrict_combos",
+                help=(
+                    "На рынке обычно строят либо открытые+МУ, либо открытые+подземные. "
+                    "Сочетание многоуровневых и подземных — редкость (двойной перекрыт). "
+                    "При включённой опции такие гибриды отфильтровываются."
+                ),
+            )
 
         return ParetoConstraints(
             floors_range=floors_range,
             allow_open=allow_open,
             allow_multilevel=allow_multilevel,
             allow_underground=allow_underground,
+            restrict_parking_combos=restrict_combos,
         )
 
 
@@ -162,6 +172,7 @@ def _render_recommendations_section(
         + f"|site={site.area_m2}"
         + f"|floors={constraints.floors_range}"
         + f"|park={constraints.allow_open}{constraints.allow_multilevel}{constraints.allow_underground}"
+        + f"|combos={constraints.restrict_parking_combos}"
     )
     cached_bundle: ParetoBundle | None = st.session_state.get("pareto_bundle")
     cached_key: str | None = st.session_state.get("pareto_bundle_key")

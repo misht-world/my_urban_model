@@ -61,15 +61,31 @@ class ParetoBundle:
 
 @dataclass(frozen=True)
 class ParetoConstraints:
-    """Ограничения подбора (v0.9.3).
+    """Ограничения подбора (v0.9.3+).
 
     Позволяет пользователю исключить из перебора Optuna нежелательные
-    варианты: задать диапазон этажности, запретить подземные парковки и т.п.
+    варианты: задать диапазон этажности, запретить отдельные типы парковок
+    и т.п.
+
+    v0.9.9: `restrict_parking_combos` — типологический фильтр. На рынке
+    обычно строят: (а) только открытые, (б) открытые + многоуровневые,
+    (в) открытые + подземные. Сочетание МУ + подземные = редкое
+    (двойной перекрыт, дорого без выгоды). По умолчанию такие гибриды
+    исключаются из рекомендаций.
     """
     floors_range: tuple[int, int] = (5, 25)
     allow_open: bool = True
     allow_multilevel: bool = True
     allow_underground: bool = True
+    restrict_parking_combos: bool = True
+
+
+def _is_hybrid_parking(params: dict, threshold: float = 0.10) -> bool:
+    """True если в сценарии одновременно > threshold многоуровневых И > threshold
+    подземных (типологически редкое сочетание МУ+UG, обычно не строится)."""
+    ml = float(params.get("parking_ml_share", 0.0) or 0.0)
+    ug = float(params.get("parking_ug_share", 0.0) or 0.0)
+    return ml > threshold and ug > threshold
 
 
 # ---------------------------------------------------------------------------
@@ -196,17 +212,24 @@ def _select_three(
     top_n: list[OptimizationResult],
     base_tep: TEPResult,
     base_options: CalculationOptions,
+    constraints: "ParetoConstraints | None" = None,
 ) -> list[Recommendation]:
     """Из топа выбирает 3 лучших по разным критериям + DeltaSummary.
 
-    v0.9.1: дедуп по семантическому fingerprint параметров — если два
-    разных Optuna-trial попали в одну и ту же точку пространства параметров
-    (что часто бывает у TPE-сэмплера), для второй рекомендации берётся
-    следующий «отличающийся» вариант.
+    v0.9.9: при `constraints.restrict_parking_combos=True` (дефолт)
+    отбрасываются типологически редкие гибриды МУ+подземные.
     """
     feasible = [r for r in top_n if r.feasible and r.apartments_area > 0]
     if not feasible:
         return []
+
+    # Типологический фильтр: исключаем нерыночные сочетания «МУ + подземные»
+    if constraints is None or constraints.restrict_parking_combos:
+        filtered = [r for r in feasible if not _is_hybrid_parking(r.params)]
+        # Только если после фильтра что-то осталось — применяем;
+        # иначе оставляем исходный feasible (страховка от пустого пула)
+        if filtered:
+            feasible = filtered
 
     with_econ = [r for r in feasible if r.tep.economy is not None]
 
@@ -365,7 +388,7 @@ def generate_pareto_recommendations(
         top_n=300,
         seed=seed,
     )
-    recs = _select_three(report.top_n, base_tep, base_options)
+    recs = _select_three(report.top_n, base_tep, base_options, constraints)
     return ParetoBundle(
         recommendations=recs,
         base_tep=base_tep,
