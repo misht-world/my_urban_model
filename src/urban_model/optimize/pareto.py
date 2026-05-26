@@ -88,6 +88,29 @@ def _is_hybrid_parking(params: dict, threshold: float = 0.10) -> bool:
     return ml > threshold and ug > threshold
 
 
+# v0.9.10: минимальные пороги «осмысленной» секции парковки.
+# Меньше — символическое количество, на практике не строится.
+# Многоуровневый паркинг = 1 объект ≈ 100 мест (max 300 по нормативу СПб),
+# минимально стартует от ~50 мест. Подземная секция стартует от ~30 мест
+# (один въезд + ~10 мест на ряд × 3 ряда).
+_MIN_ML_PLACES = 50
+_MIN_UG_PLACES = 30
+
+
+def _has_token_parking(tep: TEPResult) -> bool:
+    """True если в варианте есть «символическое» количество МУ или подземных
+    мест (0 < N < минимальный порог секции). Такие варианты технически
+    нелогичны — никто не строит МУ-паркинг на 20 мест.
+    """
+    ml = int(tep.parking_multilevel_places.value or 0)
+    ug = int(tep.parking_underground_places.value or 0)
+    if 0 < ml < _MIN_ML_PLACES:
+        return True
+    if 0 < ug < _MIN_UG_PLACES:
+        return True
+    return False
+
+
 # ---------------------------------------------------------------------------
 # Текстовая дельта параметров (для подписи «что изменилось»)
 # ---------------------------------------------------------------------------
@@ -223,11 +246,19 @@ def _select_three(
     if not feasible:
         return []
 
-    # Типологический фильтр: исключаем нерыночные сочетания «МУ + подземные»
+    # Типологические фильтры (v0.9.9-0.9.10):
+    #   1) Не сочетать МУ + подземные одновременно (>10% каждого)
+    #   2) Не предлагать «символическое» количество мест в МУ/подземке
+    #      (< 50 МУ или < 30 подземных — это меньше одной секции, на
+    #       практике не строится)
+    # Оба фильтра привязаны к одной опции `restrict_parking_combos`.
     if constraints is None or constraints.restrict_parking_combos:
-        filtered = [r for r in feasible if not _is_hybrid_parking(r.params)]
-        # Только если после фильтра что-то осталось — применяем;
-        # иначе оставляем исходный feasible (страховка от пустого пула)
+        filtered = [
+            r for r in feasible
+            if not _is_hybrid_parking(r.params)
+            and not _has_token_parking(r.tep)
+        ]
+        # Страховка от пустого пула — fallback на исходный список.
         if filtered:
             feasible = filtered
 

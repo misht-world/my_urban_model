@@ -136,12 +136,15 @@ def _render_pareto_constraints() -> ParetoConstraints:
                 ),
             )
             restrict_combos = st.checkbox(
-                "Не сочетать МУ + подземные",
+                "Реалистичные сочетания парковок",
                 value=True, key="pareto_restrict_combos",
                 help=(
-                    "На рынке обычно строят либо открытые+МУ, либо открытые+подземные. "
-                    "Сочетание многоуровневых и подземных — редкость (двойной перекрыт). "
-                    "При включённой опции такие гибриды отфильтровываются."
+                    "Включает два типологических фильтра: "
+                    "(1) не сочетать МУ + подземные одновременно (>10% каждого) "
+                    "— на рынке обычно строят либо МУ, либо подземку, не обе; "
+                    "(2) не предлагать «символическое» количество мест: "
+                    "МУ < 50 мест или подземка < 30 мест = меньше одной секции, "
+                    "на практике не строится."
                 ),
             )
 
@@ -395,11 +398,20 @@ def _rec_options_from_params(
     if "parking_mode" in params:
         mode = str(params["parking_mode"])
         if mode == "custom":
+            # v0.9.10: НОРМАЛИЗАЦИЯ долей перед созданием ParkingConfig.
+            # Optuna в `_build_options_for_trial` сэмплирует доли независимо,
+            # потом нормирует их в opts.parking — но в `sampled` (params)
+            # попадает РАУНДЕД-версия, сумма которой иногда 1.001 / 0.999.
+            # ParkingConfig.validate допускает 0.1%, и при превышении бросает.
+            o = float(params.get("parking_open_share", base_options.parking.open_share))
+            m = float(params.get("parking_ml_share", base_options.parking.multilevel_share))
+            u = float(params.get("parking_ug_share", base_options.parking.underground_share))
+            s = o + m + u
+            if s > 0:
+                o, m, u = o / s, m / s, u / s
             opts.parking = ParkingConfig(
                 mode="custom",
-                open_share=float(params.get("parking_open_share", base_options.parking.open_share)),
-                multilevel_share=float(params.get("parking_ml_share", base_options.parking.multilevel_share)),
-                underground_share=float(params.get("parking_ug_share", base_options.parking.underground_share)),
+                open_share=o, multilevel_share=m, underground_share=u,
                 multilevel_levels=int(params.get("multilevel_levels", base_options.parking.multilevel_levels)),
                 underground_levels=int(params.get("underground_levels", base_options.parking.underground_levels)),
             )
