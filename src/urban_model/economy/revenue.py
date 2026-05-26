@@ -37,15 +37,19 @@ def calc_revenue(tep, options, norms: Normatives) -> RevenueBreakdown:
     r_ug = n_ug * p_ug
     r_vpp = bi_area * p_vpp
 
-    # AUDIT P0-6: кастомные коммерческие объекты (ВРИ 4.x) дают выручку
-    # по той же ставке, что ВПП commercial. Соцобъекты (3.x) — соцнагрузка.
+    # v0.9.8 (AUDIT P0-2): кастомные объекты дают выручку по любому
+    # ВРИ КРОМЕ 3.x (социальные — поликлиника/ФОК — соцнагрузка, 0).
+    # Раньше прибыль шла ТОЛЬКО для 4.x, а в cost.py списывались любые
+    # non-(3.x) как commercial — это создавало системный убыток для
+    # объектов с ВРИ 5.x (спорт), 2.x и т.п. Симметричная логика
+    # с cost.py: 3.x → 0, остальное → коммерческая ставка.
     r_custom = 0.0
     for obj in (getattr(options, "custom_objects", None) or []):
         vri = (obj.vri_code or "").strip()
         floor_area = float(obj.floor_area_m2 or obj.plot_area_m2 or 0.0)
-        if vri.startswith("4."):
+        if not vri.startswith("3."):
             r_custom += floor_area * p_vpp
-        # 3.x → 0 (соцнагрузка); прочие — 0 (страхуемся)
+        # 3.x → 0 (соцнагрузка)
 
     total = r_res + r_open + r_ml + r_ug + r_vpp + r_custom
 

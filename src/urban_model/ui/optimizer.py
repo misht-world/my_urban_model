@@ -369,12 +369,31 @@ def _rec_options_from_params(
 ) -> CalculationOptions:
     """Восстановить CalculationOptions сценария из base + sampled params.
 
-    Нужно чтобы в KPI-карточке корректно показать `Этажность` сценария
-    (она может отличаться от base.floors).
+    v0.9.8 (AUDIT P1-4/9): раньше восстанавливалось только `floors`.
+    Теперь восстанавливаются ещё парковки (mode + custom-доли), иначе
+    KPI-карточка рекомендации показывает парковки ИЗ БАЗЫ, а не из
+    реального сценария рекомендации.
     """
+    from urban_model.models.parking import ParkingConfig
+
     opts = base_options.model_copy(deep=True)
     if "floors" in params:
         opts.floors = int(params["floors"])
+
+    # Парковки: режим + (для custom) доли + этажность МУ/UG
+    if "parking_mode" in params:
+        mode = str(params["parking_mode"])
+        if mode == "custom":
+            opts.parking = ParkingConfig(
+                mode="custom",
+                open_share=float(params.get("parking_open_share", base_options.parking.open_share)),
+                multilevel_share=float(params.get("parking_ml_share", base_options.parking.multilevel_share)),
+                underground_share=float(params.get("parking_ug_share", base_options.parking.underground_share)),
+                multilevel_levels=int(params.get("multilevel_levels", base_options.parking.multilevel_levels)),
+                underground_levels=int(params.get("underground_levels", base_options.parking.underground_levels)),
+            )
+        else:
+            opts.parking = ParkingConfig(mode=mode)
     return opts
 
 

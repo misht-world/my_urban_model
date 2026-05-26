@@ -105,14 +105,14 @@ def compute_tep_for_kit(
     density_max = norms.resolve("population_density_max")
 
     # Проверка плотности (формальная, по 20 м²/чел).
-    # v0.8.7: при enforce_density_norm=False статус остаётся OK
-    # (норматив отображается, но не блокирует бисекцию).
+    # v0.9.8 (AUDIT P1-5): при enforce_density_norm=False статус = OK
+    # (норматив отключён пользователем — на Оптимизации сценарий feasible,
+    # на Расчёте не нужно показывать WARNING как «опасно»). Информационный
+    # warning остаётся в TEPResult.warnings с пометкой «отключён».
     density_check_v = population.density_chel_per_ga(pop_check_v, site.area_m2)
     _density_over = density_check_v > density_max
     if _density_over and options.enforce_density_norm:
         density_status = Status.ERROR
-    elif _density_over:
-        density_status = Status.WARNING
     else:
         density_status = Status.OK
 

@@ -471,21 +471,34 @@ economy:
       value: 1.30
       unit: "unit_per_m2_building"
       source: "SPEC.md"
+    # v0.9.8: калибровка себестоимости под реальные цены СПб 2024.
+    # Раньше 0.20/0.50/1.00 — взято из SPEC.md без привязки к рынку,
+    # давало убыток всех типов парковок (open: cost 4.15 vs sale 3.0,
+    # ml: cost 14 vs sale 10, ug: cost 35 vs sale 18).
+    # После калибровки маржа:
+    #   open  L1: cost ~1.0,  sale 3.0  → ~+200% (выгодны)
+    #   ml    L1: cost ~8.4,  sale 10   → ~+19%  (умеренно выгодны)
+    #   ug    L1: cost ~14,   sale 18   → ~+29%  (выгодны)
+    #   ug    L2: cost ~18.2, sale 18   → ~0%    (граница)
+    #   ug    L3: cost ~23.1, sale 18   → ~-22%  (убыток; типично)
     parking_surface:
       type: scalar
-      value: 0.20
+      value: 0.05
       unit: "unit_per_m2"
-      source: "SPEC.md (открытая стоянка с покрытием)"
+      note: "≈ 10 тыс ₽/м² (асфальт + разметка)"
+      source: "СПб 2024 (asphalt cost / P_comfort)"
     parking_multilevel:
       type: scalar
-      value: 0.50
+      value: 0.30
       unit: "unit_per_m2"
-      source: "SPEC.md (упрощённая инженерия, без гидроизоляции)"
+      note: "≈ 60 тыс ₽/м² (монолит + перекрытия, без отделки)"
+      source: "СПб 2024"
     parking_underground:
       type: scalar
-      value: 1.00
+      value: 0.40
       unit: "unit_per_m2"
-      source: "SPEC.md (сложный конструктив, гидроизоляция, рампы)"
+      note: "≈ 80 тыс ₽/м² (земляные + гидроизоляция + рампы)"
+      source: "СПб 2024"
     # все три верхних имеют source — ок
     # Прогрессия удорожания подземных уровней (level N относительно level 1)
     underground_progression:

@@ -81,6 +81,12 @@ def _vpp_preview_key(opts: CalculationOptions) -> tuple:
         bool(opts.include_znop),
         bool(opts.include_intra_driveways),
         bool(opts.include_sport_facilities),
+        # v0.9.8 (AUDIT P0-3): мягкие нормативы тоже влияют на feasible
+        # и КИТ — без них в кэш-ключе один и тот же preview мог давать
+        # разные результаты при переключении.
+        bool(opts.enforce_quarter_greening_norm),
+        bool(opts.enforce_density_norm),
+        bool(opts.znop_only_demand),
     )
 
 
