@@ -146,15 +146,47 @@ def run_calculation(
 # ---------------------------------------------------------------------------
 
 def auto_scenario_name(site: Site, options: CalculationOptions, mode: str, **extras: Any) -> str:
-    parts = [f"{int(site.area_m2/1000)}тыс м²", f"{options.floors}эт"]
-    if options.planning_doc:
-        parts.append("ПД")
-    if options.built_in is not None:
-        parts.append(f"ВПП {int(options.built_in.area_m2)}м²")
+    """Унифицированное имя сценария (v0.9.17).
+
+    Формат: площадь / этажность / парковки [/ЗНОП / ВПП / ДПТ / mode].
+    Только реально заданные параметры — без лишнего шума.
+    """
+    # Площадь — компактно (га для больших, м² для малых)
+    a = site.area_m2
+    if a >= 10_000:
+        parts = [f"{a/10_000:.1f} га"]
+    else:
+        parts = [f"{int(a)} м²"]
+    parts.append(f"{options.floors} эт.")
+
+    # Парковки — кратко по архетипу
+    p = options.parking
+    if p.mode == "min_open":
+        parts.append("парк: min_open")
+    elif p.mode == "all_open":
+        parts.append("парк: все откр.")
+    elif p.mode == "custom":
+        parts.append(
+            f"парк: O{p.open_share*100:.0f}/M{p.multilevel_share*100:.0f}"
+            f"/U{p.underground_share*100:.0f}"
+        )
+
+    # ЗНОП — только если задан вручную
     if options.znop_per_person_override is not None:
-        parts.append(f"ЗНОП={options.znop_per_person_override}")
+        parts.append(f"ЗНОП {options.znop_per_person_override} м²/чел")
+    elif options.znop_total_area_override is not None:
+        parts.append(f"ЗНОП {int(options.znop_total_area_override)} м²")
+
+    # ВПП — только если есть
+    if options.built_in is not None or options.built_in_list:
+        parts.append("ВПП")
+
+    # ДПТ — только если выключен (иначе типовая ситуация)
+    if not options.planning_doc:
+        parts.append("без ДПТ")
+
     if mode == "with_reserve":
-        parts.append(f"резерв≥{int(extras.get('target_surplus_m2', 0))}")
+        parts.append(f"резерв ≥ {int(extras.get('target_surplus_m2', 0))} м²")
     if mode == "verify":
         parts.append(f"verify КИТ={extras.get('verify_kit_value', 0):.2f}")
     return " · ".join(parts)

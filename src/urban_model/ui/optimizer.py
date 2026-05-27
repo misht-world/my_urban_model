@@ -132,16 +132,17 @@ def _render_base_snapshot(
         # Ряд 3: экономика + ЗНОП
         c11, c12, c13, c14, c15 = st.columns(5)
         if base_tep.economy is not None:
-            c11.metric("Прибыль, у.е.", f"{_fmt_int(base_tep.economy.profit)}")
+            c11.metric("Выгодность, баллы", f"{_fmt_int(base_tep.economy.profit)}",
+                       help="Условный безразмерный индикатор для сравнения вариантов. НЕ рубли.")
             c12.metric("Маржа", f"{base_tep.economy.margin*100:.1f}%")
             c13.metric("ROI", f"{base_tep.economy.roi*100:.1f}%")
-            c14.metric("Прибыль / м² участка",
-                       f"{base_tep.economy.profit_per_site_m2:+.2f} у.е./м²")
+            # v0.9.17: «Прибыль / м² участка» убрано — не несёт пользы.
+            c14.metric("", "")
         else:
-            c11.metric("Прибыль, у.е.", "—")
+            c11.metric("Выгодность, баллы", "—")
             c12.metric("Маржа", "—")
             c13.metric("ROI", "—")
-            c14.metric("Прибыль / м² участка", "—")
+            c14.metric("", "")
         zpp = base_tep.znop_per_person.value or 0
         c15.metric("ЗНОП", f"{zpp:.0f} м²/чел" if zpp > 0 else "0 м²/чел")
 
@@ -395,7 +396,7 @@ def _render_comparison_table(
         ("ДОО, мест",                  "kg",     lambda v: f"{int(v):,}".replace(",", " "), None),
         ("СОШ, мест",                  "sch",    lambda v: f"{int(v):,}".replace(",", " "), None),
         ("ЗНОП, м²/чел",               "znop",   lambda v: f"{v:.0f}",                      None),
-        ("Прибыль, у.е.",              "profit", lambda v: f"{int(v):,}".replace(",", " ") if v is not None else "—", "max"),
+        ("Выгодность, баллы",              "profit", lambda v: f"{int(v):,}".replace(",", " ") if v is not None else "—", "max"),
     ]
 
     # DataFrame: индекс = показатель, колонки = варианты, ячейки = строки.
@@ -428,7 +429,7 @@ def _render_comparison_table(
 
     # v0.9.13: ключевые строки выделяем bold по всей строке (визуально
     # ведут глаз). Подсветка лучшего значения остаётся.
-    _KEY_ROWS = {"Площадь квартир, м²", "Прибыль, у.е.", "КИТ ПЗЗ"}
+    _KEY_ROWS = {"Площадь квартир, м²", "Выгодность, баллы", "КИТ ПЗЗ"}
 
     def _highlight(row):
         styles = [""] * len(row)
@@ -648,9 +649,10 @@ def _get_norms_resolver():
 def _scan_to_dataframe(scan: ScanResult) -> pd.DataFrame:
     """ScanResult → DataFrame для altair-графика.
 
-    v0.9.2: is_base/is_recommended сохраняются как int (0/1), а не bool —
-    vega-lite корректно фильтрует int, но с pandas-bool иногда даёт
-    непредсказуемое поведение в transform_filter.
+    v0.9.17: при совпадении точек база и рекомендация (одинаковая x) —
+    помечаем отдельной категорией `is_both=1`, чтобы рисовать особый
+    маркер (фиолетовый ромб с красным крестом), иначе они визуально
+    сливаются — видна только одна из двух.
     """
     rows = []
     for p in scan.points:
@@ -663,6 +665,7 @@ def _scan_to_dataframe(scan: ScanResult) -> pd.DataFrame:
             "feasible": bool(p.feasible),
             "is_base": 1 if p.is_base else 0,
             "is_recommended": 1 if p.is_recommended else 0,
+            "is_both": 1 if (p.is_base and p.is_recommended) else 0,
         })
     return pd.DataFrame(rows)
 
@@ -682,7 +685,7 @@ def _render_scan_chart(scan: ScanResult) -> None:
         tooltip=[
             alt.Tooltip("x_label:N", title=scan.x_axis_label),
             alt.Tooltip("apt:Q", title="Площадь квартир", format=",.0f"),
-            alt.Tooltip("profit:Q", title="Прибыль, у.е.", format=",.0f"),
+            alt.Tooltip("profit:Q", title="Выгодность, баллы", format=",.0f"),
             alt.Tooltip("kit:Q", title="КИТ", format=".3f"),
             alt.Tooltip("feasible:N", title="Допустимо"),
         ],
@@ -696,16 +699,25 @@ def _render_scan_chart(scan: ScanResult) -> None:
     )
     line = base_chart.mark_line(color="#1565C0", point=True)
     # Фильтр по int 0/1 — vega-lite надёжнее с int, чем с bool после JSON.
+    # v0.9.17: если база и рекомендация в одной точке, рисуем особый
+    # маркер `is_both` (фиолетовый ромб) — раньше зелёный ромб
+    # перекрывал красный кружок, и одна из меток терялась.
     base_dot = (
-        base_chart.transform_filter("datum.is_base == 1")
+        base_chart.transform_filter("datum.is_base == 1 && datum.is_both == 0")
         .mark_point(color="#D32F2F", size=200, filled=True)
     )
     rec_dot = (
-        base_chart.transform_filter("datum.is_recommended == 1")
+        base_chart.transform_filter("datum.is_recommended == 1 && datum.is_both == 0")
         .mark_point(color="#2E7D32", size=300, shape="diamond", filled=True,
                     stroke="white", strokeWidth=2)
     )
-    chart = (line + base_dot + rec_dot).properties(height=240)
+    # Совмещённый маркер: фиолетовый ромб с красной обводкой
+    both_dot = (
+        base_chart.transform_filter("datum.is_both == 1")
+        .mark_point(color="#7C3AED", size=320, shape="diamond", filled=True,
+                    stroke="#D32F2F", strokeWidth=3)
+    )
+    chart = (line + base_dot + rec_dot + both_dot).properties(height=240)
     st.altair_chart(chart, use_container_width=True)
 
 
@@ -791,8 +803,8 @@ def _render_what_to_improve_section(
     st.caption(
         "Каждая карточка варьирует **ОДИН параметр**, остальные — как в базе. "
         "Это **локальный** анализ; Парето-рекомендации сверху могут давать другие "
-        "значения, т.к. меняют параметры в комбинации. 🔴 — база, 🟢 — лучшее "
-        "по площади квартир."
+        "значения, т.к. меняют параметры в комбинации. "
+        "🔴 — база · 🟢 — лучшее по площади · 🟣 — обе точки совпадают."
     )
 
     opts_json = base_options.model_dump_json()
@@ -1094,7 +1106,7 @@ def _report_to_dataframe(report: OptimizationReport) -> pd.DataFrame:
             "Население, чел.": int(r.tep.population.value or 0),
         }
         if r.tep.economy is not None:
-            row["Прибыль, у.е."] = int(r.tep.economy.profit)
+            row["Выгодность, баллы"] = int(r.tep.economy.profit)
         row["ДОО, шт"] = _count_buckets(r.tep.kindergarten_places_accepted.formula)
         row["ДОО, мест"] = int(r.tep.kindergarten_places_accepted.value or 0)
         row["СОШ, шт"] = _count_buckets(r.tep.school_places_accepted.formula)

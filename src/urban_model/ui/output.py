@@ -136,29 +136,57 @@ def render_kpi(result: TEPResult, *, scenario_default_name: str | None = None) -
             if result.economy is not None:
                 e = result.economy
                 summary_text += (
-                    f"\n\n— Экономика (у.е.) —\n"
-                    f"Прибыль: {e.profit:+,.0f}\n"
-                    f"Выручка: {e.revenue.total:,.0f}\n"
-                    f"Себестоимость: {e.cost.total:,.0f}\n"
-                    f"Маржа: {e.margin * 100:.1f}%; ROI: {e.roi * 100:.1f}%\n"
-                    f"Прибыль/м² участка: {e.profit_per_site_m2:+,.2f}"
+                    f"\n\n— Оценка выгодности —\n"
+                    f"Баллы: {e.profit:+,.0f}\n"
+                    f"Маржа: {e.margin * 100:.1f}%; ROI: {e.roi * 100:.1f}%"
                 ).replace(",", " ")
-            # JS-кнопка: navigator.clipboard.writeText + inline-сообщение
+            # v0.9.17: иконка-кнопка двух листиков + надёжный fallback
+            # через execCommand для копирования из Streamlit-iframe (clipboard
+            # API часто блокируется браузером в cross-origin iframe).
             import json
             js_text = json.dumps(summary_text)
             uid = f"copy_{id(result)}"
             st.html(f"""
-            <div style="display:flex;align-items:center;gap:8px;">
+            <div style="display:flex;align-items:center;justify-content:flex-end;gap:8px;">
               <button id="btn_{uid}" type="button"
-                  onclick='navigator.clipboard.writeText({js_text}).then(()=>{{
-                      var s=document.getElementById("ok_{uid}");
-                      s.style.opacity="1";
-                      setTimeout(()=>{{s.style.opacity="0";}},2000);
-                  }});'
-                  style="background:#1565C0;color:white;border:none;
-                         padding:6px 12px;border-radius:4px;cursor:pointer;
-                         font-size:0.9rem;font-weight:500;">
-                📋 Копировать
+                  title="Скопировать сводку в буфер обмена"
+                  onclick='(function(){{
+                      var t={js_text};
+                      var ok=false;
+                      try {{
+                        var ta=document.createElement("textarea");
+                        ta.value=t;
+                        ta.style.position="fixed";
+                        ta.style.left="-9999px";
+                        document.body.appendChild(ta);
+                        ta.select();
+                        ok=document.execCommand("copy");
+                        document.body.removeChild(ta);
+                      }} catch(e) {{ ok=false; }}
+                      if (!ok && navigator.clipboard) {{
+                        navigator.clipboard.writeText(t).catch(()=>{{}});
+                        ok=true;
+                      }}
+                      if (ok) {{
+                        var s=document.getElementById("ok_{uid}");
+                        s.style.opacity="1";
+                        setTimeout(()=>{{s.style.opacity="0";}},1800);
+                      }}
+                  }})();'
+                  style="background:#F1F5F9;color:#334155;border:1px solid #CBD5E1;
+                         padding:5px 9px;border-radius:5px;cursor:pointer;
+                         display:inline-flex;align-items:center;gap:5px;
+                         font-size:0.85rem;font-weight:500;
+                         transition:background 0.15s;"
+                  onmouseover='this.style.background="#E2E8F0"'
+                  onmouseout='this.style.background="#F1F5F9"'>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+                     stroke="currentColor" stroke-width="2"
+                     stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                </svg>
+                Копировать
               </button>
               <span id="ok_{uid}"
                   style="color:#107C10;font-weight:500;opacity:0;
@@ -265,37 +293,52 @@ def render_kpi(result: TEPResult, *, scenario_default_name: str | None = None) -
             help="Общая площадь ЗНОП и норма на жителя.",
         )
 
-        # === Ряд 3: экономика (v0.8.0) — отображается, если result.economy не None ===
+        # === Ряд «Баланс территории» (v0.9.17) — компактная stacked-bar ===
+        # Раньше баланс был в свёрнутом expander внизу — пользователю
+        # приходилось скроллить. Теперь горизонтальная диаграмма прямо
+        # в KPI-блоке: сразу видно как разложена территория квартала.
+        _render_balance_bar(result)
+
+        # === Ряд 3: экономика (v0.9.17) — компактный блок «Оценка выгодности» ===
+        # Раньше показывалась «Прибыль в у.е.» — пользователи воспринимали
+        # это как рубли. Теперь — баллы выгодности проекта (безразмерный
+        # индикатор для сравнения вариантов). Маржа/ROI убраны в expander
+        # под блоком — не отвлекают, доступны если нужны.
         if result.economy is not None:
             st.markdown("---")
-            e1, e2, e3, e4 = st.columns(4)
             e = result.economy
-            profit_help = (
-                "Условные единицы. 1.0 у.е. ≈ себестоимость м² жилья "
-                "9-эт. монолита со standard-отделкой."
+            score_help = (
+                "Баллы выгодности проекта (условный индикатор для сравнения "
+                "вариантов). НЕ рубли. Положительные баллы = проект выгоднее "
+                "базовой ситуации; отрицательные = убыточнее."
             )
-            e1.metric(
-                "💰 Прибыль",
-                f"{e.profit:+,.0f} у.е.".replace(",", " "),
-                delta=("OK" if e.profit >= 0 else "УБЫТОК"),
-                delta_color=("normal" if e.profit >= 0 else "inverse"),
-                help=profit_help,
-            )
-            e2.metric(
-                "Маржа",
-                f"{e.margin * 100:.1f}%" if e.revenue.total > 0 else "—",
-                help="profit / revenue",
-            )
-            e3.metric(
-                "ROI",
-                f"{e.roi * 100:.1f}%" if e.cost.total > 0 else "—",
-                help="profit / cost",
-            )
-            e4.metric(
-                "Прибыль / м² участка",
-                f"{e.profit_per_site_m2:+,.2f} у.е./м²".replace(",", " "),
-                help="Основная метрика для ранжирования",
-            )
+            ec1, ec2 = st.columns([1, 3])
+            with ec1:
+                st.metric(
+                    "💰 Оценка выгодности",
+                    f"{e.profit:+,.0f}".replace(",", " "),
+                    delta=("плюс" if e.profit >= 0 else "минус"),
+                    delta_color=("normal" if e.profit >= 0 else "inverse"),
+                    help=score_help,
+                )
+            with ec2:
+                with st.expander("Подробные финансовые метрики", expanded=False):
+                    p1, p2, p3 = st.columns(3)
+                    p1.metric(
+                        "Маржа",
+                        f"{e.margin * 100:.1f}%" if e.revenue.total > 0 else "—",
+                        help="profit / revenue",
+                    )
+                    p2.metric(
+                        "ROI",
+                        f"{e.roi * 100:.1f}%" if e.cost.total > 0 else "—",
+                        help="profit / cost",
+                    )
+                    p3.metric(
+                        "Себестоимость / Выручка",
+                        f"{e.cost.total:,.0f} / {e.revenue.total:,.0f}".replace(",", " "),
+                        help="Сумма всех cost-компонентов и revenue-компонентов в баллах",
+                    )
 
         # === Inline-actions: «Добавить в сравнение» + xlsx (внутри блока) ===
         if scenario_default_name is not None:
@@ -446,8 +489,9 @@ def render_details(result: TEPResult) -> None:
         ]
         _show_rows(rows)
 
-    # ⚖️ Баланс территории
-    with st.expander("⚖️ Баланс территории", expanded=True):
+    # ⚖️ Баланс территории (детализация). v0.9.17: диаграмма теперь в
+    # KPI-блоке, здесь — табличная детализация на случай нужды.
+    with st.expander("⚖️ Баланс территории (таблица)", expanded=False):
         b = result.balance
         comp_rows = []
         site_area = b.site_area
@@ -483,66 +527,165 @@ def render_details(result: TEPResult) -> None:
         st.dataframe(pd.DataFrame(comp_rows), hide_index=True, use_container_width=True)
         st.caption(f"Площадь квартала: **{fmt_m2(site_area)}**  ·  {fmt_ga(site_area)}")
 
-    # 💰 Экономика (v0.8.0)
+    # 💰 Экономика
     if result.economy is not None:
-        with st.expander("💰 Экономика (себестоимость / выручка / метрики)", expanded=False):
+        with st.expander("💰 Экономика (детализация)", expanded=False):
             st.caption(
-                "Все значения — в условных единицах. **1.0 у.е. ≈ себестоимость "
-                "м² жилья 9-эт. монолита со standard-отделкой.** Стартовые "
-                "коэффициенты — `configs/spb.yaml`, секция `economy:` (источник SPEC.md). "
-                "Переход к рублям — через множитель (v0.8.x)."
+                "Все значения — в условных **баллах выгодности проекта** "
+                "(безразмерный индикатор для сравнения вариантов, НЕ рубли). "
+                "Стартовые коэффициенты — `configs/spb.yaml`, секция `economy:`. "
+                "Парковки с нулевыми местами в строки таблицы не включены."
             )
             e = result.economy
             cb = e.cost
             rb = e.revenue
 
-            # Себестоимость по статьям
+            # v0.9.17: скрываем строки с 0 — таблица становится короче и
+            # сосредоточенной на актуальных статьях расходов/доходов.
+            def _row(name: str, val: float) -> dict | None:
+                if abs(val) < 0.5:
+                    return None
+                return {"Статья": name, "Баллы": f"{val:,.0f}".replace(",", " ")}
+
             st.markdown("**Себестоимость**")
             cost_rows = [
-                {"Статья": "Жильё", "у.е.": f"{cb.residential:,.0f}".replace(",", " ")},
-                {"Статья": "ВПП (коммерция)", "у.е.": f"{cb.vpp:,.0f}".replace(",", " ")},
-                {"Статья": "ДОО (детские сады)", "у.е.": f"{cb.kindergarten:,.0f}".replace(",", " ")},
-                {"Статья": "СОШ (школы)", "у.е.": f"{cb.school:,.0f}".replace(",", " ")},
-                {"Статья": "Парковки открытые", "у.е.": f"{cb.parking_open:,.0f}".replace(",", " ")},
-                {"Статья": "Парковки многоуровневые", "у.е.": f"{cb.parking_multilevel:,.0f}".replace(",", " ")},
-                {"Статья": "Парковки подземные", "у.е.": f"{cb.parking_underground:,.0f}".replace(",", " ")},
-                {"Статья": "— Σ зданий и сооружений", "у.е.": f"{cb.shell_total:,.0f}".replace(",", " ")},
-                {"Статья": "Сети", "у.е.": f"{cb.networks:,.0f}".replace(",", " ")},
-                {"Статья": "Благоустройство", "у.е.": f"{cb.landscaping:,.0f}".replace(",", " ")},
-                {"Статья": "Проектирование", "у.е.": f"{cb.design:,.0f}".replace(",", " ")},
-                {"Статья": "Непредвиденные", "у.е.": f"{cb.contingency:,.0f}".replace(",", " ")},
-                {"Статья": "Земля + ТУ + снос", "у.е.": f"{cb.fixed:,.0f}".replace(",", " ")},
-                {"Статья": "**Итого себестоимость**", "у.е.": f"**{cb.total:,.0f}**".replace(",", " ")},
+                _row("Жильё", cb.residential),
+                _row("ВПП (коммерция)", cb.vpp),
+                _row("ДОО (детские сады)", cb.kindergarten),
+                _row("СОШ (школы)", cb.school),
+                _row("Парковки открытые", cb.parking_open),
+                _row("Парковки многоуровневые", cb.parking_multilevel),
+                _row("Парковки подземные", cb.parking_underground),
+                _row("Парковки соцобъектов", cb.social_parking),
+                _row("Спортивные сооружения", cb.sport),
+                _row("Пользовательские объекты", cb.custom_objects),
+                {"Статья": "— Σ зданий и сооружений", "Баллы": f"{cb.shell_total:,.0f}".replace(",", " ")},
+                _row("Сети", cb.networks),
+                _row("Благоустройство", cb.landscaping),
+                _row("Проектирование", cb.design),
+                _row("Непредвиденные", cb.contingency),
+                _row("Земля + ТУ + снос", cb.fixed),
+                {"Статья": "Итого себестоимость", "Баллы": f"{cb.total:,.0f}".replace(",", " ")},
             ]
+            cost_rows = [r for r in cost_rows if r is not None]
             st.dataframe(pd.DataFrame(cost_rows), hide_index=True, use_container_width=True)
 
-            # Выручка по источникам
             st.markdown("**Выручка**")
             rev_rows = [
-                {"Источник": "Жильё (м² квартир)", "у.е.": f"{rb.residential:,.0f}".replace(",", " ")},
-                {"Источник": "Парковки открытые", "у.е.": f"{rb.parking_open:,.0f}".replace(",", " ")},
-                {"Источник": "Парковки многоуровневые", "у.е.": f"{rb.parking_multilevel:,.0f}".replace(",", " ")},
-                {"Источник": "Парковки подземные", "у.е.": f"{rb.parking_underground:,.0f}".replace(",", " ")},
-                {"Источник": "ВПП коммерческая", "у.е.": f"{rb.vpp_commercial:,.0f}".replace(",", " ")},
-                {"Источник": "**Итого выручка**", "у.е.": f"**{rb.total:,.0f}**".replace(",", " ")},
+                _row("Жильё (м² квартир)", rb.residential),
+                _row("Парковки открытые", rb.parking_open),
+                _row("Парковки многоуровневые", rb.parking_multilevel),
+                _row("Парковки подземные", rb.parking_underground),
+                _row("ВПП коммерческая", rb.vpp_commercial),
+                _row("Пользовательские (коммерческие)", rb.custom_commercial),
+                _row("Компенсация ДОО/СОШ городом", rb.social_compensation),
+                {"Источник": "Итого выручка", "Баллы": f"{rb.total:,.0f}".replace(",", " ")},
+            ]
+            rev_rows = [
+                {"Источник": r.get("Статья", r.get("Источник", "")), "Баллы": r["Баллы"]}
+                for r in rev_rows if r is not None
             ]
             st.dataframe(pd.DataFrame(rev_rows), hide_index=True, use_container_width=True)
 
-            # Метрики
             st.markdown("**Метрики**")
-            mc1, mc2, mc3, mc4 = st.columns(4)
-            mc1.metric("Прибыль", f"{e.profit:+,.0f} у.е.".replace(",", " "))
+            mc1, mc2, mc3 = st.columns(3)
+            mc1.metric(
+                "Оценка выгодности",
+                f"{e.profit:+,.0f}".replace(",", " "),
+                help="Условные баллы. НЕ рубли.",
+            )
             mc2.metric("Маржа", f"{e.margin * 100:.1f}%" if rb.total > 0 else "—")
             mc3.metric("ROI", f"{e.roi * 100:.1f}%" if cb.total > 0 else "—")
-            mc4.metric(
-                "Прибыль/м² участка",
-                f"{e.profit_per_site_m2:+,.2f}".replace(",", " "),
-            )
 
     # 📋 Полный аудит
     with st.expander("📋 Полный аудит (все TEP-поля + источники)", expanded=False):
         df = results_to_audit_dataframe([("Текущий", result)])
         st.dataframe(df, hide_index=True, use_container_width=True)
+
+
+def _render_balance_bar(result: TEPResult) -> None:
+    """Компактная stacked-bar диаграмма баланса территории (v0.9.17).
+
+    Все компоненты + резерв в горизонтальной полосе. Помогает за секунду
+    увидеть «куда уходит территория» — без необходимости открывать таблицу.
+    """
+    import altair as alt
+    b = result.balance
+    site_area = b.site_area
+    if site_area <= 0:
+        return
+
+    pretty = {
+        "housing_lot": "ЗУ жилой застройки",
+        "kindergarten_plot": "ДОО",
+        "school_plot": "СОШ",
+        "sport_facilities": "Спорт. сооружения",
+        "social_parking_plot": "Парковки соцобъектов",
+        "znop": "ЗНОП",
+        "intra_quarter_driveways": "Внутрикв. проезды",
+        "parking_multilevel": "Многоуровн. паркинги",
+        "custom_objects": "Доп. объекты",
+    }
+    # Цвета по типам — деловая палитра
+    colors = {
+        "ЗУ жилой застройки":      "#4A90E2",
+        "ДОО":                     "#F5A623",
+        "СОШ":                     "#E94B3C",
+        "Спорт. сооружения":       "#7ED321",
+        "Парковки соцобъектов":    "#9B9B9B",
+        "ЗНОП":                    "#417505",
+        "Внутрикв. проезды":       "#B8B8B8",
+        "Многоуровн. паркинги":    "#50E3C2",
+        "Доп. объекты":            "#BD10E0",
+        "Резерв":                  "#D5E8D4",
+    }
+    rows = []
+    for name, val in sorted(b.components.items(), key=lambda kv: -kv[1]):
+        if val <= 0:
+            continue
+        label = pretty.get(name, name)
+        pct = val / site_area * 100
+        rows.append({"Компонент": label, "Площадь": val, "Доля": f"{pct:.1f}%"})
+    surplus = max(0.0, b.surplus)
+    if surplus > 0:
+        rows.append({
+            "Компонент": "Резерв",
+            "Площадь": surplus,
+            "Доля": f"{surplus/site_area*100:.1f}%",
+        })
+
+    if not rows:
+        return
+
+    df = pd.DataFrame(rows)
+    # Stacked bar — одна горизонтальная полоса
+    df["dummy"] = "Квартал"
+    domain = list(colors.keys())
+    range_ = [colors[d] for d in domain]
+    chart = (
+        alt.Chart(df)
+        .mark_bar()
+        .encode(
+            x=alt.X("Площадь:Q", stack="normalize",
+                    axis=alt.Axis(format="%", title=None)),
+            y=alt.Y("dummy:N", title=None, axis=alt.Axis(labels=False, ticks=False)),
+            color=alt.Color(
+                "Компонент:N",
+                scale=alt.Scale(domain=domain, range=range_),
+                legend=alt.Legend(title=None, orient="bottom", columns=5,
+                                  labelFontSize=11, symbolSize=80),
+            ),
+            order=alt.Order("Площадь:Q", sort="descending"),
+            tooltip=[
+                alt.Tooltip("Компонент:N"),
+                alt.Tooltip("Площадь:Q", title="м²", format=",.0f"),
+                alt.Tooltip("Доля:N"),
+            ],
+        )
+        .properties(height=70)
+    )
+    st.markdown("**⚖️ Распределение территории**")
+    st.altair_chart(chart, use_container_width=True)
 
 
 # ---------------------------------------------------------------------------

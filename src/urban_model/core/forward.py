@@ -438,23 +438,26 @@ def compute_tep_for_kit(
     )
 
     # === Проверка реалистичности подземного паркинга (v0.8.5, AUDIT P0-7) ===
-    # Если на 1 уровне подземки физически слишком много мест — добавляем WARNING.
-    # Норматив `parking.underground_capacity_per_level` (по умолчанию 400)
-    # задаёт максимум на уровень; при превышении рекомендуется увеличить
-    # underground_levels или вынести часть м/м в наземные.
+    # v0.9.17: на больших проектах подземка разбивается на НЕСКОЛЬКО СЕКЦИЙ
+    # (под разными корпусами/дворами). Норматив 400 м/м/уровень — это потолок
+    # ОДНОЙ секции. Поэтому при общем количестве > 400 × levels не сразу
+    # бьём warning — допускаем до ~4 секций (16× потолок). Реалистично:
+    # 5 га, 1 уровень, 1600 м/м = 4 секции по 400.
     if park.underground_places > 0:
         try:
             ug_cap_per_level = norms.resolve("parking.underground_capacity_per_level")
         except KeyError:
             ug_cap_per_level = None
         ug_levels = getattr(options.parking, "underground_levels", 1) or 1
-        if ug_cap_per_level and park.underground_places > ug_cap_per_level * ug_levels:
+        # 4 секции × levels — типичный максимум для крупных проектов СПб
+        _UG_MAX_SECTIONS = 4
+        soft_limit = ug_cap_per_level * ug_levels * _UG_MAX_SECTIONS if ug_cap_per_level else None
+        if soft_limit and park.underground_places > soft_limit:
             warnings.append(_wcprefix(WC.PARKING_UG_OVERPACKED,
                 f"Подземный паркинг: {park.underground_places} м/м на {ug_levels} "
-                f"уровн. — нагрузка {park.underground_places / ug_levels:.0f} м/м/уровень "
-                f"превышает ориентир {ug_cap_per_level}. "
-                f"Увеличьте `underground_levels` или перенесите часть м/м "
-                "в наземные/многоуровневые."
+                f"уровн. — это >{_UG_MAX_SECTIONS} секций по {ug_cap_per_level} м/м. "
+                f"Уточните допустимость такой концентрации на квартале или "
+                f"увеличьте `underground_levels`."
             ))
 
     # === Проезды ===

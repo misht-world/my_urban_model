@@ -43,7 +43,7 @@ st.set_page_config(
 # страницу. Hard refresh (Ctrl+F5) сбрасывает кэш.
 st.markdown("""
 <style>
-  /* v0.9.15 stylesheet marker — bump на каждом релизе, чтобы инвалидировать кэш */
+  /* v0.9.17 stylesheet marker — bump на каждом релизе, чтобы инвалидировать кэш */
   /* Уменьшаем верхний отступ всего блока */
   div.block-container {padding-top: 1.5rem; padding-bottom: 1rem;}
   /* Плотнее интервалы между виджетами */
