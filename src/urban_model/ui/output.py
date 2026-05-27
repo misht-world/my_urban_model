@@ -107,13 +107,16 @@ def render_kpi(result: TEPResult, *, scenario_default_name: str | None = None) -
     """
     # === Основные показатели в едином блоке с возможностью копирования ===
     with st.container(border=True):
-        # v0.9.19: вместо кастомной HTML-кнопки (которая блокировалась
-        # в Streamlit iframe) используем встроенный механизм Streamlit —
-        # `st.code()` рисует код-блок со ВСТРОЕННОЙ кнопкой копирования
-        # в правом верхнем углу. Она работает в любом окружении,
-        # потому что Streamlit сам управляет правами буфера обмена.
-        st.markdown("##### 📊 Основные показатели")
-        # Сводка
+        # v0.9.20: заголовок + компактная popover-сводка на одной строке.
+        # Раньше expander «📋 Сводка (с кнопкой копирования)» занимал всю
+        # ширину, кнопка копирования была далеко справа. Теперь popover
+        # открывается прямо под кнопкой — кнопка копирования рядом.
+        header_col, copy_col = st.columns([10, 2])
+        with header_col:
+            st.markdown("##### 📊 Основные показатели")
+
+        # Развёрнутая сводка (с разбивкой парковок/ДОО/СОШ по типам/объектам)
+        import re as _re
         kit_v = result.kit.value or 0
         kit_max = result.kit_normative_max.value or 0
         pop_v = int(result.population.value or 0)
@@ -121,17 +124,49 @@ def render_kpi(result: TEPResult, *, scenario_default_name: str | None = None) -
         surplus_v = result.balance.surplus
         kg_total = int(result.kindergarten_places_accepted.value or 0)
         sch_total = int(result.school_places_accepted.value or 0)
+        op_pl = int(result.parking_open_places.value or 0)
+        ml_pl = int(result.parking_multilevel_places.value or 0)
+        ug_pl = int(result.parking_underground_places.value or 0)
         total_pl = int(result.parking_required_places.value or 0)
         znop_pp = result.znop_per_person.value or 0
         znop_area = int(result.znop_area.value or 0)
+
+        # Разбивка ДОО/СОШ по объектам — из formula
+        def _buckets_text(formula: str | None) -> str:
+            if not formula:
+                return ""
+            m = _re.search(r'\[([^\]]+)\]', formula)
+            if not m:
+                return ""
+            try:
+                vals = [int(x.strip()) for x in m.group(1).split(",") if x.strip()]
+            except ValueError:
+                return ""
+            n = len(vals)
+            if n == 0:
+                return ""
+            lo, hi = min(vals), max(vals)
+            cap = f"{lo}" if lo == hi else f"{lo}–{hi}"
+            ending = "объект" if n == 1 else ("объекта" if 2 <= n <= 4 else "объектов")
+            return f" ({n} {ending} по {cap} мест)"
+
+        kg_breakdown = _buckets_text(result.kindergarten_places_accepted.formula)
+        sch_breakdown = _buckets_text(result.school_places_accepted.formula)
+
         summary_text = (
             f"КИТ (ПЗЗ): {kit_v:.3f} (потолок {kit_max})\n"
             f"Население: {pop_v:,} чел.\n"
             f"Площадь квартир: {apt_v:,.0f} м²\n"
             f"Резерв баланса: {surplus_v:+,.0f} м²\n"
-            f"ДОО: {kg_total} мест\n"
-            f"СОШ: {sch_total} мест\n"
-            f"Парковки: {total_pl} м/м\n"
+            f"\n"
+            f"ДОО: {kg_total} мест{kg_breakdown}\n"
+            f"СОШ: {sch_total} мест{sch_breakdown}\n"
+            f"\n"
+            f"Парковки всего: {total_pl} м/м\n"
+            f"  — открытые наземные: {op_pl} м/м\n"
+            f"  — многоуровневые: {ml_pl} м/м\n"
+            f"  — подземные: {ug_pl} м/м\n"
+            f"\n"
             f"ЗНОП: {znop_area:,} м² ({znop_pp:.1f} м²/чел)"
         ).replace(",", " ")
         if result.economy is not None:
@@ -141,9 +176,12 @@ def render_kpi(result: TEPResult, *, scenario_default_name: str | None = None) -
                 f"Баллы: {e.profit:+,.0f}\n"
                 f"Маржа: {e.margin * 100:.1f}%; ROI: {e.roi * 100:.1f}%"
             ).replace(",", " ")
-        with st.expander("📋 Сводка (с кнопкой копирования)", expanded=False):
-            # st.code рисует blok-код с встроенной copy-кнопкой в углу
-            st.code(summary_text, language=None)
+
+        with copy_col:
+            with st.popover("📋 Сводка", use_container_width=True):
+                # st.code рисует блок со ВСТРОЕННОЙ кнопкой копирования
+                # в правом верхнем углу. Streamlit-нативный механизм.
+                st.code(summary_text, language=None)
 
         # === Ряд 1: главные показатели жилья ===
         c1, c2, c3, c4 = st.columns(4)
@@ -610,25 +648,21 @@ def _render_balance_bar(result: TEPResult) -> None:
         return
 
     df = pd.DataFrame(rows)
-    df["dummy"] = "Квартал"
+    df["Pct"] = df["Площадь"] / site_area * 100
     domain = list(colors.keys())
     range_ = [colors[d] for d in domain]
-    # v0.9.19: явный size bar'а (40px) + height chart-area = 100.
-    # Раньше height=90 без size давало тонкую «линейку» — bar занимал
-    # маленькую часть chart-area по высоте.
-    chart = (
+    # v0.9.20: donut-chart вместо stacked-bar. Слева — текстовый список
+    # компонентов с долями, справа — круговая диаграмма. Лучше читается
+    # и привычнее визуально для проектировщика.
+    donut = (
         alt.Chart(df)
-        .mark_bar(stroke="white", strokeWidth=1.5, size=50)
+        .mark_arc(innerRadius=55, outerRadius=110, stroke="white", strokeWidth=2)
         .encode(
-            x=alt.X("Площадь:Q", stack="normalize",
-                    axis=alt.Axis(format="%", title=None, labelFontSize=11)),
-            y=alt.Y("dummy:N", title=None, axis=alt.Axis(labels=False, ticks=False)),
+            theta=alt.Theta("Площадь:Q", stack=True),
             color=alt.Color(
                 "Компонент:N",
                 scale=alt.Scale(domain=domain, range=range_),
-                legend=alt.Legend(title=None, orient="bottom", columns=5,
-                                  labelFontSize=12, symbolSize=120,
-                                  rowPadding=4, columnPadding=12),
+                legend=None,  # легенда слева через текстовый список
             ),
             order=alt.Order("Площадь:Q", sort="descending"),
             tooltip=[
@@ -637,12 +671,31 @@ def _render_balance_bar(result: TEPResult) -> None:
                 alt.Tooltip("Доля:N"),
             ],
         )
-        .properties(height=100)
-        .configure_view(strokeWidth=0)
+        .properties(height=260, width=260)
     )
+
     st.markdown("**⚖️ Распределение территории**")
-    st.altair_chart(chart, use_container_width=True)
-    st.caption("Наведите курсор на сегмент для подробностей. Цвета — в легенде ниже.")
+    col_legend, col_chart = st.columns([3, 2], gap="medium")
+    with col_legend:
+        # Текстовая «легенда» — список компонентов с цветными квадратиками
+        # и долями. Лучше читается чем символы altair-легенды.
+        html_lines = ["<div style='font-size:0.92rem;line-height:1.65;'>"]
+        for _, r in df.iterrows():
+            c = colors.get(r["Компонент"], "#999")
+            html_lines.append(
+                f"<div style='display:flex;align-items:center;gap:8px;'>"
+                f"<span style='display:inline-block;width:14px;height:14px;"
+                f"background:{c};border-radius:3px;flex-shrink:0;'></span>"
+                f"<span style='flex:1;'>{r['Компонент']}</span>"
+                f"<span style='color:#64748B;'>{r['Доля']}</span>"
+                f"<span style='color:#94A3B8;font-size:0.85rem;min-width:80px;"
+                f"text-align:right;'>{r['Площадь']:,.0f} м²</span>"
+                f"</div>".replace(",", " ")
+            )
+        html_lines.append("</div>")
+        st.markdown("".join(html_lines), unsafe_allow_html=True)
+    with col_chart:
+        st.altair_chart(donut, use_container_width=True)
 
 
 # ---------------------------------------------------------------------------
