@@ -654,13 +654,17 @@ def _render_balance_bar(result: TEPResult) -> None:
 
     df = pd.DataFrame(rows)
     df["Pct"] = df["Площадь"] / site_area * 100
+    # Подпись: «Жильё 35%» — только для сегментов ≥3% (мельче — налезут).
+    df["Label"] = df.apply(
+        lambda r: f"{r['Компонент']} {r['Pct']:.0f}%" if r["Pct"] >= 3 else "",
+        axis=1,
+    )
     domain = list(colors.keys())
     range_ = [colors[d] for d in domain]
-    # v0.9.22: donut крупнее + padding сверху, чтобы не обрезался.
-    # Раньше height=240 + outerRadius=80 — круг прижимался к верхней
-    # границе chart-area и легенда снизу занимала слишком много места.
-    # Теперь height=380, radius 60/110, явный padding-top.
-    donut = (
+    # v0.9.23: подписи-выноски рядом с сегментами вместо отдельной легенды.
+    # Сегменты ≥3% получают текст «Название X%» снаружи донута (radius=130).
+    # Мелкие сегменты — без текста (через tooltip), не создают визуальный шум.
+    arc = (
         alt.Chart(df)
         .mark_arc(innerRadius=60, outerRadius=110, stroke="white", strokeWidth=2)
         .encode(
@@ -668,11 +672,7 @@ def _render_balance_bar(result: TEPResult) -> None:
             color=alt.Color(
                 "Компонент:N",
                 scale=alt.Scale(domain=domain, range=range_),
-                legend=alt.Legend(
-                    title=None, orient="bottom", columns=2,
-                    labelFontSize=11, symbolSize=90,
-                    rowPadding=3, columnPadding=10,
-                ),
+                legend=None,  # легенда заменена подписями на самом графике
             ),
             order=alt.Order("Площадь:Q", sort="descending"),
             tooltip=[
@@ -681,10 +681,26 @@ def _render_balance_bar(result: TEPResult) -> None:
                 alt.Tooltip("Доля:N"),
             ],
         )
-        .properties(height=380, padding={"top": 20, "bottom": 10, "left": 5, "right": 5})
+    )
+    labels = (
+        alt.Chart(df)
+        .mark_text(radius=145, fontSize=11, fontWeight=500, color="#1F2937")
+        .encode(
+            theta=alt.Theta("Площадь:Q", stack=True),
+            text=alt.Text("Label:N"),
+            order=alt.Order("Площадь:Q", sort="descending"),
+        )
+    )
+    chart = (arc + labels).properties(
+        height=340,
+        padding={"top": 10, "bottom": 10, "left": 60, "right": 60},
     )
     st.markdown("**⚖️ Распределение территории**")
-    st.altair_chart(donut, use_container_width=True)
+    st.altair_chart(chart, use_container_width=True)
+    st.caption(
+        "Подписи показаны для сегментов ≥3%. Наведите курсор на любой "
+        "сегмент для подробностей."
+    )
 
 
 # ---------------------------------------------------------------------------
