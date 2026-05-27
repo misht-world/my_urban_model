@@ -57,6 +57,9 @@ class ParetoBundle:
     base_tep: TEPResult
     n_trials_total: int
     n_trials_feasible: int
+    # v0.9.11 (AUDIT S-1/P1-7): если рекомендаций нет — почему?
+    # Используется в UI для понятного сообщения вместо пустых карточек.
+    no_feasible_reason: str | None = None
 
 
 @dataclass(frozen=True)
@@ -81,11 +84,16 @@ class ParetoConstraints:
 
 
 def _is_hybrid_parking(params: dict, threshold: float = 0.10) -> bool:
-    """True если в сценарии одновременно > threshold многоуровневых И > threshold
-    подземных (типологически редкое сочетание МУ+UG, обычно не строится)."""
+    """True если в сценарии одновременно ≥ threshold многоуровневых И ≥ threshold
+    подземных (типологически редкое сочетание МУ+UG, обычно не строится).
+
+    v0.9.11 (AUDIT P1-3): включающая граница `>=` вместо `>` — устраняет
+    скачок поведения на ровно 10%. Теперь варианты с ml=10%, ug=10%
+    однозначно считаются гибридами и отфильтровываются.
+    """
     ml = float(params.get("parking_ml_share", 0.0) or 0.0)
     ug = float(params.get("parking_ug_share", 0.0) or 0.0)
-    return ml > threshold and ug > threshold
+    return ml >= threshold and ug >= threshold
 
 
 # v0.9.10: минимальные пороги «осмысленной» секции парковки.
@@ -420,9 +428,36 @@ def generate_pareto_recommendations(
         seed=seed,
     )
     recs = _select_three(report.top_n, base_tep, base_options, constraints)
+
+    # v0.9.11 (AUDIT S-1/P1-7): диагностика «почему пусто», чтобы UI
+    # мог показать прицельное сообщение пользователю.
+    reason: str | None = None
+    if not recs:
+        if report.n_trials_feasible == 0:
+            reason = (
+                "Ни одно из 400 испытаний Optuna не дало feasible-результата. "
+                "Вероятные причины:\n"
+                "• Малый квартал (нормативы 25% озеленения + 450 чел/га физически "
+                "противоречивы на участках <0.5 га);\n"
+                "• Слишком узкие ограничения подбора (диапазон этажности / "
+                "запрет всех типов парковок);\n"
+                "• Соцобъекты не помещаются нормативно при выбранной площади.\n\n"
+                "Попробуйте: отключить нормативы 25%/450 в Параметрах; "
+                "разрешить все типы парковок; снять ограничение по этажности; "
+                "включить «только потребность» для ДОО/СОШ."
+            )
+        else:
+            reason = (
+                f"Optuna нашёл {report.n_trials_feasible} feasible-сценариев, "
+                f"но фильтры «реалистичных сочетаний парковок» отсеяли все. "
+                "Отключите чекбокс «Реалистичные сочетания» в настройках подбора, "
+                "чтобы увидеть все варианты, либо разрешите больше типов парковок."
+            )
+
     return ParetoBundle(
         recommendations=recs,
         base_tep=base_tep,
         n_trials_total=report.n_trials_total,
         n_trials_feasible=report.n_trials_feasible,
+        no_feasible_reason=reason,
     )

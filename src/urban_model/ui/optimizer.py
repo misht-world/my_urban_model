@@ -211,7 +211,22 @@ def _render_recommendations_section(
         st.session_state["pareto_bundle_key"] = bundle_key
         cached_bundle = bundle
 
-    if cached_bundle is None or not cached_bundle.recommendations:
+    if cached_bundle is None:
+        return
+
+    # v0.9.11 (AUDIT S-1/P1-7): если Парето вернул 0 рекомендаций,
+    # вместо пустых карточек показываем прицельное объяснение причины.
+    if not cached_bundle.recommendations:
+        if cached_bundle.no_feasible_reason:
+            st.error(
+                "❌ Нет рекомендаций.\n\n" + cached_bundle.no_feasible_reason
+            )
+        else:
+            st.warning(
+                f"⚠ Парето не вернул рекомендаций "
+                f"({cached_bundle.n_trials_feasible}/{cached_bundle.n_trials_total} "
+                f"feasible). Попробуйте изменить настройки подбора."
+            )
         return
 
     cols = st.columns(len(cached_bundle.recommendations))
@@ -290,7 +305,15 @@ def _render_comparison_table(
         # Подсветка лучшего
         valid = [(i, v) for i, v in enumerate(raw_values) if v is not None]
         best_i: int | None = None
-        if best_dir == "max" and valid:
+        # v0.9.11 (AUDIT P1-10): не подсвечивать «лучшее», если все значения
+        # одинаковые (включая все нули) — нечего сравнивать, выделение сбивает.
+        all_equal = (
+            len(valid) >= 2
+            and all(abs(v - valid[0][1]) < 1e-9 for _, v in valid)
+        )
+        if all_equal:
+            best_i = None
+        elif best_dir == "max" and valid:
             best_i = max(valid, key=lambda iv: iv[1])[0]
         elif best_dir == "min" and valid:
             best_i = min(valid, key=lambda iv: iv[1])[0]
@@ -397,12 +420,15 @@ def _rec_options_from_params(
     # Парковки: режим + (для custom) доли + этажность МУ/UG
     if "parking_mode" in params:
         mode = str(params["parking_mode"])
+        # v0.9.11 (AUDIT P1-5): сохраняем multilevel_levels / underground_levels
+        # ВСЕГДА (даже для не-custom режимов) — иначе при переходе между
+        # сценариями уровни сбрасываются в дефолты, что путает в KPI-карточке.
+        ml_lvl = int(params.get("multilevel_levels", base_options.parking.multilevel_levels))
+        ug_lvl = int(params.get("underground_levels", base_options.parking.underground_levels))
         if mode == "custom":
-            # v0.9.10: НОРМАЛИЗАЦИЯ долей перед созданием ParkingConfig.
+            # v0.9.10: нормализация долей перед созданием ParkingConfig.
             # Optuna в `_build_options_for_trial` сэмплирует доли независимо,
-            # потом нормирует их в opts.parking — но в `sampled` (params)
-            # попадает РАУНДЕД-версия, сумма которой иногда 1.001 / 0.999.
-            # ParkingConfig.validate допускает 0.1%, и при превышении бросает.
+            # в `sampled` (params) попадает раундед-версия с суммой 1.001/0.999.
             o = float(params.get("parking_open_share", base_options.parking.open_share))
             m = float(params.get("parking_ml_share", base_options.parking.multilevel_share))
             u = float(params.get("parking_ug_share", base_options.parking.underground_share))
@@ -412,11 +438,12 @@ def _rec_options_from_params(
             opts.parking = ParkingConfig(
                 mode="custom",
                 open_share=o, multilevel_share=m, underground_share=u,
-                multilevel_levels=int(params.get("multilevel_levels", base_options.parking.multilevel_levels)),
-                underground_levels=int(params.get("underground_levels", base_options.parking.underground_levels)),
+                multilevel_levels=ml_lvl, underground_levels=ug_lvl,
             )
         else:
-            opts.parking = ParkingConfig(mode=mode)
+            opts.parking = ParkingConfig(
+                mode=mode, multilevel_levels=ml_lvl, underground_levels=ug_lvl,
+            )
     return opts
 
 

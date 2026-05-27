@@ -587,8 +587,6 @@ economy:
       value: 28
       unit: "m2"
       source: "SPEC.md"
-    surface_m2_per_space:
-      type: scalar
-      value: 25
-      unit: "m2"
-      source: "СП 113.13330"
+    # v0.9.11 (AUDIT P0-1): surface_m2_per_space удалён — экономика читает
+    # parking.open_space_per_place=20.75 из основного норматива (единый
+    # источник истины для площади открытого м/м).

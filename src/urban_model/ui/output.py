@@ -77,9 +77,22 @@ def render_header(result: TEPResult) -> None:
         st.caption(f"🔻 **Ограничивающий фактор:** {result.limiting_factor}")
     # v0.8.6: префиксы [CODE] из warning_codes.WC прячем от пользователя —
     # они служат для машинной фильтрации (Optuna feasibility, тесты).
-    from urban_model.calculations.warning_codes import strip_code
+    from urban_model.calculations.warning_codes import WC, any_with_code, strip_code
     for w in result.warnings:
         st.warning(f"⚠️ {strip_code(w)}")
+
+    # v0.9.11 (AUDIT S-2): если есть WARNING про вместимость соцобъекта меньше
+    # нормативного минимума — предложить пользователю «Только потребность».
+    # Это типичная ситуация на квартале < 5000 м² (3-50 чел населения),
+    # где ДОО на 5 мест или СОШ на 25 мест физически невозможны.
+    if any_with_code(result.warnings, WC.SOC_CAP_MIN_BELOW):
+        st.info(
+            "💡 **Подсказка:** на малых кварталах нормативные ДОО/СОШ "
+            "невозможны (вместимость < минимума). Если объект размещается "
+            "за пределами квартала — включите «Только рассчитать потребность» "
+            "в плитках ДОО/СОШ на вкладке «Параметры». Тогда место будет "
+            "учитываться, но ЗУ объекта не войдёт в баланс."
+        )
 
 
 # ---------------------------------------------------------------------------

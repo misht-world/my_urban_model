@@ -72,9 +72,8 @@ def calc_cost(tep, options, norms: Normatives) -> CostBreakdown:
     c_ug = float(norms.resolve("economy.construction.parking_underground"))
 
     # P0-1: площадь открытого м/м берём из основного норматива parking.*,
-    # чтобы себестоимость и баланс ссылались на одно и то же значение.
-    # Дубль `economy.parking_areas.surface_m2_per_space` оставлен в YAML для
-    # обратной совместимости, но не используется (см. AUDIT.md P0-1).
+    # единый источник истины. (Дубль `economy.parking_areas.surface_m2_per_space`
+    # удалён из YAML в v0.9.11.)
     m2_open = float(norms.resolve("parking.open_space_per_place"))
     m2_ml = float(norms.resolve("economy.parking_areas.multilevel_m2_per_space"))
     m2_ug = float(norms.resolve("economy.parking_areas.underground_m2_per_space"))

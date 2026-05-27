@@ -172,7 +172,15 @@ def scan_parking_underground_share(
         )
         try:
             tep = solve_max_kit(site, opts, norms)
-        except Exception:
+        except (ValueError, KeyError, RuntimeError) as e:
+            # v0.9.11 (AUDIT P1-1): логируем что точка упала и почему.
+            # Раньше молчаливый skip приводил к «дырам» в графике без
+            # объяснения. Теперь хотя бы видно в stderr.
+            import logging
+            logging.warning(
+                "scan: solve_max_kit failed (skipped): %s — %s",
+                type(e).__name__, e,
+            )
             continue
         points.append(_point_from_tep(
             x_value=ug, x_label=f"{ug*100:.0f}%", tep=tep,
@@ -229,7 +237,15 @@ def scan_parking_multilevel_share(
         )
         try:
             tep = solve_max_kit(site, opts, norms)
-        except Exception:
+        except (ValueError, KeyError, RuntimeError) as e:
+            # v0.9.11 (AUDIT P1-1): логируем что точка упала и почему.
+            # Раньше молчаливый skip приводил к «дырам» в графике без
+            # объяснения. Теперь хотя бы видно в stderr.
+            import logging
+            logging.warning(
+                "scan: solve_max_kit failed (skipped): %s — %s",
+                type(e).__name__, e,
+            )
             continue
         points.append(_point_from_tep(
             x_value=ml, x_label=f"{ml*100:.0f}%", tep=tep,
@@ -276,7 +292,12 @@ def scan_znop_steps(
     for v in _ZNOP_STEPS:
         try:
             tep = solve_max_kit_with_znop(site, v, base_options, norms)
-        except Exception:
+        except (ValueError, KeyError, RuntimeError) as e:
+            import logging
+            logging.warning(
+                "scan_znop[%s]: solve failed (skipped): %s — %s",
+                v, type(e).__name__, e,
+            )
             continue
         points.append(_point_from_tep(
             x_value=v, x_label=f"{v:.0f} м²/чел", tep=tep,
@@ -315,7 +336,15 @@ def scan_floors(
         opts.floors = f
         try:
             tep = solve_max_kit(site, opts, norms)
-        except Exception:
+        except (ValueError, KeyError, RuntimeError) as e:
+            # v0.9.11 (AUDIT P1-1): логируем что точка упала и почему.
+            # Раньше молчаливый skip приводил к «дырам» в графике без
+            # объяснения. Теперь хотя бы видно в stderr.
+            import logging
+            logging.warning(
+                "scan: solve_max_kit failed (skipped): %s — %s",
+                type(e).__name__, e,
+            )
             continue
         points.append(_point_from_tep(
             x_value=float(f), x_label=f"{f} эт.", tep=tep,
