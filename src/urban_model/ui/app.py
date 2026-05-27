@@ -43,7 +43,7 @@ st.set_page_config(
 # страницу. Hard refresh (Ctrl+F5) сбрасывает кэш.
 st.markdown("""
 <style>
-  /* v0.9.14 stylesheet marker — bump на каждом релизе, чтобы инвалидировать кэш */
+  /* v0.9.15 stylesheet marker — bump на каждом релизе, чтобы инвалидировать кэш */
   /* Уменьшаем верхний отступ всего блока */
   div.block-container {padding-top: 1.5rem; padding-bottom: 1rem;}
   /* Плотнее интервалы между виджетами */
@@ -79,31 +79,46 @@ st.markdown("""
      • левая (вводные данные) — голубой акцент слева + светло-голубой фон
      • правая (настройки компонентов) — зелёный акцент слева + светло-зелёный фон
      Усилено !important + border-left для надёжной видимости. */
-  /* v0.8.6: цветовая дифференциация колонок «Параметры».
-     Стратегия — 3 яруса селекторов от наиболее специфичного к самому
-     универсальному, чтобы пережить переименования testid в Streamlit:
-        1. data-testid="stColumn"   (1.32+)
-        2. data-testid="column"      (legacy)
-        3. :nth-child через прямого ребёнка stHorizontalBlock (всегда работает)
+  /* v0.9.15: цветовая дифференциация ВСЕЙ колонки «Параметры»
+     через `:has()`-селектор по невидимым CSS-маркерам, которые
+     `inputs.py` вставляет в каждую колонку. Работает в современных
+     браузерах (Chrome 105+, Firefox 121+, Safari 15.4+).
+     Деловые приглушённые цвета, не яркие.
+
+     Также сохранены fallback-селекторы по testid на случай отсутствия
+     `:has` (старые браузеры).
   */
-  /* — первый ярус: stColumn — */
-  [data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:first-child [data-testid="stVerticalBlockBorderWrapper"],
-  [data-testid="stHorizontalBlock"] > [data-testid="column"]:first-child [data-testid="stVerticalBlockBorderWrapper"],
-  [data-testid="stHorizontalBlock"] > :first-child div[class*="VerticalBlock"][data-testid$="BorderWrapper"] {
-      background-color: #E7F0F8 !important;
-      border-left: 4px solid #1565C0 !important;
-      border-top-color: #C2D9EC !important;
-      border-right-color: #C2D9EC !important;
-      border-bottom-color: #C2D9EC !important;
+  /* Главный селектор через :has — окрашивает ВСЮ колонку */
+  [data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:has(.params-col-input),
+  [data-testid="stHorizontalBlock"] > [data-testid="column"]:has(.params-col-input) {
+      background-color: #EBF3FA !important;
+      border: 1px solid #C9D9E8 !important;
+      border-left: 3px solid #5285B3 !important;
+      border-radius: 6px;
+      padding: 14px !important;
   }
-  [data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:last-child [data-testid="stVerticalBlockBorderWrapper"],
-  [data-testid="stHorizontalBlock"] > [data-testid="column"]:last-child [data-testid="stVerticalBlockBorderWrapper"],
-  [data-testid="stHorizontalBlock"] > :last-child div[class*="VerticalBlock"][data-testid$="BorderWrapper"] {
-      background-color: #E8F4EA !important;
-      border-left: 4px solid #2E7D32 !important;
-      border-top-color: #C4DEC8 !important;
-      border-right-color: #C4DEC8 !important;
-      border-bottom-color: #C4DEC8 !important;
+  [data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:has(.params-col-settings),
+  [data-testid="stHorizontalBlock"] > [data-testid="column"]:has(.params-col-settings) {
+      background-color: #EDF5EE !important;
+      border: 1px solid #C9DBCC !important;
+      border-left: 3px solid #5B8C66 !important;
+      border-radius: 6px;
+      padding: 14px !important;
+  }
+  /* Fallback (legacy): окрашиваем по nth-position если :has не поддерживается */
+  @supports not (selector(:has(*))) {
+      [data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:nth-of-type(1) {
+          background-color: #EBF3FA !important;
+          border-left: 3px solid #5285B3 !important;
+          border-radius: 6px;
+          padding: 14px !important;
+      }
+      [data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:nth-of-type(2) {
+          background-color: #EDF5EE !important;
+          border-left: 3px solid #5B8C66 !important;
+          border-radius: 6px;
+          padding: 14px !important;
+      }
   }
   /* Слайдеры внутри border-блоков — ограничение ширины до ~65%.
      Перечисляем разные селекторы для надёжности. */
@@ -113,6 +128,25 @@ st.markdown("""
   }
   /* Чуть меньше пустоты у containers с border */
   div[data-testid="stVerticalBlockBorderWrapper"] {padding: 0.6rem 0.9rem;}
+
+  /* v0.9.15: единый деловой стиль для ВСЕХ вкладок.
+     Контейнеры st.container(border=True) получают тонкий приглушённый
+     border и едва заметный фон. Subheader'ы становятся ненавязчивыми. */
+  div[data-testid="stVerticalBlockBorderWrapper"] {
+      border: 1px solid #DFE5EC !important;
+      background-color: #FAFBFC;
+      border-radius: 6px;
+  }
+  /* Однотипное оформление H5-заголовков внутри контейнеров — деловой look */
+  div[data-testid="stVerticalBlockBorderWrapper"] h5 {
+      color: #334155;
+      font-size: 1.0rem;
+      font-weight: 600;
+      margin-top: 0.1rem;
+      margin-bottom: 0.5rem;
+      padding-bottom: 0.3rem;
+      border-bottom: 1px solid #E5E9EF;
+  }
 </style>
 """, unsafe_allow_html=True)
 

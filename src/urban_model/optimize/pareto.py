@@ -418,12 +418,15 @@ def generate_pareto_recommendations(
     n_trials: int = 400,
     seed: int | None = 42,
     constraints: ParetoConstraints | None = None,
+    progress_callback=None,
 ) -> ParetoBundle:
     """Запускает один Optuna-прогон в широком SearchSpace и возвращает
     3 рекомендации, привязанные к разным критериям, с дельтами vs `base_tep`.
 
     v0.9.3: добавлен параметр `constraints` (ParetoConstraints) — пользователь
     может ограничить диапазон этажности и запретить отдельные типы парковок.
+    v0.9.15: `progress_callback(current, total, best)` пробрасывается в Optuna
+    для отображения реального прогресса в UI.
     """
     if constraints is None:
         constraints = ParetoConstraints()
@@ -438,6 +441,7 @@ def generate_pareto_recommendations(
         # парковки точно нашлись варианты разных типов.
         top_n=300,
         seed=seed,
+        progress_callback=progress_callback,
     )
     recs = _select_three(report.top_n, base_tep, base_options, constraints)
 

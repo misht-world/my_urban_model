@@ -229,7 +229,7 @@ def _render_recommendations_section(
             "🎯 Подобрать сценарии",
             type="primary",
             use_container_width=True,
-            help="Optuna 400 испытаний, около 10-15 секунд.",
+            help="Optuna 400 испытаний. Длительность зависит от размера квартала и параметров (типично 1-2 мин).",
         )
     with col_msg:
         if cached_bundle is not None and not is_stale:
@@ -243,12 +243,26 @@ def _render_recommendations_section(
             st.caption("Нажмите кнопку, чтобы запустить подбор.")
 
     if clicked:
-        with st.spinner("Optuna ищет лучшие сценарии (~12 сек)..."):
-            bundle = generate_pareto_recommendations(
-                site=site, base_options=base_options, norms=norms,
-                base_tep=base_tep, n_trials=400, seed=42,
-                constraints=constraints,
+        # v0.9.15: реальный прогресс-бар вместо «спиннера на 12 сек».
+        # Optuna может занимать 1-2 минуты (зависит от размера квартала
+        # и preview-solve для ВПП). Callback показывает текущий trial.
+        progress = st.progress(0.0, text="Запускаем подбор сценариев...")
+
+        def _on_progress(current: int, total: int, best: float) -> None:
+            pct = current / total
+            best_str = f"{best:,.0f} м²".replace(",", " ") if best > 0 else "—"
+            progress.progress(
+                pct,
+                text=f"Trial {current}/{total} · лучшая площадь: {best_str}",
             )
+
+        bundle = generate_pareto_recommendations(
+            site=site, base_options=base_options, norms=norms,
+            base_tep=base_tep, n_trials=400, seed=42,
+            constraints=constraints,
+            progress_callback=_on_progress,
+        )
+        progress.empty()
         st.session_state["pareto_bundle"] = bundle
         st.session_state["pareto_bundle_key"] = bundle_key
         cached_bundle = bundle

@@ -146,13 +146,17 @@ def render_params_tab() -> UserInputs:
 
     # ─── ЛЕВАЯ КОЛОНКА: общие сведения + чекбоксы ──────────────────
     with col_left:
-        # v0.9.14: заметный H4-заголовок колонки — даёт визуальное
-        # разделение «слева вводим данные / справа конкретизируем»
-        # независимо от CSS (когда селекторы Streamlit не срабатывают).
+        # v0.9.15: невидимые CSS-маркеры. Стилизация ВСЕЙ колонки выполняется
+        # через CSS-селектор `:has(.params-col-input)` в app.py — окрашивает
+        # колонку в бледный фон без зависимости от testid-структуры Streamlit.
         st.markdown(
-            '<div style="background:#1565C0;color:white;padding:6px 12px;'
-            'border-radius:6px;margin-bottom:8px;font-weight:600;">'
-            '📥 Ввод данных и общие настройки</div>',
+            '<div class="params-col-input" style="display:none"></div>',
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            '<div style="color:#475569;font-size:0.85rem;font-weight:600;'
+            'margin-bottom:6px;letter-spacing:0.02em;text-transform:uppercase;">'
+            'Ввод данных</div>',
             unsafe_allow_html=True,
         )
         (
@@ -227,9 +231,13 @@ def render_params_tab() -> UserInputs:
 
     with col_right:
         st.markdown(
-            '<div style="background:#2E7D32;color:white;padding:6px 12px;'
-            'border-radius:6px;margin-bottom:8px;font-weight:600;">'
-            '⚙ Настройки выбранных компонентов</div>',
+            '<div class="params-col-settings" style="display:none"></div>',
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            '<div style="color:#475569;font-size:0.85rem;font-weight:600;'
+            'margin-bottom:6px;letter-spacing:0.02em;text-transform:uppercase;">'
+            'Настройки компонентов</div>',
             unsafe_allow_html=True,
         )
         if not active_tiles:
