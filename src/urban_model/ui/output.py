@@ -291,46 +291,44 @@ def render_kpi(result: TEPResult, *, scenario_default_name: str | None = None) -
         with donut_col:
             _render_balance_bar(result)
 
-        # === Ряд 3: экономика (v0.9.17) — компактный блок «Оценка выгодности» ===
-        # Раньше показывалась «Прибыль в у.е.» — пользователи воспринимали
-        # это как рубли. Теперь — баллы выгодности проекта (безразмерный
-        # индикатор для сравнения вариантов). Маржа/ROI убраны в expander
-        # под блоком — не отвлекают, доступны если нужны.
+        # === Ряд 3: экономика — ВНУТРИ kpi_col, под метриками ===
+        # v0.9.26: раньше «Оценка выгодности» рендерилась на всю ширину
+        # под обеими колонками, оставляя пустое пространство под ДОО/СОШ
+        # рядом с donut'ом. Теперь блок встаёт В ЛЕВУЮ колонку, заполняя
+        # вертикаль на одном уровне с treemap'ом справа.
         if result.economy is not None:
-            st.markdown("---")
-            e = result.economy
-            score_help = (
-                "Баллы выгодности проекта — безразмерный индикатор для "
-                "сравнения вариантов. Положительные значения = проект "
-                "выгоднее базовой ситуации; отрицательные = убыточнее."
-            )
-            ec1, ec2 = st.columns([1, 3])
-            with ec1:
-                st.metric(
+            with kpi_col:
+                st.markdown("---")
+                e = result.economy
+                score_help = (
+                    "Баллы выгодности проекта — безразмерный индикатор для "
+                    "сравнения вариантов. Положительные значения = проект "
+                    "выгоднее базовой ситуации; отрицательные = убыточнее. "
+                    "Подробное описание формул — `ECONOMY_AUDIT.md`."
+                )
+                ec1, ec2, ec3, ec4 = st.columns(4)
+                ec1.metric(
                     "💰 Оценка выгодности",
                     f"{e.profit:+,.0f}".replace(",", " "),
                     delta=("плюс" if e.profit >= 0 else "минус"),
                     delta_color=("normal" if e.profit >= 0 else "inverse"),
                     help=score_help,
                 )
-            with ec2:
-                with st.expander("Подробные финансовые метрики", expanded=False):
-                    p1, p2, p3 = st.columns(3)
-                    p1.metric(
-                        "Маржа",
-                        f"{e.margin * 100:.1f}%" if e.revenue.total > 0 else "—",
-                        help="profit / revenue",
-                    )
-                    p2.metric(
-                        "ROI",
-                        f"{e.roi * 100:.1f}%" if e.cost.total > 0 else "—",
-                        help="profit / cost",
-                    )
-                    p3.metric(
-                        "Себестоимость / Выручка",
-                        f"{e.cost.total:,.0f} / {e.revenue.total:,.0f}".replace(",", " "),
-                        help="Сумма всех cost-компонентов и revenue-компонентов в баллах",
-                    )
+                ec2.metric(
+                    "Маржа",
+                    f"{e.margin * 100:.1f}%" if e.revenue.total > 0 else "—",
+                    help="profit / revenue",
+                )
+                ec3.metric(
+                    "ROI",
+                    f"{e.roi * 100:.1f}%" if e.cost.total > 0 else "—",
+                    help="profit / cost",
+                )
+                ec4.metric(
+                    "Cost / Revenue",
+                    f"{int(e.cost.total):,} / {int(e.revenue.total):,}".replace(",", " "),
+                    help="Сумма cost-компонентов и revenue-компонентов в баллах",
+                )
 
         # === Inline-actions: «Добавить в сравнение» + xlsx (внутри блока) ===
         if scenario_default_name is not None:
@@ -598,11 +596,60 @@ def render_details(result: TEPResult) -> None:
         st.dataframe(df, hide_index=True, use_container_width=True)
 
 
-def _render_balance_bar(result: TEPResult) -> None:
-    """Компактная stacked-bar диаграмма баланса территории (v0.9.17).
+def _squarify(values: list[float], x: float, y: float, w: float, h: float
+              ) -> list[tuple[float, float, float, float]]:
+    """Простой squarified-treemap (slice-and-dice вариант, v0.9.26).
 
-    Все компоненты + резерв в горизонтальной полосе. Помогает за секунду
-    увидеть «куда уходит территория» — без необходимости открывать таблицу.
+    Возвращает список (x, y, w, h) для каждого values[i]. Алгоритм:
+    отсортированный по убыванию массив рекурсивно делится на две группы
+    (первая ≥ половины суммарной площади), каждая занимает соответствующую
+    половину прямоугольника. Деление по большему измерению.
+
+    Не оптимизирует aspect-ratio до конца как Брюлс, но даёт визуально
+    приемлемый результат для типового набора 5-10 компонентов.
+    """
+    n = len(values)
+    if n == 0:
+        return []
+    if n == 1:
+        return [(x, y, w, h)]
+    total = sum(values)
+    if total <= 0:
+        # все нули — равные доли
+        return [(x, y, w / n, h)] * n
+    half = total / 2.0
+    cum = 0.0
+    split = 1
+    for i, v in enumerate(values):
+        cum += v
+        if cum >= half:
+            split = i + 1
+            break
+    left_vals = values[:split]
+    right_vals = values[split:]
+    left_sum = sum(left_vals)
+    if w >= h:
+        # делим по горизонтали (left | right)
+        w_left = w * left_sum / total
+        return (
+            _squarify(left_vals, x, y, w_left, h)
+            + _squarify(right_vals, x + w_left, y, w - w_left, h)
+        )
+    else:
+        # делим по вертикали (top / bottom)
+        h_top = h * left_sum / total
+        return (
+            _squarify(left_vals, x, y, w, h_top)
+            + _squarify(right_vals, x, y + h_top, w, h - h_top)
+        )
+
+
+def _render_balance_bar(result: TEPResult) -> None:
+    """Treemap-диаграмма баланса территории (v0.9.26).
+
+    Прямоугольные плитки пропорционально площади компонентов. Размер
+    плитки сразу показывает «куда уходит территория». Подписи внутри
+    крупных плиток (≥6%), мелкие — только tooltip.
     """
     import altair as alt
     b = result.balance
@@ -654,64 +701,67 @@ def _render_balance_bar(result: TEPResult) -> None:
 
     df = pd.DataFrame(rows)
     df["Pct"] = df["Площадь"] / site_area * 100
-    # v0.9.24: три типа подписей по размеру сегмента:
-    #   ≥10% — короткий текст внутри сегмента (белый, жирный): «35%»
-    #     отдельно «Жильё» снаружи на радиусе 145.
-    #   3-10% — только название + % снаружи.
-    #   <3% — без подписи (видны через tooltip).
-    df["InnerLabel"] = df.apply(
-        lambda r: f"{r['Pct']:.0f}%" if r["Pct"] >= 10 else "",
-        axis=1,
-    )
-    df["OuterLabel"] = df.apply(
-        lambda r: r["Компонент"] if r["Pct"] >= 10
-        else (f"{r['Компонент']} {r['Pct']:.0f}%" if r["Pct"] >= 3 else ""),
-        axis=1,
-    )
     domain = list(colors.keys())
     range_ = [colors[d] for d in domain]
 
-    # Базовая theta-кодировка (общая для arc/text/inner)
-    base = alt.Chart(df).encode(
-        theta=alt.Theta("Площадь:Q", stack=True),
-        order=alt.Order("Площадь:Q", sort="descending"),
-    )
-    arc = base.mark_arc(
-        innerRadius=70, outerRadius=120,
-        stroke="white", strokeWidth=2,
-    ).encode(
-        color=alt.Color(
-            "Компонент:N",
-            scale=alt.Scale(domain=domain, range=range_),
-            legend=None,
-        ),
-        tooltip=[
-            alt.Tooltip("Компонент:N"),
-            alt.Tooltip("Площадь:Q", title="м²", format=",.0f"),
-            alt.Tooltip("Доля:N"),
-        ],
-    )
-    inner_text = base.mark_text(
-        radius=95, fontSize=13, fontWeight="bold", color="white",
-    ).encode(text=alt.Text("InnerLabel:N"))
-    outer_text = base.mark_text(
-        radius=150, fontSize=11, fontWeight=500, color="#1F2937",
-    ).encode(text=alt.Text("OuterLabel:N"))
+    # v0.9.26: treemap вместо donut. Прямоугольные «плитки» размером
+    # пропорционально площади компонента — нагляднее для сравнения
+    # 9+ категорий, чем сектора круга. Реализация: squarified-treemap
+    # алгоритм inline (без новых зависимостей), рисуем через mark_rect.
+    sorted_rows = df.sort_values("Площадь", ascending=False).to_dict("records")
+    values = [r["Площадь"] for r in sorted_rows]
+    rects = _squarify(values, 0.0, 0.0, 100.0, 60.0)
+    tree_rows = []
+    for r, (x, y, w, h) in zip(sorted_rows, rects):
+        # Подпись внутри плитки только если плитка большая (≥6%)
+        if r["Pct"] >= 6:
+            label = f"{r['Компонент']}\n{r['Pct']:.0f}%"
+        else:
+            label = ""
+        tree_rows.append({
+            "Компонент": r["Компонент"],
+            "Площадь": r["Площадь"],
+            "Pct": r["Pct"],
+            "Доля": r["Доля"],
+            "x": x, "y": y, "x2": x + w, "y2": y + h,
+            "cx": x + w / 2, "cy": y + h / 2,
+            "label": label,
+        })
+    tree_df = pd.DataFrame(tree_rows)
 
-    # Центральный текст с общей площадью внутри донута.
-    ha = site_area / 10_000
-    center_label = f"{ha:.1f} га" if ha >= 1 else f"{int(site_area)} м²"
-    center_df = pd.DataFrame([{"x": 0, "y": 0, "label": center_label}])
-    center_text = (
-        alt.Chart(center_df)
-        .mark_text(fontSize=18, fontWeight="bold", color="#334155")
-        .encode(text="label:N")
+    rect = (
+        alt.Chart(tree_df)
+        .mark_rect(stroke="white", strokeWidth=2)
+        .encode(
+            x=alt.X("x:Q", axis=None, scale=alt.Scale(domain=[0, 100])),
+            y=alt.Y("y:Q", axis=None, scale=alt.Scale(domain=[0, 60])),
+            x2="x2:Q",
+            y2="y2:Q",
+            color=alt.Color(
+                "Компонент:N",
+                scale=alt.Scale(domain=domain, range=range_),
+                legend=None,
+            ),
+            tooltip=[
+                alt.Tooltip("Компонент:N"),
+                alt.Tooltip("Площадь:Q", title="м²", format=",.0f"),
+                alt.Tooltip("Доля:N"),
+            ],
+        )
     )
-
-    chart = (arc + inner_text + outer_text + center_text).properties(
-        height=340,
-        padding={"top": 10, "bottom": 10, "left": 60, "right": 60},
+    labels = (
+        alt.Chart(tree_df)
+        .mark_text(
+            color="white", fontSize=12, fontWeight=600,
+            lineBreak="\n", align="center", baseline="middle",
+        )
+        .encode(
+            x=alt.X("cx:Q", scale=alt.Scale(domain=[0, 100])),
+            y=alt.Y("cy:Q", scale=alt.Scale(domain=[0, 60])),
+            text="label:N",
+        )
     )
+    chart = (rect + labels).properties(height=340).configure_view(strokeWidth=0)
     st.markdown("**⚖️ Распределение территории**")
     st.altair_chart(chart, use_container_width=True)
 
