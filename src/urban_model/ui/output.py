@@ -183,8 +183,15 @@ def render_kpi(result: TEPResult, *, scenario_default_name: str | None = None) -
                 # в правом верхнем углу. Streamlit-нативный механизм.
                 st.code(summary_text, language=None)
 
-        # === Ряд 1: главные показатели жилья ===
-        c1, c2, c3, c4 = st.columns(4)
+        # v0.9.21: layout «KPI слева 60% + donut справа 40%» — пользователь
+        # хочет видеть распределение территории на одном уровне с метриками.
+        # Все ряды st.columns(4) создаются ВНУТРИ kpi_col; затем
+        # c1.metric/c5.metric/... рисуют в этой колонке. Donut —
+        # отдельно в donut_col, на одном вертикальном уровне.
+        kpi_col, donut_col = st.columns([3, 2], gap="medium")
+        with kpi_col:
+            c1, c2, c3, c4 = st.columns(4)  # ряд 1
+            c5, c6, c7, c8 = st.columns(4)  # ряд 2
         kit_help = (
             "КИТ по ПЗЗ СПб = площадь квартир / ЗУ жилой застройки. "
             f"Норматив. потолок: {result.kit_normative_max.value} "
@@ -213,8 +220,8 @@ def render_kpi(result: TEPResult, *, scenario_default_name: str | None = None) -
             ),
         )
 
-        # === Ряд 2: социалка / парковки / ЗНОП (внутри того же контейнера) ===
-        c5, c6, c7, c8 = st.columns(4)
+        # === Ряд 2: социалка / парковки / ЗНОП ===
+        # c5..c8 уже созданы выше внутри kpi_col.
 
         # Вспомогательная функция: парсим список вместимостей из formula-строки
         def _buckets_delta(formula_str: str, total: int) -> str | None:
@@ -280,11 +287,9 @@ def render_kpi(result: TEPResult, *, scenario_default_name: str | None = None) -
             help="Общая площадь ЗНОП и норма на жителя.",
         )
 
-        # === Ряд «Баланс территории» (v0.9.17) — компактная stacked-bar ===
-        # Раньше баланс был в свёрнутом expander внизу — пользователю
-        # приходилось скроллить. Теперь горизонтальная диаграмма прямо
-        # в KPI-блоке: сразу видно как разложена территория квартала.
-        _render_balance_bar(result)
+        # v0.9.21: donut в правой колонке на одном уровне с метриками
+        with donut_col:
+            _render_balance_bar(result)
 
         # === Ряд 3: экономика (v0.9.17) — компактный блок «Оценка выгодности» ===
         # Раньше показывалась «Прибыль в у.е.» — пользователи воспринимали
@@ -651,18 +656,21 @@ def _render_balance_bar(result: TEPResult) -> None:
     df["Pct"] = df["Площадь"] / site_area * 100
     domain = list(colors.keys())
     range_ = [colors[d] for d in domain]
-    # v0.9.20: donut-chart вместо stacked-bar. Слева — текстовый список
-    # компонентов с долями, справа — круговая диаграмма. Лучше читается
-    # и привычнее визуально для проектировщика.
+    # v0.9.21: компактный donut с inline-легендой altair снизу,
+    # рассчитан на узкую колонку (40% ширины KPI-блока).
     donut = (
         alt.Chart(df)
-        .mark_arc(innerRadius=55, outerRadius=110, stroke="white", strokeWidth=2)
+        .mark_arc(innerRadius=40, outerRadius=80, stroke="white", strokeWidth=2)
         .encode(
             theta=alt.Theta("Площадь:Q", stack=True),
             color=alt.Color(
                 "Компонент:N",
                 scale=alt.Scale(domain=domain, range=range_),
-                legend=None,  # легенда слева через текстовый список
+                legend=alt.Legend(
+                    title=None, orient="bottom", columns=2,
+                    labelFontSize=11, symbolSize=80,
+                    rowPadding=2, columnPadding=8,
+                ),
             ),
             order=alt.Order("Площадь:Q", sort="descending"),
             tooltip=[
@@ -671,31 +679,10 @@ def _render_balance_bar(result: TEPResult) -> None:
                 alt.Tooltip("Доля:N"),
             ],
         )
-        .properties(height=260, width=260)
+        .properties(height=240)
     )
-
     st.markdown("**⚖️ Распределение территории**")
-    col_legend, col_chart = st.columns([3, 2], gap="medium")
-    with col_legend:
-        # Текстовая «легенда» — список компонентов с цветными квадратиками
-        # и долями. Лучше читается чем символы altair-легенды.
-        html_lines = ["<div style='font-size:0.92rem;line-height:1.65;'>"]
-        for _, r in df.iterrows():
-            c = colors.get(r["Компонент"], "#999")
-            html_lines.append(
-                f"<div style='display:flex;align-items:center;gap:8px;'>"
-                f"<span style='display:inline-block;width:14px;height:14px;"
-                f"background:{c};border-radius:3px;flex-shrink:0;'></span>"
-                f"<span style='flex:1;'>{r['Компонент']}</span>"
-                f"<span style='color:#64748B;'>{r['Доля']}</span>"
-                f"<span style='color:#94A3B8;font-size:0.85rem;min-width:80px;"
-                f"text-align:right;'>{r['Площадь']:,.0f} м²</span>"
-                f"</div>".replace(",", " ")
-            )
-        html_lines.append("</div>")
-        st.markdown("".join(html_lines), unsafe_allow_html=True)
-    with col_chart:
-        st.altair_chart(donut, use_container_width=True)
+    st.altair_chart(donut, use_container_width=True)
 
 
 # ---------------------------------------------------------------------------
