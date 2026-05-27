@@ -67,9 +67,17 @@ class TestInverse:
         r_no = solve_max_kit(site, CalculationOptions(planning_doc=False), spb)
         assert r_no.kit_normative_max.value == 1.4
         assert r_yes.kit_normative_max.value == 2.5
-        # Без ДПТ результат либо feasible с КИТ ≤ 1.4, либо помечен
-        # неуспешным (infeasible / kit-error).
-        if r_no.balance.is_feasible:
+        # Без ДПТ результат либо полностью OK (feasible баланс + KIT ≤ 1.4),
+        # либо помечен неуспешным (infeasible баланс ИЛИ kit.status=ERROR).
+        # v0.9.16: balance.is_feasible теперь может быть True даже при
+        # KIT > 1.4 (surplus засчитывается в зелень). Полная проверка
+        # должна учитывать ОБА условия — баланс И статус КИТ.
+        from urban_model.models.result import Status
+        fully_ok = (
+            r_no.balance.is_feasible
+            and r_no.kit.status != Status.ERROR
+        )
+        if fully_ok:
             assert r_no.kit.value <= 1.4 + 1e-3
 
     def test_limiting_factor_set(self, spb):

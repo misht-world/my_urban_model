@@ -47,15 +47,19 @@ class TestBalanceFields:
 # ---------------------------------------------------------------------------
 
 class TestGreeningEnforcement:
-    def test_low_kit_with_zero_greening_infeasible(self, spb):
-        """При низком КИТ (≤ 1.0 на типичном квартале) озеленения недостаточно."""
+    def test_low_kit_uses_surplus_as_greening(self, spb):
+        """v0.9.16: при низком КИТ резерв квартала засчитывается как
+        зелёное открытое пространство — балан feasible даже без явного ЗНОП.
+        Раньше (v0.9.15) тот же кейс был infeasible из-за формального
+        дефицита, что не соответствовало реальной практике (двор/площадка
+        на огромном пустом квартале ЯВЛЯЕТСЯ озеленением).
+        """
         site = Site(area_m2=100_000)
-        # КИТ=0.5: housing_greening = 0.23 × 0.75 × 0.5 × 100k = 8625 м²
-        # required ≈ 0.25 × ~95k = 23 750 м² → дефицит
         r = verify_kit(0.5, site, CalculationOptions(floors=12, planning_doc=True), spb)
-        assert r.balance.greening_actual < r.balance.greening_required
-        assert not r.balance.is_feasible
-        assert r.balance.greening_deficit > 0
+        # surplus есть, balance.greening_actual теперь включает его → feasible
+        assert r.balance.surplus > 0
+        assert r.balance.greening_actual >= r.balance.greening_required
+        assert r.balance.is_feasible
 
     def test_high_kit_with_znop_meets_greening(self, spb):
         """При КИТ ≥ 2.0 ЗНОП = 6 м²/чел даёт большой запас озеленения."""

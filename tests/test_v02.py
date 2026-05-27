@@ -157,9 +157,16 @@ class TestRunScenarios:
         pairs = run_scenarios(scs, spb)
         res_yes = pairs[0][1]
         res_no = pairs[1][1]
-        # Без ДПТ: либо КИТ ПЗЗ ≤ 1.4 (feasible), либо результат помечен
-        # как infeasible/error. Не должно быть «тихого нарушения» норматива.
-        if res_no.balance.is_feasible:
+        # Без ДПТ: либо полностью OK (feasible баланс + KIT ≤ 1.4), либо
+        # результат помечен как infeasible/error.
+        # v0.9.16: balance.is_feasible может быть True даже при KIT > 1.4
+        # (resurplus засчитан в зелень). Проверяем оба условия.
+        from urban_model.models.result import Status
+        fully_ok = (
+            res_no.balance.is_feasible
+            and res_no.kit.status != Status.ERROR
+        )
+        if fully_ok:
             assert res_no.kit.value <= 1.4 + 1e-3
         else:
             assert res_no.limiting_factor  # должен быть объяснён

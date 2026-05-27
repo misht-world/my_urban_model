@@ -102,7 +102,19 @@ def _render_base_snapshot(
         c2.metric("Площадь квартир", f"{_fmt_int(base_tep.apartments_area.value)} м²")
         c3.metric("Этажность", str(base_options.floors))
         c4.metric("Население", f"{_fmt_int(base_tep.population.value)} чел")
-        c5.metric("Резерв баланса", f"{_fmt_int(base_tep.balance.surplus)} м²")
+        c5.metric(
+            "Резерв баланса",
+            f"{_fmt_int(base_tep.balance.surplus)} м²",
+            help=(
+                "Свободная часть квартала после вычитания всех компонентов "
+                "(жильё, ДОО/СОШ, парковки, проезды, ЗНОП). "
+                "Эта территория автоматически засчитывается как зелёное "
+                "открытое пространство (двор, площадка) и учитывается в "
+                "нормативе 25% озеленения квартала. "
+                "Положительный резерв = «запас под манёвр», нулевой = "
+                "квартал максимально использован."
+            ),
+        )
 
         # Ряд 2: парковки по типам
         op = int(base_tep.parking_open_places.value or 0)
