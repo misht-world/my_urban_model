@@ -96,25 +96,37 @@ def _is_hybrid_parking(params: dict, threshold: float = 0.10) -> bool:
     return ml >= threshold and ug >= threshold
 
 
-# v0.9.10: минимальные пороги «осмысленной» секции парковки.
+# v0.9.10-v0.9.12: минимальные пороги «осмысленной» секции парковки.
 # Меньше — символическое количество, на практике не строится.
 # Многоуровневый паркинг = 1 объект ≈ 100 мест (max 300 по нормативу СПб),
 # минимально стартует от ~50 мест. Подземная секция стартует от ~30 мест
 # (один въезд + ~10 мест на ряд × 3 ряда).
-_MIN_ML_PLACES = 50
-_MIN_UG_PLACES = 30
+#
+# AUDIT P1-2: пороги hardcoded плохо работали на крайних масштабах.
+# На квартале 200k м² (2000 м/м) 50 МУ = 2.5% — фильтр почти не работает.
+# На 5k м² (70 м/м) 50 МУ = 71% — фильтр запрещает любые МУ.
+# Решение: max(абсолютный порог, доля_от_total). 5% — типовая «доля
+# одной секции» от общего числа мест для среднего квартала.
+_MIN_ML_PLACES_ABS = 50
+_MIN_UG_PLACES_ABS = 30
+_MIN_FRACTION_OF_TOTAL = 0.05
 
 
 def _has_token_parking(tep: TEPResult) -> bool:
     """True если в варианте есть «символическое» количество МУ или подземных
-    мест (0 < N < минимальный порог секции). Такие варианты технически
-    нелогичны — никто не строит МУ-паркинг на 20 мест.
+    мест: 0 < N < max(абсолютный_порог, 5% от общего числа м/м).
+    На больших кварталах порог растёт пропорционально (50 → ~100+),
+    на малых — снижается до абсолютного минимума (30/50).
     """
     ml = int(tep.parking_multilevel_places.value or 0)
     ug = int(tep.parking_underground_places.value or 0)
-    if 0 < ml < _MIN_ML_PLACES:
+    total = int(tep.parking_required_places.value or 0)
+    # Адаптивный порог: max(абсолютный, доля от total)
+    th_ml = max(_MIN_ML_PLACES_ABS, int(total * _MIN_FRACTION_OF_TOTAL))
+    th_ug = max(_MIN_UG_PLACES_ABS, int(total * _MIN_FRACTION_OF_TOTAL))
+    if 0 < ml < th_ml:
         return True
-    if 0 < ug < _MIN_UG_PLACES:
+    if 0 < ug < th_ug:
         return True
     return False
 

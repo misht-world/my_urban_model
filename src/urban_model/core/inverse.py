@@ -67,7 +67,9 @@ def _bisect_max_feasible(
     # окна. Используем multi-pass с прогрессивно более мелким шагом, чтобы
     # надёжно ловить узкие окна (могут возникать, когда один норматив
     # «прижимает» снизу, другой — сверху, как density vs greening).
-    for n_steps in (scan_steps, scan_steps * 4, scan_steps * 16):
+    # v0.9.12 (AUDIT P1-8): увеличен максимальный шаг до ×64 (раньше ×16),
+    # чтобы ловить окна шириной ~(hi-lo)/64 ≈ 0.078 КИТ.
+    for n_steps in (scan_steps, scan_steps * 4, scan_steps * 16, scan_steps * 64):
         step = (hi - lo) / n_steps
         if step < tol:  # глубже бессмысленно — равно бисекции по точкам
             break
@@ -302,6 +304,25 @@ def solve_max_kit_with_znop(
         norms = load_normatives("spb")
     if options is None:
         options = CalculationOptions()
+
+    # v0.9.12 (AUDIT P1-9): валидация target_znop_per_person.
+    # Норматив СПб piecewise по КИТ заканчивается ступенью «6 м²/чел при
+    # КИТ ≤ 2.50». Значения >6 не имеют нормативного смысла (kit_cap_for_znop
+    # возвращает None) и cap на КИТ не применится — расчёт продолжит без
+    # ограничения, что вводит в заблуждение. Clamp до 6 + warning.
+    if target_znop_per_person < 0:
+        raise ValueError(
+            f"target_znop_per_person={target_znop_per_person} — должно быть ≥0"
+        )
+    _ZNOP_MAX_NORM = 6.0  # верхняя ступень piecewise в configs/spb.yaml
+    if target_znop_per_person > _ZNOP_MAX_NORM:
+        import logging
+        logging.warning(
+            "solve_max_kit_with_znop: target_znop_per_person=%.1f > %.1f "
+            "(верхняя нормативная ступень) — clamp до %.1f",
+            target_znop_per_person, _ZNOP_MAX_NORM, _ZNOP_MAX_NORM,
+        )
+        target_znop_per_person = _ZNOP_MAX_NORM
 
     # Глубокая копия, чтобы не мутировать переданный пользователем options
     opts = options.model_copy(deep=True)

@@ -122,20 +122,37 @@ class TestParkingFilterEdges:
         assert _is_hybrid_parking({"parking_ml_share": 0.10, "parking_ug_share": 0.50})
         assert not _is_hybrid_parking({"parking_ml_share": 0.099, "parking_ug_share": 0.50})
 
-    def test_token_parking_thresholds(self):
-        """`_has_token_parking`: < 50 МУ или < 30 UG — символическое."""
+    def test_token_parking_thresholds_small_site(self):
+        """На малом total (≤200 м/м) порог = абсолютный (50 МУ / 30 UG)."""
         from urban_model.optimize.pareto import _has_token_parking
-        # Эмулируем TEP-результат через простой namespace
         import types
 
-        def _make_tep(ml: int, ug: int):
+        def _make_tep(ml: int, ug: int, total: int = 100):
             tep = types.SimpleNamespace()
             tep.parking_multilevel_places = types.SimpleNamespace(value=ml)
             tep.parking_underground_places = types.SimpleNamespace(value=ug)
+            tep.parking_required_places = types.SimpleNamespace(value=total)
             return tep
 
-        assert _has_token_parking(_make_tep(ml=10, ug=0))  # 10 < 50 → token
-        assert _has_token_parking(_make_tep(ml=0, ug=10))  # 10 < 30 → token
-        assert not _has_token_parking(_make_tep(ml=0, ug=0))  # ничего нет — не токен
-        assert not _has_token_parking(_make_tep(ml=100, ug=0))  # 100 > 50 — норма
-        assert not _has_token_parking(_make_tep(ml=0, ug=200))  # норма
+        # При total=100, 5% = 5 → пороги остаются 50/30 (max)
+        assert _has_token_parking(_make_tep(ml=10, ug=0))      # 10 < 50 → token
+        assert _has_token_parking(_make_tep(ml=0, ug=10))      # 10 < 30 → token
+        assert not _has_token_parking(_make_tep(ml=0, ug=0))   # нет парковок — не token
+        assert not _has_token_parking(_make_tep(ml=100, ug=0)) # 100 > 50 — норма
+        assert not _has_token_parking(_make_tep(ml=0, ug=200)) # норма
+
+    def test_token_parking_scales_with_total(self):
+        """v0.9.12 (AUDIT P1-2): пороги растут с total (5% от него)."""
+        from urban_model.optimize.pareto import _has_token_parking
+        import types
+
+        def _make_tep(ml: int, ug: int, total: int):
+            tep = types.SimpleNamespace()
+            tep.parking_multilevel_places = types.SimpleNamespace(value=ml)
+            tep.parking_underground_places = types.SimpleNamespace(value=ug)
+            tep.parking_required_places = types.SimpleNamespace(value=total)
+            return tep
+
+        # total=2000, 5% = 100 → порог МУ становится 100 (а не 50)
+        assert _has_token_parking(_make_tep(ml=80, ug=0, total=2000))  # 80 < 100
+        assert not _has_token_parking(_make_tep(ml=120, ug=0, total=2000))  # 120 > 100

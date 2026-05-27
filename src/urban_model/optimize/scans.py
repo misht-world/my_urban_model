@@ -267,8 +267,33 @@ def scan_parking_multilevel_share(
 # ЗНОП: 4 нормативные ступени по ПЗЗ СПб
 # ---------------------------------------------------------------------------
 
-# Ступени piecewise по ПЗЗ СПб (см. configs/spb.yaml → znop_per_person)
-_ZNOP_STEPS = [0.0, 3.0, 4.0, 6.0]
+# v0.9.12 (AUDIT P2-1): ZNOP-ступени читаются ДИНАМИЧЕСКИ из YAML, а не
+# hardcoded. Если в norms норматив `znop_per_person` изменится (например,
+# для другого региона добавится ступень 8 м²/чел), скан подстроится сам.
+_ZNOP_STEPS_FALLBACK = [0.0, 3.0, 4.0, 6.0]
+
+
+def _znop_steps_from_norms(norms: Normatives) -> list[float]:
+    """Извлечь нормативные ступени ЗНОП из piecewise(КИТ).
+
+    Возвращает уникальные значения (м²/чел) в порядке возрастания.
+    Fallback на [0, 3, 4, 6] если резолв упал.
+    """
+    try:
+        node = norms.get("znop_per_person")
+        # node — это Piecewise (см. normatives/schema.py), у него есть .breakpoints
+        breakpoints = getattr(node, "breakpoints", None)
+        if not breakpoints:
+            return list(_ZNOP_STEPS_FALLBACK)
+        values: list[float] = []
+        for bp in breakpoints:
+            # breakpoint — pydantic-модель с полем .value
+            v = getattr(bp, "value", None)
+            if v is not None:
+                values.append(float(v))
+        return sorted(set(values)) if values else list(_ZNOP_STEPS_FALLBACK)
+    except (AttributeError, KeyError, TypeError, ValueError):
+        return list(_ZNOP_STEPS_FALLBACK)
 
 
 def scan_znop_steps(
@@ -277,7 +302,7 @@ def scan_znop_steps(
     norms: Normatives,
     metric: Metric = "apartments_area",
 ) -> ScanResult:
-    """Скан ровно по 4 нормативным ступеням ЗНОП: 0 / 3 / 4 / 6 м²/чел.
+    """Скан по нормативным ступеням ЗНОП (берутся из piecewise в YAML).
 
     Использует готовую функцию `solve_max_kit_with_znop` — она через
     `kit_cap_for_znop()` автоматически снижает потолок КИТ под ступень.
@@ -288,8 +313,10 @@ def scan_znop_steps(
         else 0.0  # без override считаем «база = ступень 0»
     )
 
+    steps = _znop_steps_from_norms(norms)
+
     points: list[ScanPoint] = []
-    for v in _ZNOP_STEPS:
+    for v in steps:
         try:
             tep = solve_max_kit_with_znop(site, v, base_options, norms)
         except (ValueError, KeyError, RuntimeError) as e:

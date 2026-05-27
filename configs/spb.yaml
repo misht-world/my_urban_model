@@ -500,7 +500,11 @@ economy:
       note: "≈ 80 тыс ₽/м² (земляные + гидроизоляция + рампы)"
       source: "СПб 2024"
     # все три верхних имеют source — ок
-    # Прогрессия удорожания подземных уровней (level N относительно level 1)
+    # Прогрессия удорожания подземных уровней (level N относительно level 1).
+    # v0.9.12 (AUDIT P2-6): раньше 4-й и 5-й уровни имели одинаковый множитель
+    # 2.05 (т.к. last step был .inf). Теперь явно различаем: каждый уровень
+    # глубже добавляет ~25-30% к стоимости (земляные работы + гидроизоляция
+    # + дренаж + рампы). ParkingConfig.underground_levels ∈ [1..5].
     underground_progression:
       type: piecewise
       argument: level
@@ -508,9 +512,11 @@ economy:
         - { up_to: 1,    value: 1.00 }
         - { up_to: 2,    value: 1.30 }
         - { up_to: 3,    value: 1.65 }
-        - { up_to: .inf, value: 2.05 }
+        - { up_to: 4,    value: 2.05 }
+        - { up_to: 5,    value: 2.50 }
+        - { up_to: .inf, value: 3.00 }
       unit: "multiplier"
-      source: "SPEC.md (стартовая прогрессия)"
+      source: "принято условно (типовая прогрессия подрядчиков СПб)"
 
   overhead:
     pct_networks:
