@@ -654,11 +654,9 @@ def _render_balance_bar(result: TEPResult) -> None:
 
     df = pd.DataFrame(rows)
     df["Pct"] = df["Площадь"] / site_area * 100
-    # v0.9.24: три типа подписей по размеру сегмента:
-    #   ≥10% — короткий текст внутри сегмента (белый, жирный): «35%»
-    #     отдельно «Жильё» снаружи на радиусе 145.
-    #   3-10% — только название + % снаружи.
-    #   <3% — без подписи (видны через tooltip).
+    # v0.9.25: подписи отдельно ВНУТРИ (процент) и СНАРУЖИ (название).
+    # Внутри — обводка (paint-order text+stroke) для читаемости на ярких
+    # сегментах. Снаружи — цветной кружок-маркер перед текстом.
     df["InnerLabel"] = df.apply(
         lambda r: f"{r['Pct']:.0f}%" if r["Pct"] >= 10 else "",
         axis=1,
@@ -671,7 +669,7 @@ def _render_balance_bar(result: TEPResult) -> None:
     domain = list(colors.keys())
     range_ = [colors[d] for d in domain]
 
-    # Базовая theta-кодировка (общая для arc/text/inner)
+    # Базовая theta-кодировка (общая для arc/text/dots)
     base = alt.Chart(df).encode(
         theta=alt.Theta("Площадь:Q", stack=True),
         order=alt.Order("Площадь:Q", sort="descending"),
@@ -691,25 +689,60 @@ def _render_balance_bar(result: TEPResult) -> None:
             alt.Tooltip("Доля:N"),
         ],
     )
+    # Внутренние подписи (проценты ≥10%) — белый текст с лёгкой тёмной
+    # обводкой через stroke; читается на любом цвете сегмента.
     inner_text = base.mark_text(
-        radius=95, fontSize=13, fontWeight="bold", color="white",
+        radius=95, fontSize=14, fontWeight="bold",
+        color="white", stroke="#0F172A", strokeWidth=0.5,
+        # paint-order: filled text сверху, stroke снизу
     ).encode(text=alt.Text("InnerLabel:N"))
+
+    # Цветные маркер-точки снаружи на радиусе 138 (перед текстом).
+    # Только для сегментов с outer-label — иначе ничего не показываем.
+    dots_df = df[df["OuterLabel"] != ""].copy()
+    dots = (
+        alt.Chart(dots_df)
+        .mark_point(
+            radius=138, size=85, filled=True,
+            stroke="white", strokeWidth=1.5,
+        )
+        .encode(
+            theta=alt.Theta("Площадь:Q", stack=True),
+            order=alt.Order("Площадь:Q", sort="descending"),
+            color=alt.Color(
+                "Компонент:N",
+                scale=alt.Scale(domain=domain, range=range_),
+                legend=None,
+            ),
+        )
+    )
+    # Внешние подписи — на радиусе 158 (за точками)
     outer_text = base.mark_text(
-        radius=150, fontSize=11, fontWeight=500, color="#1F2937",
+        radius=158, fontSize=12, fontWeight=600, color="#1F2937",
     ).encode(text=alt.Text("OuterLabel:N"))
 
-    # Центральный текст с общей площадью внутри донута.
+    # Центр: «5.0 га» + ниже мелким серым «общая площадь».
     ha = site_area / 10_000
     center_label = f"{ha:.1f} га" if ha >= 1 else f"{int(site_area)} м²"
-    center_df = pd.DataFrame([{"x": 0, "y": 0, "label": center_label}])
-    center_text = (
-        alt.Chart(center_df)
-        .mark_text(fontSize=18, fontWeight="bold", color="#334155")
-        .encode(text="label:N")
+    center_df = pd.DataFrame([
+        {"x": 0, "y": 0.06, "label": center_label, "kind": "main"},
+        {"x": 0, "y": -0.06, "label": "общая площадь", "kind": "sub"},
+    ])
+    center_main = (
+        alt.Chart(center_df[center_df["kind"] == "main"])
+        .mark_text(fontSize=20, fontWeight="bold", color="#1E293B")
+        .encode(text="label:N", y=alt.Y("y:Q", scale=alt.Scale(domain=[-1, 1]),
+                                        axis=None))
+    )
+    center_sub = (
+        alt.Chart(center_df[center_df["kind"] == "sub"])
+        .mark_text(fontSize=10, color="#64748B")
+        .encode(text="label:N", y=alt.Y("y:Q", scale=alt.Scale(domain=[-1, 1]),
+                                        axis=None))
     )
 
-    chart = (arc + inner_text + outer_text + center_text).properties(
-        height=340,
+    chart = (arc + inner_text + dots + outer_text + center_main + center_sub).properties(
+        height=360,
         padding={"top": 10, "bottom": 10, "left": 60, "right": 60},
     )
     st.markdown("**⚖️ Распределение территории**")
