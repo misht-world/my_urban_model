@@ -542,29 +542,32 @@ def render_details(result: TEPResult) -> None:
 
             # v0.9.17: скрываем строки с 0 — таблица становится короче и
             # сосредоточенной на актуальных статьях расходов/доходов.
-            def _row(name: str, val: float) -> dict | None:
+            # v0.9.18: переименовано в `_eco_row` чтобы не конфликтовать
+            # с глобальной `_row(label, field, fmt_fn, ...)` из этого же
+            # модуля (Python считает обе локальными по правилу scoping).
+            def _eco_row(name: str, val: float) -> dict | None:
                 if abs(val) < 0.5:
                     return None
                 return {"Статья": name, "Баллы": f"{val:,.0f}".replace(",", " ")}
 
             st.markdown("**Себестоимость**")
             cost_rows = [
-                _row("Жильё", cb.residential),
-                _row("ВПП (коммерция)", cb.vpp),
-                _row("ДОО (детские сады)", cb.kindergarten),
-                _row("СОШ (школы)", cb.school),
-                _row("Парковки открытые", cb.parking_open),
-                _row("Парковки многоуровневые", cb.parking_multilevel),
-                _row("Парковки подземные", cb.parking_underground),
-                _row("Парковки соцобъектов", cb.social_parking),
-                _row("Спортивные сооружения", cb.sport),
-                _row("Пользовательские объекты", cb.custom_objects),
+                _eco_row("Жильё", cb.residential),
+                _eco_row("ВПП (коммерция)", cb.vpp),
+                _eco_row("ДОО (детские сады)", cb.kindergarten),
+                _eco_row("СОШ (школы)", cb.school),
+                _eco_row("Парковки открытые", cb.parking_open),
+                _eco_row("Парковки многоуровневые", cb.parking_multilevel),
+                _eco_row("Парковки подземные", cb.parking_underground),
+                _eco_row("Парковки соцобъектов", cb.social_parking),
+                _eco_row("Спортивные сооружения", cb.sport),
+                _eco_row("Пользовательские объекты", cb.custom_objects),
                 {"Статья": "— Σ зданий и сооружений", "Баллы": f"{cb.shell_total:,.0f}".replace(",", " ")},
-                _row("Сети", cb.networks),
-                _row("Благоустройство", cb.landscaping),
-                _row("Проектирование", cb.design),
-                _row("Непредвиденные", cb.contingency),
-                _row("Земля + ТУ + снос", cb.fixed),
+                _eco_row("Сети", cb.networks),
+                _eco_row("Благоустройство", cb.landscaping),
+                _eco_row("Проектирование", cb.design),
+                _eco_row("Непредвиденные", cb.contingency),
+                _eco_row("Земля + ТУ + снос", cb.fixed),
                 {"Статья": "Итого себестоимость", "Баллы": f"{cb.total:,.0f}".replace(",", " ")},
             ]
             cost_rows = [r for r in cost_rows if r is not None]
@@ -572,13 +575,13 @@ def render_details(result: TEPResult) -> None:
 
             st.markdown("**Выручка**")
             rev_rows = [
-                _row("Жильё (м² квартир)", rb.residential),
-                _row("Парковки открытые", rb.parking_open),
-                _row("Парковки многоуровневые", rb.parking_multilevel),
-                _row("Парковки подземные", rb.parking_underground),
-                _row("ВПП коммерческая", rb.vpp_commercial),
-                _row("Пользовательские (коммерческие)", rb.custom_commercial),
-                _row("Компенсация ДОО/СОШ городом", rb.social_compensation),
+                _eco_row("Жильё (м² квартир)", rb.residential),
+                _eco_row("Парковки открытые", rb.parking_open),
+                _eco_row("Парковки многоуровневые", rb.parking_multilevel),
+                _eco_row("Парковки подземные", rb.parking_underground),
+                _eco_row("ВПП коммерческая", rb.vpp_commercial),
+                _eco_row("Пользовательские (коммерческие)", rb.custom_commercial),
+                _eco_row("Компенсация ДОО/СОШ городом", rb.social_compensation),
                 {"Источник": "Итого выручка", "Баллы": f"{rb.total:,.0f}".replace(",", " ")},
             ]
             rev_rows = [
@@ -658,22 +661,24 @@ def _render_balance_bar(result: TEPResult) -> None:
         return
 
     df = pd.DataFrame(rows)
-    # Stacked bar — одна горизонтальная полоса
     df["dummy"] = "Квартал"
     domain = list(colors.keys())
     range_ = [colors[d] for d in domain]
+    # v0.9.18: высота 90px (раньше 70 — слишком тонко) + tooltip с
+    # деталями для каждого сегмента + расширенная легенда внизу.
     chart = (
         alt.Chart(df)
-        .mark_bar()
+        .mark_bar(stroke="white", strokeWidth=1)
         .encode(
             x=alt.X("Площадь:Q", stack="normalize",
-                    axis=alt.Axis(format="%", title=None)),
+                    axis=alt.Axis(format="%", title=None, labelFontSize=11)),
             y=alt.Y("dummy:N", title=None, axis=alt.Axis(labels=False, ticks=False)),
             color=alt.Color(
                 "Компонент:N",
                 scale=alt.Scale(domain=domain, range=range_),
                 legend=alt.Legend(title=None, orient="bottom", columns=5,
-                                  labelFontSize=11, symbolSize=80),
+                                  labelFontSize=12, symbolSize=120,
+                                  rowPadding=4, columnPadding=12),
             ),
             order=alt.Order("Площадь:Q", sort="descending"),
             tooltip=[
@@ -682,10 +687,11 @@ def _render_balance_bar(result: TEPResult) -> None:
                 alt.Tooltip("Доля:N"),
             ],
         )
-        .properties(height=70)
+        .properties(height=90)
     )
     st.markdown("**⚖️ Распределение территории**")
     st.altair_chart(chart, use_container_width=True)
+    st.caption("Наведите курсор на сегмент для подробностей. Цвета — в легенде ниже.")
 
 
 # ---------------------------------------------------------------------------
