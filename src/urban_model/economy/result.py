@@ -71,6 +71,6 @@ class EconomicMetrics(BaseModel):
 
     # Источник единиц — для аудита
     units_label: str = Field(
-        default="у.е. (1.0 = м² жилья 9эт. монолит standard)",
+        default="баллы выгодности (1.0 ≈ м² жилья 9эт. монолит standard)",
         description="Подпись единиц для UI/отчётов",
     )

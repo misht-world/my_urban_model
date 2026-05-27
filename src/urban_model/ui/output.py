@@ -107,94 +107,43 @@ def render_kpi(result: TEPResult, *, scenario_default_name: str | None = None) -
     """
     # === Основные показатели в едином блоке с возможностью копирования ===
     with st.container(border=True):
-        header_col, copy_col = st.columns([10, 2])
-        with header_col:
-            st.markdown("##### 📊 Основные показатели")
-        with copy_col:
-            # Сводка в виде plain-text для копирования через JS clipboard API
-            kit_v = result.kit.value or 0
-            kit_max = result.kit_normative_max.value or 0
-            pop_v = int(result.population.value or 0)
-            apt_v = result.apartments_area.value or 0
-            surplus_v = result.balance.surplus
-            kg_total = int(result.kindergarten_places_accepted.value or 0)
-            sch_total = int(result.school_places_accepted.value or 0)
-            total_pl = int(result.parking_required_places.value or 0)
-            znop_pp = result.znop_per_person.value or 0
-            znop_area = int(result.znop_area.value or 0)
-            summary_text = (
-                f"КИТ (ПЗЗ): {kit_v:.3f} (потолок {kit_max})\n"
-                f"Население: {pop_v:,} чел.\n"
-                f"Площадь квартир: {apt_v:,.0f} м²\n"
-                f"Резерв баланса: {surplus_v:+,.0f} м²\n"
-                f"ДОО: {kg_total} мест\n"
-                f"СОШ: {sch_total} мест\n"
-                f"Парковки: {total_pl} м/м\n"
-                f"ЗНОП: {znop_area:,} м² ({znop_pp:.1f} м²/чел)"
+        # v0.9.19: вместо кастомной HTML-кнопки (которая блокировалась
+        # в Streamlit iframe) используем встроенный механизм Streamlit —
+        # `st.code()` рисует код-блок со ВСТРОЕННОЙ кнопкой копирования
+        # в правом верхнем углу. Она работает в любом окружении,
+        # потому что Streamlit сам управляет правами буфера обмена.
+        st.markdown("##### 📊 Основные показатели")
+        # Сводка
+        kit_v = result.kit.value or 0
+        kit_max = result.kit_normative_max.value or 0
+        pop_v = int(result.population.value or 0)
+        apt_v = result.apartments_area.value or 0
+        surplus_v = result.balance.surplus
+        kg_total = int(result.kindergarten_places_accepted.value or 0)
+        sch_total = int(result.school_places_accepted.value or 0)
+        total_pl = int(result.parking_required_places.value or 0)
+        znop_pp = result.znop_per_person.value or 0
+        znop_area = int(result.znop_area.value or 0)
+        summary_text = (
+            f"КИТ (ПЗЗ): {kit_v:.3f} (потолок {kit_max})\n"
+            f"Население: {pop_v:,} чел.\n"
+            f"Площадь квартир: {apt_v:,.0f} м²\n"
+            f"Резерв баланса: {surplus_v:+,.0f} м²\n"
+            f"ДОО: {kg_total} мест\n"
+            f"СОШ: {sch_total} мест\n"
+            f"Парковки: {total_pl} м/м\n"
+            f"ЗНОП: {znop_area:,} м² ({znop_pp:.1f} м²/чел)"
+        ).replace(",", " ")
+        if result.economy is not None:
+            e = result.economy
+            summary_text += (
+                f"\n\n— Оценка выгодности —\n"
+                f"Баллы: {e.profit:+,.0f}\n"
+                f"Маржа: {e.margin * 100:.1f}%; ROI: {e.roi * 100:.1f}%"
             ).replace(",", " ")
-            # v0.8.0: экономика добавляется в сводку, если есть
-            if result.economy is not None:
-                e = result.economy
-                summary_text += (
-                    f"\n\n— Оценка выгодности —\n"
-                    f"Баллы: {e.profit:+,.0f}\n"
-                    f"Маржа: {e.margin * 100:.1f}%; ROI: {e.roi * 100:.1f}%"
-                ).replace(",", " ")
-            # v0.9.17: иконка-кнопка двух листиков + надёжный fallback
-            # через execCommand для копирования из Streamlit-iframe (clipboard
-            # API часто блокируется браузером в cross-origin iframe).
-            import json
-            js_text = json.dumps(summary_text)
-            uid = f"copy_{id(result)}"
-            st.html(f"""
-            <div style="display:flex;align-items:center;justify-content:flex-end;gap:8px;">
-              <button id="btn_{uid}" type="button"
-                  title="Скопировать сводку в буфер обмена"
-                  onclick='(function(){{
-                      var t={js_text};
-                      var ok=false;
-                      try {{
-                        var ta=document.createElement("textarea");
-                        ta.value=t;
-                        ta.style.position="fixed";
-                        ta.style.left="-9999px";
-                        document.body.appendChild(ta);
-                        ta.select();
-                        ok=document.execCommand("copy");
-                        document.body.removeChild(ta);
-                      }} catch(e) {{ ok=false; }}
-                      if (!ok && navigator.clipboard) {{
-                        navigator.clipboard.writeText(t).catch(()=>{{}});
-                        ok=true;
-                      }}
-                      if (ok) {{
-                        var s=document.getElementById("ok_{uid}");
-                        s.style.opacity="1";
-                        setTimeout(()=>{{s.style.opacity="0";}},1800);
-                      }}
-                  }})();'
-                  style="background:#F1F5F9;color:#334155;border:1px solid #CBD5E1;
-                         padding:5px 9px;border-radius:5px;cursor:pointer;
-                         display:inline-flex;align-items:center;gap:5px;
-                         font-size:0.85rem;font-weight:500;
-                         transition:background 0.15s;"
-                  onmouseover='this.style.background="#E2E8F0"'
-                  onmouseout='this.style.background="#F1F5F9"'>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
-                     stroke="currentColor" stroke-width="2"
-                     stroke-linecap="round" stroke-linejoin="round">
-                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-                </svg>
-                Копировать
-              </button>
-              <span id="ok_{uid}"
-                  style="color:#107C10;font-weight:500;opacity:0;
-                         transition:opacity 0.2s;font-size:0.85rem;">
-                ✓ Скопировано
-              </span>
-            </div>
-            """)
+        with st.expander("📋 Сводка (с кнопкой копирования)", expanded=False):
+            # st.code рисует blok-код с встроенной copy-кнопкой в углу
+            st.code(summary_text, language=None)
 
         # === Ряд 1: главные показатели жилья ===
         c1, c2, c3, c4 = st.columns(4)
@@ -308,9 +257,9 @@ def render_kpi(result: TEPResult, *, scenario_default_name: str | None = None) -
             st.markdown("---")
             e = result.economy
             score_help = (
-                "Баллы выгодности проекта (условный индикатор для сравнения "
-                "вариантов). НЕ рубли. Положительные баллы = проект выгоднее "
-                "базовой ситуации; отрицательные = убыточнее."
+                "Баллы выгодности проекта — безразмерный индикатор для "
+                "сравнения вариантов. Положительные значения = проект "
+                "выгоднее базовой ситуации; отрицательные = убыточнее."
             )
             ec1, ec2 = st.columns([1, 3])
             with ec1:
@@ -532,7 +481,7 @@ def render_details(result: TEPResult) -> None:
         with st.expander("💰 Экономика (детализация)", expanded=False):
             st.caption(
                 "Все значения — в условных **баллах выгодности проекта** "
-                "(безразмерный индикатор для сравнения вариантов, НЕ рубли). "
+                "(безразмерный индикатор для сравнения вариантов). "
                 "Стартовые коэффициенты — `configs/spb.yaml`, секция `economy:`. "
                 "Парковки с нулевыми местами в строки таблицы не включены."
             )
@@ -595,7 +544,7 @@ def render_details(result: TEPResult) -> None:
             mc1.metric(
                 "Оценка выгодности",
                 f"{e.profit:+,.0f}".replace(",", " "),
-                help="Условные баллы. НЕ рубли.",
+                help="Безразмерный индикатор для сравнения вариантов.",
             )
             mc2.metric("Маржа", f"{e.margin * 100:.1f}%" if rb.total > 0 else "—")
             mc3.metric("ROI", f"{e.roi * 100:.1f}%" if cb.total > 0 else "—")
@@ -664,11 +613,12 @@ def _render_balance_bar(result: TEPResult) -> None:
     df["dummy"] = "Квартал"
     domain = list(colors.keys())
     range_ = [colors[d] for d in domain]
-    # v0.9.18: высота 90px (раньше 70 — слишком тонко) + tooltip с
-    # деталями для каждого сегмента + расширенная легенда внизу.
+    # v0.9.19: явный size bar'а (40px) + height chart-area = 100.
+    # Раньше height=90 без size давало тонкую «линейку» — bar занимал
+    # маленькую часть chart-area по высоте.
     chart = (
         alt.Chart(df)
-        .mark_bar(stroke="white", strokeWidth=1)
+        .mark_bar(stroke="white", strokeWidth=1.5, size=50)
         .encode(
             x=alt.X("Площадь:Q", stack="normalize",
                     axis=alt.Axis(format="%", title=None, labelFontSize=11)),
@@ -687,7 +637,8 @@ def _render_balance_bar(result: TEPResult) -> None:
                 alt.Tooltip("Доля:N"),
             ],
         )
-        .properties(height=90)
+        .properties(height=100)
+        .configure_view(strokeWidth=0)
     )
     st.markdown("**⚖️ Распределение территории**")
     st.altair_chart(chart, use_container_width=True)

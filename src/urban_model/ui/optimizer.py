@@ -133,7 +133,7 @@ def _render_base_snapshot(
         c11, c12, c13, c14, c15 = st.columns(5)
         if base_tep.economy is not None:
             c11.metric("Выгодность, баллы", f"{_fmt_int(base_tep.economy.profit)}",
-                       help="Условный безразмерный индикатор для сравнения вариантов. НЕ рубли.")
+                       help="Безразмерный индикатор для сравнения вариантов проекта.")
             c12.metric("Маржа", f"{base_tep.economy.margin*100:.1f}%")
             c13.metric("ROI", f"{base_tep.economy.roi*100:.1f}%")
             # v0.9.17: «Прибыль / м² участка» убрано — не несёт пользы.
@@ -481,7 +481,7 @@ def _extract_kpi_fields(
     zpp = tep.znop_per_person.value or 0
     floors = options.floors if options is not None else "—"
     profit = (
-        _fmt_int(tep.economy.profit) + " у.е."
+        _fmt_int(tep.economy.profit) + " баллов"
         if tep.economy is not None else "—"
     )
 
@@ -698,26 +698,22 @@ def _render_scan_chart(scan: ScanResult) -> None:
                 scale=alt.Scale(zero=False, padding=20)),
     )
     line = base_chart.mark_line(color="#1565C0", point=True)
+    # v0.9.19: оба маркера — кружки разного размера. Большой красный
+    # снизу (база, 280), маленький зелёный сверху (рекомендация, 120).
+    # При наложении видно зелёный кружок внутри красного «кольца» —
+    # пользователь сразу понимает, что точки совпадают.
     # Фильтр по int 0/1 — vega-lite надёжнее с int, чем с bool после JSON.
-    # v0.9.17: если база и рекомендация в одной точке, рисуем особый
-    # маркер `is_both` (фиолетовый ромб) — раньше зелёный ромб
-    # перекрывал красный кружок, и одна из меток терялась.
     base_dot = (
-        base_chart.transform_filter("datum.is_base == 1 && datum.is_both == 0")
-        .mark_point(color="#D32F2F", size=200, filled=True)
-    )
-    rec_dot = (
-        base_chart.transform_filter("datum.is_recommended == 1 && datum.is_both == 0")
-        .mark_point(color="#2E7D32", size=300, shape="diamond", filled=True,
+        base_chart.transform_filter("datum.is_base == 1")
+        .mark_point(color="#D32F2F", size=280, filled=True,
                     stroke="white", strokeWidth=2)
     )
-    # Совмещённый маркер: фиолетовый ромб с красной обводкой
-    both_dot = (
-        base_chart.transform_filter("datum.is_both == 1")
-        .mark_point(color="#7C3AED", size=320, shape="diamond", filled=True,
-                    stroke="#D32F2F", strokeWidth=3)
+    rec_dot = (
+        base_chart.transform_filter("datum.is_recommended == 1")
+        .mark_point(color="#2E7D32", size=120, filled=True,
+                    stroke="white", strokeWidth=2)
     )
-    chart = (line + base_dot + rec_dot + both_dot).properties(height=240)
+    chart = (line + base_dot + rec_dot).properties(height=240)
     st.altair_chart(chart, use_container_width=True)
 
 
@@ -769,7 +765,7 @@ def _render_scan_summary(scan: ScanResult) -> None:
         else:
             st.markdown(
                 f"💰 **Лучший по прибыли:** {best_profit.x_label}  \n"
-                f"Δ прибыль: {d_profit:+,.0f} ({d_profit_pct:+.1f}%) у.е.".replace(",", " ")
+                f"Δ выгодность: {d_profit:+,.0f} ({d_profit_pct:+.1f}%) баллов".replace(",", " ")
             )
 
     # Кнопка добавить в сравнение — добавляет «лучший по площади» (как и раньше)
@@ -804,7 +800,8 @@ def _render_what_to_improve_section(
         "Каждая карточка варьирует **ОДИН параметр**, остальные — как в базе. "
         "Это **локальный** анализ; Парето-рекомендации сверху могут давать другие "
         "значения, т.к. меняют параметры в комбинации. "
-        "🔴 — база · 🟢 — лучшее по площади · 🟣 — обе точки совпадают."
+        "🔴 большой кружок — база · 🟢 маленький кружок — лучшее по площади "
+        "(при совпадении видно зелёный внутри красного кольца)."
     )
 
     opts_json = base_options.model_dump_json()
@@ -943,7 +940,7 @@ def _render_search_space_form(base_options: CalculationOptions) -> SearchSpace:
             st.markdown("##### Цель оптимизации")
             obj_label = st.radio(
                 "Что максимизировать",
-                ["Максимум площади квартир (ТЭП)", "Максимум прибыли (у.е.)"],
+                ["Максимум площади квартир (ТЭП)", "Максимум выгодности (баллы)"],
                 index=0, key="opt_objective_label",
             )
             optimizer_objective = (

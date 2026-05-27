@@ -193,11 +193,12 @@ def render_params_tab() -> UserInputs:
                 "📦 Дополнительные объекты", value=False, key="include_custom_objects",
             )
             include_economy = st.checkbox(
-                "💰 Экономика (у.е., оценка прибыли)",
+                "💰 Экономика (баллы выгодности)",
                 value=True, key="include_economy",
                 help=(
                     "Расчёт стоимости / выручки / прибыли в условных единицах. "
-                    "1.0 у.е. ≈ себестоимость м² жилья 9 эт. монолит standard."
+                    "Безразмерные баллы для сравнения вариантов (1.0 балл ≈ "
+                    "м² жилья 9 эт. монолит standard)."
                 ),
             )
 
@@ -1119,7 +1120,7 @@ def _render_economy_tile() -> str:
         _tile_header("💰 Экономика (условные единицы)", "include_economy")
         st.caption(
             "Конструктив и отделка — дефолты `monolith` / `standard` из норматива. "
-            "1.0 у.е. ≈ себестоимость м² жилья 9-эт. монолит standard."
+            "Баллы — безразмерный индикатор для сравнения вариантов проекта."
         )
         cls_label = st.selectbox(
             "Класс жилья",
@@ -1128,7 +1129,7 @@ def _render_economy_tile() -> str:
             key="residential_class",
             help=(
                 "Влияет на цену продажи м² квартир: "
-                "economy 1.55, comfort 1.95, business 2.80 у.е./м²."
+                "economy 1.55, comfort 1.95, business 2.80 баллов/м²."
             ),
         )
     return cls_label
