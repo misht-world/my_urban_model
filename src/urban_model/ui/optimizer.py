@@ -75,11 +75,17 @@ def _get_base_tep(
 def _render_base_snapshot(
     base_tep: TEPResult, base_options: CalculationOptions, synced: bool,
 ) -> None:
-    """База (snapshot вкладки Расчёт) в едином формате KPI (v0.9.6).
+    """База — 3 ряда st.metric для удобной читаемости в full-width (v0.9.13).
 
-    Тот же `_render_kpi_block`, что и в карточках рекомендаций — это даёт
-    возможность сравнить визуально по строкам.
+    Раньше был markdown-table из `_render_kpi_block` — узкая колонка
+    значений, плохо использует горизонтальное пространство.
+    В карточках рекомендаций таблица остаётся (там ширина 1/3 экрана).
     """
+    def _fmt_int(v) -> str:
+        if v is None:
+            return "—"
+        return f"{int(v):,}".replace(",", " ")
+
     with st.container(border=True):
         if synced:
             st.markdown("##### 📋 База (с вкладки «Расчёт»)")
@@ -89,7 +95,43 @@ def _render_base_snapshot(
                 "Параметры на вкладке «Параметры» не совпадают с последним "
                 "результатом на «Расчёте». Откройте «Расчёт» для синхронизации."
             )
-        _render_kpi_block(base_tep, base_options)
+
+        # Ряд 1: главные ТЭП
+        c1, c2, c3, c4, c5 = st.columns(5)
+        c1.metric("КИТ ПЗЗ", f"{base_tep.kit.value:.3f}")
+        c2.metric("Площадь квартир", f"{_fmt_int(base_tep.apartments_area.value)} м²")
+        c3.metric("Этажность", str(base_options.floors))
+        c4.metric("Население", f"{_fmt_int(base_tep.population.value)} чел")
+        c5.metric("Резерв баланса", f"{_fmt_int(base_tep.balance.surplus)} м²")
+
+        # Ряд 2: парковки по типам
+        op = int(base_tep.parking_open_places.value or 0)
+        ml = int(base_tep.parking_multilevel_places.value or 0)
+        ug = int(base_tep.parking_underground_places.value or 0)
+        c6, c7, c8, c9, c10 = st.columns(5)
+        c6.metric("Парковки — открытые", f"{op} м/м")
+        c7.metric("   — многоуровневые", f"{ml} м/м")
+        c8.metric("   — подземные", f"{ug} м/м")
+        c9.metric("ДОО", f"{_fmt_int(base_tep.kindergarten_places_accepted.value)} мест"
+                  if (base_tep.kindergarten_places_accepted.value or 0) > 0 else "—")
+        c10.metric("СОШ", f"{_fmt_int(base_tep.school_places_accepted.value)} мест"
+                   if (base_tep.school_places_accepted.value or 0) > 0 else "—")
+
+        # Ряд 3: экономика + ЗНОП
+        c11, c12, c13, c14, c15 = st.columns(5)
+        if base_tep.economy is not None:
+            c11.metric("Прибыль, у.е.", f"{_fmt_int(base_tep.economy.profit)}")
+            c12.metric("Маржа", f"{base_tep.economy.margin*100:.1f}%")
+            c13.metric("ROI", f"{base_tep.economy.roi*100:.1f}%")
+            c14.metric("Прибыль / м² участка",
+                       f"{base_tep.economy.profit_per_site_m2:+.2f} у.е./м²")
+        else:
+            c11.metric("Прибыль, у.е.", "—")
+            c12.metric("Маржа", "—")
+            c13.metric("ROI", "—")
+            c14.metric("Прибыль / м² участка", "—")
+        zpp = base_tep.znop_per_person.value or 0
+        c15.metric("ЗНОП", f"{zpp:.0f} м²/чел" if zpp > 0 else "0 м²/чел")
 
 
 # ---------------------------------------------------------------------------
@@ -229,6 +271,28 @@ def _render_recommendations_section(
             )
         return
 
+    # v0.9.13: TL;DR-строка над карточками — за секунду видно «есть ли
+    # смысл смотреть детали». Показываем максимальные Δ% по двум главным
+    # критериям среди всех рекомендаций.
+    deltas_apt = [r.delta_vs_base.d_apt_pct for r in cached_bundle.recommendations]
+    deltas_profit = [
+        r.delta_vs_base.d_profit_pct for r in cached_bundle.recommendations
+        if r.delta_vs_base.d_profit_pct is not None
+    ]
+    if deltas_apt or deltas_profit:
+        parts = []
+        if deltas_apt:
+            best_apt = max(deltas_apt)
+            parts.append(
+                f"максимальное **Δ площадь**: {best_apt:+.1f}%"
+            )
+        if deltas_profit:
+            best_profit = max(deltas_profit)
+            parts.append(
+                f"максимальное **Δ прибыль**: {best_profit:+.1f}%"
+            )
+        st.markdown("📈 " + "  ·  ".join(parts) + " — относительно базы.")
+
     cols = st.columns(len(cached_bundle.recommendations))
     for i, rec in enumerate(cached_bundle.recommendations):
         with cols[i]:
@@ -334,16 +398,24 @@ def _render_comparison_table(
 
     df = pd.DataFrame(data, index=row_labels)
 
-    # Styler: подсветка лучшей ячейки в каждой строке
+    # v0.9.13: ключевые строки выделяем bold по всей строке (визуально
+    # ведут глаз). Подсветка лучшего значения остаётся.
+    _KEY_ROWS = {"Площадь квартир, м²", "Прибыль, у.е.", "КИТ ПЗЗ"}
+
     def _highlight(row):
         styles = [""] * len(row)
         ridx = row_labels.index(row.name)
         bi = best_idx_per_row[ridx]
+        # Подсветка лучшей ячейки
         if bi is not None:
             styles[bi] = "background-color: #DCFCE7; font-weight: 700;"  # светло-зелёный
         # База — серый фон во всех ячейках столбца, кроме подсвеченных
         if styles[0] == "":
             styles[0] = "background-color: #F1F5F9;"  # светло-серый
+        # Bold для всей ключевой строки
+        if row.name in _KEY_ROWS:
+            for i in range(len(styles)):
+                styles[i] = (styles[i] + " font-weight: 700;").strip()
         return styles
 
     styler = df.style.apply(_highlight, axis=1)
@@ -384,6 +456,16 @@ def _extract_kpi_fields(
         if tep.economy is not None else "—"
     )
 
+    # v0.9.13: добавлены маржа и ROI после прибыли — полная финансовая
+    # картина в одной таблице (всё что есть в tep.economy без углубления).
+    margin_str = (
+        f"{tep.economy.margin*100:.1f}%"
+        if tep.economy is not None else "—"
+    )
+    roi_str = (
+        f"{tep.economy.roi*100:.1f}%"
+        if tep.economy is not None else "—"
+    )
     return [
         ("Площадь квартир",      f"{_fmt_int(tep.apartments_area.value)} м²"),
         ("КИТ ПЗЗ",              f"{(tep.kit.value or 0):.3f}"),
@@ -395,6 +477,8 @@ def _extract_kpi_fields(
         ("СОШ",                  f"{sch} мест" if sch > 0 else "—"),
         ("ЗНОП",                 f"{zpp:.0f} м²/чел" if zpp > 0 else "0 м²/чел"),
         ("Прибыль",              profit),
+        ("Маржа",                margin_str),
+        ("ROI",                  roi_str),
     ]
 
 
