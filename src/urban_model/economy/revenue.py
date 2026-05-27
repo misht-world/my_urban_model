@@ -37,6 +37,28 @@ def calc_revenue(tep, options, norms: Normatives) -> RevenueBreakdown:
     r_ug = n_ug * p_ug
     r_vpp = bi_area * p_vpp
 
+    # v0.9.14: компенсация ДОО/СОШ городом — в реальности застройщик
+    # передаёт соцобъекты по бюджетной цене либо получает компенсацию
+    # затрат через КОТ-соглашения. Без этого расчёт всегда даёт убыток
+    # (соцнагрузка), что не соответствует практике рынка.
+    # При `only_demand=True` объект НЕ строится застройщиком — компенсация
+    # не применяется (как и cost этого объекта).
+    try:
+        comp_share = float(norms.resolve("economy.social_compensation.share"))
+    except (KeyError, TypeError, ValueError):
+        comp_share = 0.0
+    c_kg = float(norms.resolve("economy.construction.kindergarten"))
+    c_sch = float(norms.resolve("economy.construction.school"))
+    kg_bld = float(tep.kindergarten_building_area.value or 0.0)
+    sch_bld = float(tep.school_building_area.value or 0.0)
+    kg_only_demand = bool(getattr(options.kindergarten, "only_demand", False)) \
+        if getattr(options, "include_kindergarten", True) else True
+    sch_only_demand = bool(getattr(options.school, "only_demand", False)) \
+        if getattr(options, "include_school", True) else True
+    kg_billable = 0.0 if kg_only_demand else kg_bld * c_kg
+    sch_billable = 0.0 if sch_only_demand else sch_bld * c_sch
+    r_social_comp = (kg_billable + sch_billable) * comp_share
+
     # v0.9.8 (AUDIT P0-2): кастомные объекты дают выручку по любому
     # ВРИ КРОМЕ 3.x (социальные — поликлиника/ФОК — соцнагрузка, 0).
     # Раньше прибыль шла ТОЛЬКО для 4.x, а в cost.py списывались любые
@@ -51,7 +73,7 @@ def calc_revenue(tep, options, norms: Normatives) -> RevenueBreakdown:
             r_custom += floor_area * p_vpp
         # 3.x → 0 (соцнагрузка)
 
-    total = r_res + r_open + r_ml + r_ug + r_vpp + r_custom
+    total = r_res + r_open + r_ml + r_ug + r_vpp + r_custom + r_social_comp
 
     return RevenueBreakdown(
         residential=r_res,
@@ -60,5 +82,6 @@ def calc_revenue(tep, options, norms: Normatives) -> RevenueBreakdown:
         parking_underground=r_ug,
         vpp_commercial=r_vpp,
         custom_commercial=r_custom,
+        social_compensation=r_social_comp,
         total=total,
     )

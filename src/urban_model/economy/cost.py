@@ -95,10 +95,19 @@ def calc_cost(tep, options, norms: Normatives) -> CostBreakdown:
     cost_vpp = bi_area * c_vpp
 
     # --- ДОО / СОШ ---
+    # v0.9.14: при only_demand=True объект размещается ВНЕ квартала и НЕ
+    # строится застройщиком — его строит город или другой инвестор.
+    # Поэтому себестоимость не должна попадать в наш cost. Раньше cost
+    # продолжал считаться даже при only_demand, что давало системный
+    # «фантомный убыток» от объекта, который мы не строим.
     kg_bld = (tep.kindergarten_building_area.value or 0.0)
     sch_bld = (tep.school_building_area.value or 0.0)
-    cost_kg = kg_bld * c_kg
-    cost_sch = sch_bld * c_sch
+    kg_only_demand = bool(getattr(options.kindergarten, "only_demand", False)) \
+        if getattr(options, "include_kindergarten", True) else True
+    sch_only_demand = bool(getattr(options.school, "only_demand", False)) \
+        if getattr(options, "include_school", True) else True
+    cost_kg = 0.0 if kg_only_demand else kg_bld * c_kg
+    cost_sch = 0.0 if sch_only_demand else sch_bld * c_sch
 
     # --- Парковки ---
     n_open = int(tep.parking_open_places.value or 0)

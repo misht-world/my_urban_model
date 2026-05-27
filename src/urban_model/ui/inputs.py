@@ -146,6 +146,15 @@ def render_params_tab() -> UserInputs:
 
     # ─── ЛЕВАЯ КОЛОНКА: общие сведения + чекбоксы ──────────────────
     with col_left:
+        # v0.9.14: заметный H4-заголовок колонки — даёт визуальное
+        # разделение «слева вводим данные / справа конкретизируем»
+        # независимо от CSS (когда селекторы Streamlit не срабатывают).
+        st.markdown(
+            '<div style="background:#1565C0;color:white;padding:6px 12px;'
+            'border-radius:6px;margin-bottom:8px;font-weight:600;">'
+            '📥 Ввод данных и общие настройки</div>',
+            unsafe_allow_html=True,
+        )
         (
             site, floors, planning_doc, lot_override,
             enforce_greening_norm, enforce_density_norm,
@@ -217,6 +226,12 @@ def render_params_tab() -> UserInputs:
     if include_economy:  active_tiles.append(("economy", _render_economy_tile))
 
     with col_right:
+        st.markdown(
+            '<div style="background:#2E7D32;color:white;padding:6px 12px;'
+            'border-radius:6px;margin-bottom:8px;font-weight:600;">'
+            '⚙ Настройки выбранных компонентов</div>',
+            unsafe_allow_html=True,
+        )
         if not active_tiles:
             st.info(
                 "⬅ Выберите хотя бы один компонент в левой колонке, "

@@ -361,9 +361,11 @@ def _render_comparison_table(
         ("Площадь квартир, м²",        "apt",    lambda v: f"{int(v):,}".replace(",", " "), "max"),
         ("КИТ ПЗЗ",                    "kit",    lambda v: f"{v:.3f}",                      None),
         ("Этажность",                  "floors", lambda v: str(v),                          None),
+        # v0.9.14: для парковок «лучшее» субъективно — пользователь сам решает,
+        # хочется ли ему минимум подземки или максимум. Подсветку убрали.
         ("Парковки — открытые, м/м",   "open",   lambda v: f"{int(v):,}".replace(",", " "), None),
         ("    — многоуровневые, м/м",  "ml",     lambda v: f"{int(v):,}".replace(",", " "), None),
-        ("    — подземные, м/м",       "ug",     lambda v: f"{int(v):,}".replace(",", " "), "min"),
+        ("    — подземные, м/м",       "ug",     lambda v: f"{int(v):,}".replace(",", " "), None),
         ("ДОО, мест",                  "kg",     lambda v: f"{int(v):,}".replace(",", " "), None),
         ("СОШ, мест",                  "sch",    lambda v: f"{int(v):,}".replace(",", " "), None),
         ("ЗНОП, м²/чел",               "znop",   lambda v: f"{v:.0f}",                      None),
@@ -659,9 +661,15 @@ def _render_scan_chart(scan: ScanResult) -> None:
             alt.Tooltip("feasible:N", title="Допустимо"),
         ],
     )
+    # v0.9.14: tight Y-axis (zero=False) — динамика чётче видна.
+    # Раньше шкала начиналась с 0, и колебания apt 30k-180k м² выглядели
+    # почти горизонтальной линией. Теперь масштаб подгоняется по данным.
+    base_chart = base_chart.encode(
+        y=alt.Y("apt:Q", title="Площадь квартир, м²",
+                scale=alt.Scale(zero=False, padding=20)),
+    )
     line = base_chart.mark_line(color="#1565C0", point=True)
-    # v0.9.2: фильтр по int 0/1 — vega-lite надёжнее обрабатывает,
-    # чем pandas-bool после JSON-сериализации.
+    # Фильтр по int 0/1 — vega-lite надёжнее с int, чем с bool после JSON.
     base_dot = (
         base_chart.transform_filter("datum.is_base == 1")
         .mark_point(color="#D32F2F", size=200, filled=True)
@@ -764,33 +772,26 @@ def _render_what_to_improve_section(
     opts_json = base_options.model_dump_json()
     norms_key = "spb"  # пока один профиль; при смене сменится через cache_clear
 
-    with st.expander("🅿 Парковки: доля подземных", expanded=True):
-        try:
-            scan = _cached_scan_parking(norms_key, opts_json, site.area_m2)
-            _render_scan_card(scan)
-        except Exception as e:
-            st.error(f"Ошибка скана парковок: {e}")
-
-    with st.expander("🏗 Парковки: доля многоуровневых", expanded=False):
-        try:
-            scan = _cached_scan_parking_ml(norms_key, opts_json, site.area_m2)
-            _render_scan_card(scan)
-        except Exception as e:
-            st.error(f"Ошибка скана многоуровневых: {e}")
-
-    with st.expander("🌳 ЗНОП: норматив м²/чел", expanded=False):
-        try:
-            scan = _cached_scan_znop(norms_key, opts_json, site.area_m2)
-            _render_scan_card(scan)
-        except Exception as e:
-            st.error(f"Ошибка скана ЗНОП: {e}")
-
-    with st.expander("🏢 Этажность", expanded=False):
-        try:
-            scan = _cached_scan_floors(norms_key, opts_json, site.area_m2)
-            _render_scan_card(scan)
-        except Exception as e:
-            st.error(f"Ошибка скана этажности: {e}")
+    # v0.9.14: сканы в 2 ряда (4 карточки в сетке 2×2), все раскрыты по
+    # умолчанию. Раньше были последовательные expander'ы, графики видны
+    # только при клике. Теперь визуально всё доступно сразу.
+    scan_configs = [
+        ("🅿 Парковки: доля подземных", _cached_scan_parking),
+        ("🏗 Парковки: доля многоуровневых", _cached_scan_parking_ml),
+        ("🌳 ЗНОП: норматив м²/чел", _cached_scan_znop),
+        ("🏢 Этажность", _cached_scan_floors),
+    ]
+    for row_start in range(0, len(scan_configs), 2):
+        cols = st.columns(2, gap="medium")
+        for i, (title, cached_fn) in enumerate(scan_configs[row_start:row_start+2]):
+            with cols[i]:
+                with st.container(border=True):
+                    st.markdown(f"##### {title}")
+                    try:
+                        scan = cached_fn(norms_key, opts_json, site.area_m2)
+                        _render_scan_card(scan)
+                    except Exception as e:
+                        st.error(f"Ошибка скана: {e}")
 
 
 # ---------------------------------------------------------------------------
@@ -1125,8 +1126,10 @@ def render_optimizer_tab(
     # 3. One-factor сканы (автоматически)
     _render_what_to_improve_section(site, base_options, norms)
 
-    st.markdown("---")
-
-    # 4. Старый Optuna UI — спрятан
-    with st.expander("⚙ Продвинутый режим (полный перебор)", expanded=False):
-        _render_advanced_optuna_mode(site, base_options, norms)
+    # 4. v0.9.14: «Продвинутый режим» полностью скрыт от пользователя
+    # (по запросу — не используется в типовых сценариях).
+    # Код функции `_render_advanced_optuna_mode` сохранён для возможного
+    # возвращения; пока вызов закомментирован.
+    # st.markdown("---")
+    # with st.expander("⚙ Продвинутый режим (полный перебор)", expanded=False):
+    #     _render_advanced_optuna_mode(site, base_options, norms)
