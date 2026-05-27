@@ -654,53 +654,66 @@ def _render_balance_bar(result: TEPResult) -> None:
 
     df = pd.DataFrame(rows)
     df["Pct"] = df["Площадь"] / site_area * 100
-    # Подпись: «Жильё 35%» — только для сегментов ≥3% (мельче — налезут).
-    df["Label"] = df.apply(
-        lambda r: f"{r['Компонент']} {r['Pct']:.0f}%" if r["Pct"] >= 3 else "",
+    # v0.9.24: три типа подписей по размеру сегмента:
+    #   ≥10% — короткий текст внутри сегмента (белый, жирный): «35%»
+    #     отдельно «Жильё» снаружи на радиусе 145.
+    #   3-10% — только название + % снаружи.
+    #   <3% — без подписи (видны через tooltip).
+    df["InnerLabel"] = df.apply(
+        lambda r: f"{r['Pct']:.0f}%" if r["Pct"] >= 10 else "",
+        axis=1,
+    )
+    df["OuterLabel"] = df.apply(
+        lambda r: r["Компонент"] if r["Pct"] >= 10
+        else (f"{r['Компонент']} {r['Pct']:.0f}%" if r["Pct"] >= 3 else ""),
         axis=1,
     )
     domain = list(colors.keys())
     range_ = [colors[d] for d in domain]
-    # v0.9.23: подписи-выноски рядом с сегментами вместо отдельной легенды.
-    # Сегменты ≥3% получают текст «Название X%» снаружи донута (radius=130).
-    # Мелкие сегменты — без текста (через tooltip), не создают визуальный шум.
-    arc = (
-        alt.Chart(df)
-        .mark_arc(innerRadius=60, outerRadius=110, stroke="white", strokeWidth=2)
-        .encode(
-            theta=alt.Theta("Площадь:Q", stack=True),
-            color=alt.Color(
-                "Компонент:N",
-                scale=alt.Scale(domain=domain, range=range_),
-                legend=None,  # легенда заменена подписями на самом графике
-            ),
-            order=alt.Order("Площадь:Q", sort="descending"),
-            tooltip=[
-                alt.Tooltip("Компонент:N"),
-                alt.Tooltip("Площадь:Q", title="м²", format=",.0f"),
-                alt.Tooltip("Доля:N"),
-            ],
-        )
+
+    # Базовая theta-кодировка (общая для arc/text/inner)
+    base = alt.Chart(df).encode(
+        theta=alt.Theta("Площадь:Q", stack=True),
+        order=alt.Order("Площадь:Q", sort="descending"),
     )
-    labels = (
-        alt.Chart(df)
-        .mark_text(radius=145, fontSize=11, fontWeight=500, color="#1F2937")
-        .encode(
-            theta=alt.Theta("Площадь:Q", stack=True),
-            text=alt.Text("Label:N"),
-            order=alt.Order("Площадь:Q", sort="descending"),
-        )
+    arc = base.mark_arc(
+        innerRadius=70, outerRadius=120,
+        stroke="white", strokeWidth=2,
+    ).encode(
+        color=alt.Color(
+            "Компонент:N",
+            scale=alt.Scale(domain=domain, range=range_),
+            legend=None,
+        ),
+        tooltip=[
+            alt.Tooltip("Компонент:N"),
+            alt.Tooltip("Площадь:Q", title="м²", format=",.0f"),
+            alt.Tooltip("Доля:N"),
+        ],
     )
-    chart = (arc + labels).properties(
+    inner_text = base.mark_text(
+        radius=95, fontSize=13, fontWeight="bold", color="white",
+    ).encode(text=alt.Text("InnerLabel:N"))
+    outer_text = base.mark_text(
+        radius=150, fontSize=11, fontWeight=500, color="#1F2937",
+    ).encode(text=alt.Text("OuterLabel:N"))
+
+    # Центральный текст с общей площадью внутри донута.
+    ha = site_area / 10_000
+    center_label = f"{ha:.1f} га" if ha >= 1 else f"{int(site_area)} м²"
+    center_df = pd.DataFrame([{"x": 0, "y": 0, "label": center_label}])
+    center_text = (
+        alt.Chart(center_df)
+        .mark_text(fontSize=18, fontWeight="bold", color="#334155")
+        .encode(text="label:N")
+    )
+
+    chart = (arc + inner_text + outer_text + center_text).properties(
         height=340,
         padding={"top": 10, "bottom": 10, "left": 60, "right": 60},
     )
     st.markdown("**⚖️ Распределение территории**")
     st.altair_chart(chart, use_container_width=True)
-    st.caption(
-        "Подписи показаны для сегментов ≥3%. Наведите курсор на любой "
-        "сегмент для подробностей."
-    )
 
 
 # ---------------------------------------------------------------------------
