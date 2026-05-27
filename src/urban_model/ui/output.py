@@ -656,11 +656,13 @@ def _render_balance_bar(result: TEPResult) -> None:
     df["Pct"] = df["Площадь"] / site_area * 100
     domain = list(colors.keys())
     range_ = [colors[d] for d in domain]
-    # v0.9.21: компактный donut с inline-легендой altair снизу,
-    # рассчитан на узкую колонку (40% ширины KPI-блока).
+    # v0.9.22: donut крупнее + padding сверху, чтобы не обрезался.
+    # Раньше height=240 + outerRadius=80 — круг прижимался к верхней
+    # границе chart-area и легенда снизу занимала слишком много места.
+    # Теперь height=380, radius 60/110, явный padding-top.
     donut = (
         alt.Chart(df)
-        .mark_arc(innerRadius=40, outerRadius=80, stroke="white", strokeWidth=2)
+        .mark_arc(innerRadius=60, outerRadius=110, stroke="white", strokeWidth=2)
         .encode(
             theta=alt.Theta("Площадь:Q", stack=True),
             color=alt.Color(
@@ -668,8 +670,8 @@ def _render_balance_bar(result: TEPResult) -> None:
                 scale=alt.Scale(domain=domain, range=range_),
                 legend=alt.Legend(
                     title=None, orient="bottom", columns=2,
-                    labelFontSize=11, symbolSize=80,
-                    rowPadding=2, columnPadding=8,
+                    labelFontSize=11, symbolSize=90,
+                    rowPadding=3, columnPadding=10,
                 ),
             ),
             order=alt.Order("Площадь:Q", sort="descending"),
@@ -679,7 +681,7 @@ def _render_balance_bar(result: TEPResult) -> None:
                 alt.Tooltip("Доля:N"),
             ],
         )
-        .properties(height=240)
+        .properties(height=380, padding={"top": 20, "bottom": 10, "left": 5, "right": 5})
     )
     st.markdown("**⚖️ Распределение территории**")
     st.altair_chart(donut, use_container_width=True)
