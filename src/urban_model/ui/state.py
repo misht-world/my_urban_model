@@ -157,7 +157,19 @@ def auto_scenario_name(site: Site, options: CalculationOptions, mode: str, **ext
         parts = [f"{a/10_000:.1f} га"]
     else:
         parts = [f"{int(a)} м²"]
-    parts.append(f"{options.floors} эт.")
+    if options.floor_clusters:
+        fl = [c.floors for c in options.floor_clusters]
+        n = len(fl)
+        word = "зона" if n == 1 else ("зоны" if 2 <= n <= 4 else "зон")
+        parts.append(f"{min(fl)}–{max(fl)} эт. ({n} {word})")
+    else:
+        parts.append(f"{options.floors} эт.")
+
+    # Класс жилья — влияет на экономику, всегда показываем
+    _cls = {"economy": "эконом", "comfort": "комфорт", "business": "бизнес"}.get(
+        options.residential_class, options.residential_class
+    )
+    parts.append(_cls)
 
     # Парковки — кратко по архетипу
     p = options.parking

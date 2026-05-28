@@ -11,7 +11,9 @@ from urban_model.optimize.scans import (
     ScanPoint,
     ScanResult,
     scan_floors,
+    scan_kindergarten_objects,
     scan_parking_underground_share,
+    scan_school_objects,
     scan_znop_steps,
 )
 
@@ -94,3 +96,25 @@ class TestScanParking:
         assert r.base_point.is_base
         # Ближайший к 0.875 шаг из {0.0..1.0 шаг 0.1} — это 0.9
         assert r.base_point.x_value == pytest.approx(0.9, abs=0.01)
+
+
+class TestSocialObjectScans:
+    """v0.9.30: сканы числа ДОО/СОШ (карточка-валидность)."""
+
+    def test_kindergarten_scan_five_points(self, site_large, norms):
+        r = scan_kindergarten_objects(site_large, CalculationOptions(floors=12), norms)
+        assert r.factor == "kindergarten_objects"
+        assert len(r.points) == 5  # 1..5
+        assert all(p.x_value in (1, 2, 3, 4, 5) for p in r.points)
+
+    def test_school_scan_three_points(self, site_large, norms):
+        r = scan_school_objects(site_large, CalculationOptions(floors=12), norms)
+        assert r.factor == "school_objects"
+        assert len(r.points) == 3  # 1..3
+
+    def test_disabled_kindergarten_empty(self, site_large, norms):
+        r = scan_kindergarten_objects(
+            site_large, CalculationOptions(floors=12, include_kindergarten=False), norms
+        )
+        assert r.points == []
+        assert r.base_point is None

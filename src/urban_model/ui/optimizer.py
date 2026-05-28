@@ -29,10 +29,13 @@ from urban_model.optimize.runner import OptimizationReport
 from urban_model.optimize.scans import (
     ScanResult,
     scan_floors,
+    scan_kindergarten_objects,
     scan_parking_multilevel_share,
     scan_parking_underground_share,
+    scan_school_objects,
     scan_znop_steps,
 )
+from urban_model.optimize.sensitivity import compute_sensitivity
 from urban_model.ui.formatting import fmt_int, fmt_m2
 
 
@@ -100,7 +103,7 @@ def _render_base_snapshot(
         c1, c2, c3, c4, c5 = st.columns(5)
         c1.metric("КИТ ПЗЗ", f"{base_tep.kit.value:.3f}")
         c2.metric("Площадь квартир", f"{_fmt_int(base_tep.apartments_area.value)} м²")
-        c3.metric("Этажность", str(base_options.floors))
+        c3.metric("Этажность", _floors_label(base_tep, base_options))
         c4.metric("Население", f"{_fmt_int(base_tep.population.value)} чел")
         c5.metric(
             "Резерв баланса",
@@ -362,7 +365,8 @@ def _render_comparison_table(
         ug = int(tep.parking_underground_places.value or 0)
         if key == "apt":         return float(tep.apartments_area.value or 0.0)
         if key == "kit":         return float(tep.kit.value or 0.0)
-        if key == "floors":      return int(opts.floors)
+        # v0.9.29: этажность из TEP (учитывает кластеры) — строка-метка.
+        if key == "floors":      return _floors_label(tep, opts)
         if key == "open":        return op
         if key == "ml":          return ml
         if key == "ug":          return ug
@@ -413,6 +417,7 @@ def _render_comparison_table(
         # одинаковые (включая все нули) — нечего сравнивать, выделение сбивает.
         all_equal = (
             len(valid) >= 2
+            and all(isinstance(v, (int, float)) for _, v in valid)
             and all(abs(v - valid[0][1]) < 1e-9 for _, v in valid)
         )
         if all_equal:
@@ -459,6 +464,21 @@ def _render_comparison_table(
         st.dataframe(styler, use_container_width=True)
 
 
+def _floors_label(tep: TEPResult, options: CalculationOptions | None = None) -> str:
+    """Подпись этажности с учётом кластеров (v0.9.29).
+
+    При зонах: «9 / 21 эт. (ср. 15.0)». Иначе — «12 эт.» из options/tep.
+    Источник истины — TEP (отражает реально посчитанный сценарий).
+    """
+    if tep.floor_clusters_detail:
+        fl = " / ".join(str(d["floors"]) for d in tep.floor_clusters_detail)
+        eff = tep.effective_floors or 0.0
+        return f"{fl} эт. (ср. {eff:.1f})"
+    if options is not None:
+        return f"{int(options.floors)} эт."
+    return "—"
+
+
 def _extract_kpi_fields(
     tep: TEPResult, options: CalculationOptions | None = None,
 ) -> list[tuple[str, str]]:
@@ -479,7 +499,9 @@ def _extract_kpi_fields(
     kg = int(tep.kindergarten_places_accepted.value or 0)
     sch = int(tep.school_places_accepted.value or 0)
     zpp = tep.znop_per_person.value or 0
-    floors = options.floors if options is not None else "—"
+    # v0.9.29: этажность берём из TEP (учитывает кластеры). При зонах —
+    # «9 / 21 (ср. 15.0)»; иначе — одиночная этажность.
+    floors = _floors_label(tep, options)
     profit = (
         _fmt_int(tep.economy.profit) + " баллов"
         if tep.economy is not None else "—"
@@ -538,6 +560,14 @@ def _rec_options_from_params(
     from urban_model.models.parking import ParkingConfig
 
     opts = base_options.model_copy(deep=True)
+    # v0.9.29: восстановить этажность зон (кластеры) из sampled params.
+    if "cluster_floors" in params and opts.floor_clusters:
+        new_fl = [int(x) for x in params["cluster_floors"]]
+        if len(new_fl) == len(opts.floor_clusters):
+            opts.floor_clusters = [
+                c.model_copy(update={"floors": f})
+                for c, f in zip(opts.floor_clusters, new_fl)
+            ]
     if "floors" in params:
         opts.floors = int(params["floors"])
 
@@ -597,9 +627,19 @@ def _render_recommendation_card(
                 for c in d.key_changes:
                     st.markdown(f"• {c}")
 
-        if st.button("➕ В сравнение", key=f"add_rec_{idx}", use_container_width=True):
+        bcol1, bcol2 = st.columns(2)
+        if bcol1.button("➕ В сравнение", key=f"add_rec_{idx}", use_container_width=True):
             st.session_state.scenarios.append((f"opt:{rec.label}", rec.tep))
             st.toast(f"Добавлено: {rec.label}", icon="✅")
+        # v0.9.30: «Применить к Расчёту» — переносит параметры сценария на
+        # вкладку Расчёт через override (надёжнее патча виджетов: переносит
+        # этажность/зоны/парковки целиком). Расчёт покажет баннер + «вернуть форму».
+        if bcol2.button("📥 Применить к Расчёту", key=f"apply_rec_{idx}",
+                        use_container_width=True):
+            st.session_state["applied_options"] = rec_options
+            st.session_state["applied_label"] = rec.label
+            st.toast(f"Применено: {rec.label} → вкладка «Расчёт»", icon="📥")
+            st.rerun()
 
 
 # ---------------------------------------------------------------------------
@@ -638,6 +678,22 @@ def _cached_scan_floors(_norms_key: str, opts_json: str, site_area: float):
     opts = CalculationOptions.model_validate_json(opts_json)
     site = Site(area_m2=site_area)
     return scan_floors(site, opts, norms)
+
+
+@st.cache_data(show_spinner=False)
+def _cached_scan_kg(_norms_key: str, opts_json: str, site_area: float):
+    norms = _get_norms_resolver()
+    opts = CalculationOptions.model_validate_json(opts_json)
+    site = Site(area_m2=site_area)
+    return scan_kindergarten_objects(site, opts, norms)
+
+
+@st.cache_data(show_spinner=False)
+def _cached_scan_sch(_norms_key: str, opts_json: str, site_area: float):
+    norms = _get_norms_resolver()
+    opts = CalculationOptions.model_validate_json(opts_json)
+    site = Site(area_m2=site_area)
+    return scan_school_objects(site, opts, norms)
 
 
 def _get_norms_resolver():
@@ -782,8 +838,97 @@ def _render_scan_summary(scan: ScanResult) -> None:
             st.toast(f"Добавлен лучший вариант скана «{scan.title}»", icon="✅")
 
 
+def _render_social_count_card(scan: ScanResult) -> None:
+    """Карточка ДОО/СОШ (v0.9.30): таблица «число объектов → вместимость/ЗУ/валидно».
+
+    Площадь квартир от числа объектов практически НЕ зависит (суммарный ЗУ
+    соцобъектов ≈ const × число мест). Поэтому здесь не график «apt», а
+    подсказка по реализуемости: при каком числе объектов вместимость
+    остаётся в нормативных границах.
+    """
+    import re as _re
+
+    from urban_model.calculations.warning_codes import WC, has_code
+
+    is_kg = scan.factor == "kindergarten_objects"
+    obj_word = "ДОО" if is_kg else "СОШ"
+
+    def _buckets(formula: str | None) -> list[int]:
+        if not formula:
+            return []
+        m = _re.search(r"\[([^\]]+)\]", formula)
+        if not m:
+            return []
+        try:
+            return [int(x.strip()) for x in m.group(1).split(",") if x.strip()]
+        except ValueError:
+            return []
+
+    rows = []
+    valid_counts: list[int] = []
+    for p in scan.points:
+        tep = p.tep
+        if is_kg:
+            accepted = int(tep.kindergarten_places_accepted.value or 0)
+            plot = float(tep.kindergarten_plot_area.value or 0.0)
+            formula = tep.kindergarten_places_accepted.formula
+        else:
+            accepted = int(tep.school_places_accepted.value or 0)
+            plot = float(tep.school_plot_area.value or 0.0)
+            formula = tep.school_places_accepted.formula
+        buckets = _buckets(formula)
+        cap_str = (
+            f"{min(buckets)}–{max(buckets)}" if buckets and min(buckets) != max(buckets)
+            else (str(buckets[0]) if buckets else "—")
+        )
+        invalid = any(
+            has_code(w, WC.SOC_CAP_MIN_BELOW, WC.SOC_CAP_MAX_ABOVE)
+            for w in tep.warnings
+        )
+        atypical = any(has_code(w, WC.SOC_CAP_NOT_TYPICAL) for w in tep.warnings)
+        if invalid:
+            status = "❌ вне норматива"
+        elif atypical:
+            status = "⚠ нетиповая"
+        else:
+            status = "✅ ок"
+            valid_counts.append(int(p.x_value))
+        rows.append({
+            "Объектов": int(p.x_value),
+            "Мест всего": accepted,
+            "Вместимость/объект": cap_str,
+            "Площадь ЗУ, м²": f"{plot:,.0f}".replace(",", " "),
+            "Статус": status,
+        })
+
+    st.caption(
+        f"Площадь квартир от числа {obj_word} **не зависит** (суммарный ЗУ ≈ "
+        f"const × число мест). Выбор — по **реализуемости**: вместимость "
+        f"объекта должна быть в нормативных границах."
+    )
+    st.dataframe(pd.DataFrame(rows), hide_index=True, use_container_width=True)
+    if valid_counts:
+        rec_n = min(valid_counts)
+        st.markdown(
+            f"🟢 **Рекомендуется:** {rec_n} {obj_word} "
+            f"(минимум объектов с допустимой вместимостью)."
+        )
+    else:
+        st.warning(
+            f"Ни одно число {obj_word} в диапазоне не даёт нормативной "
+            f"вместимости — рассмотрите «только потребность» или вынос за квартал."
+        )
+
+
 def _render_scan_card(scan: ScanResult) -> None:
     """Одна карточка one-factor: график слева + резюме справа."""
+    if not scan.points:
+        st.caption("Компонент отключён в «Параметрах» — скан недоступен.")
+        return
+    # v0.9.30: ДОО/СОШ — не график (apt не зависит от числа), а таблица валидности.
+    if scan.factor in ("kindergarten_objects", "school_objects"):
+        _render_social_count_card(scan)
+        return
     col_chart, col_text = st.columns([3, 2])
     with col_chart:
         _render_scan_chart(scan)
@@ -814,6 +959,8 @@ def _render_what_to_improve_section(
         ("🏗 Парковки: доля многоуровневых", _cached_scan_parking_ml),
         ("🌳 ЗНОП: норматив м²/чел", _cached_scan_znop),
         ("🏢 Этажность", _cached_scan_floors),
+        ("🎒 ДОО: число объектов", _cached_scan_kg),
+        ("🏫 СОШ: число корпусов", _cached_scan_sch),
     ]
     for row_start in range(0, len(scan_configs), 2):
         cols = st.columns(2, gap="medium")
@@ -826,6 +973,83 @@ def _render_what_to_improve_section(
                         _render_scan_card(scan)
                     except Exception as e:
                         st.error(f"Ошибка скана: {e}")
+
+
+# ---------------------------------------------------------------------------
+# Секция 3b: Чувствительность (tornado) — v0.9.15
+# ---------------------------------------------------------------------------
+
+@st.cache_data(show_spinner=False)
+def _cached_sensitivity(_norms_key: str, opts_json: str, site_area: float):
+    norms = _get_norms_resolver()
+    opts = CalculationOptions.model_validate_json(opts_json)
+    site = Site(area_m2=site_area)
+    return compute_sensitivity(site, opts, norms)
+
+
+def _render_sensitivity_section(
+    site: Site, base_options: CalculationOptions,
+) -> None:
+    """Tornado: факторы, ранжированные по размаху площади квартир."""
+    import altair as alt
+
+    st.markdown("### 📊 Чувствительность — что сильнее влияет")
+    st.caption(
+        "Размах площади квартир при изменении ОДНОГО фактора во всём его "
+        "диапазоне (прочие — как в базе). Длиннее полоса = сильнее влияние."
+    )
+    try:
+        impacts = _cached_sensitivity(
+            "spb", base_options.model_dump_json(), site.area_m2
+        )
+    except Exception as e:  # noqa: BLE001 — диагностика в UI
+        st.error(f"Ошибка анализа чувствительности: {e}")
+        return
+    if not impacts:
+        st.info("Недостаточно feasible-вариантов для анализа чувствительности.")
+        return
+
+    rows = [{
+        "Фактор": im.label,
+        "Размах, %": round(im.apt_swing_pct, 1),
+        "Размах, м²": round(im.apt_swing),
+        "Размах прибыли": (
+            f"{im.profit_swing:,.0f}".replace(",", " ")
+            if im.profit_swing is not None else "—"
+        ),
+        "Диапазон": f"{im.low_label} … {im.high_label}",
+    } for im in impacts]
+    df = pd.DataFrame(rows)
+
+    chart = (
+        alt.Chart(df)
+        .mark_bar(color="#1565C0")
+        .encode(
+            x=alt.X("Размах, %:Q", title="Размах площади квартир, % от базы"),
+            y=alt.Y("Фактор:N", sort="-x", title=None),
+            tooltip=[
+                alt.Tooltip("Фактор:N"),
+                alt.Tooltip("Размах, %:Q", format=".1f"),
+                alt.Tooltip("Размах, м²:Q", format=",.0f"),
+                alt.Tooltip("Размах прибыли:N", title="Размах выгодности, баллы"),
+                alt.Tooltip("Диапазон:N", title="Диапазон значений"),
+            ],
+        )
+        .properties(height=max(120, 42 * len(impacts)))
+    )
+    col_chart, col_text = st.columns([3, 2])
+    with col_chart:
+        st.altair_chart(chart, use_container_width=True)
+    with col_text:
+        top = impacts[0]
+        st.markdown(
+            f"🥇 **Сильнее всего:** {top.label}  \n"
+            f"±{top.apt_swing:,.0f} м² ({top.apt_swing_pct:.0f}% от базы)".replace(",", " ")
+        )
+        st.caption(
+            "Это локальный анализ при прочих равных. Для комбинированного "
+            "эффекта смотрите «Топ-3 рекомендации» сверху."
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -1111,14 +1335,17 @@ def _report_to_dataframe(report: OptimizationReport) -> pd.DataFrame:
             if k in params_skip:
                 continue
             label = {
-                "floors": "Этажность", "parking_mode": "Режим парковок",
+                "floors": "Этажность", "cluster_floors": "Этажность зон",
+                "parking_mode": "Режим парковок",
                 "parking_open_share": "% открытых", "parking_ml_share": "% многоуровневых",
                 "parking_ug_share": "% подземных", "multilevel_levels": "Этажей МП",
                 "underground_levels": "Уровней подземки", "use_vpp": "ВПП",
                 "vpp_vri": "ВРИ ВПП", "vpp_mode": "ВПП режим",
                 "znop_per_person": "ЗНОП, м²/чел",
             }.get(k, k)
-            if k == "parking_mode":
+            if k == "cluster_floors":
+                v = " / ".join(str(int(x)) for x in v)
+            elif k == "parking_mode":
                 v = PARK_MODE_RU.get(v, v)
             elif k == "vpp_mode":
                 v = VPP_MODE_RU.get(v, v)
@@ -1159,6 +1386,11 @@ def render_optimizer_tab(
 
     # 3. One-factor сканы (автоматически)
     _render_what_to_improve_section(site, base_options, norms)
+
+    st.markdown("")
+
+    # 3b. Чувствительность — какой фактор сильнее влияет (tornado)
+    _render_sensitivity_section(site, base_options)
 
     # 4. v0.9.14: «Продвинутый режим» полностью скрыт от пользователя
     # (по запросу — не используется в типовых сценариях).

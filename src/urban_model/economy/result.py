@@ -66,7 +66,28 @@ class EconomicMetrics(BaseModel):
     margin: float = Field(0.0, description="profit / revenue (0 если revenue=0)")
     roi: float = Field(0.0, description="profit / cost (0 если cost=0)")
     profit_per_site_m2: float = Field(
-        0.0, description="profit / site.area_m2 — основная метрика ранжирования"
+        0.0, description="profit / site.area_m2 — «Запас проекта / м²», основная метрика ранжирования"
+    )
+
+    # v0.9.14: разделение социальной нагрузки.
+    # net_social_burden = (cost ДОО+СОШ+соц.парк) − компенсация города.
+    #   >0 — соцобъекты в минус (типично); <0 — компенсация перекрыла затраты.
+    # profit_before_social = profit + net_social_burden — прибыль проекта
+    #   без учёта социальных обязательств (показывает «чистый» девелопмент).
+    net_social_burden: float = Field(
+        0.0, description="Себестоимость соцобъектов − компенсация города"
+    )
+    profit_before_social: float = Field(
+        0.0, description="Прибыль без социальной нагрузки = profit + net_social_burden"
+    )
+    # profit_before_land = revenue − (все затраты КРОМЕ земли). Пока fixed=0,
+    # совпадает с profit; поле зарезервировано под ввод стоимости земли (v0.9.16).
+    profit_before_land: float = Field(
+        0.0, description="Прибыль до вычета стоимости земли = profit + cost.fixed"
+    )
+    # Доля продаваемого жилья = площадь квартир / общая GFA (выход жилья).
+    sellable_ratio: float = Field(
+        0.0, description="Площадь квартир / общая GFA (выход жилья)"
     )
 
     # Источник единиц — для аудита

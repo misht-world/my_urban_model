@@ -5,6 +5,7 @@ from urban_model.models.social import KindergartenSpec, SchoolSpec
 from urban_model.models.scenario import Scenario
 from urban_model.models.parking import ParkingConfig, ParkingBreakdown
 from urban_model.models.built_in import BuiltInArea
+from urban_model.models.cluster import FloorCluster
 from urban_model.models.custom_object import CustomObject
 
 __all__ = [
@@ -20,5 +21,6 @@ __all__ = [
     "ParkingConfig",
     "ParkingBreakdown",
     "BuiltInArea",
+    "FloorCluster",
     "CustomObject",
 ]

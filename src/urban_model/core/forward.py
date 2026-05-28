@@ -19,6 +19,7 @@ import math
 
 from urban_model.calculations import (
     balance,
+    clusters,
     driveways,
     greening,
     housing,
@@ -63,6 +64,13 @@ def compute_tep_for_kit(
     # многие подстроки formula/source ссылаются на "КИТ".
     kit = block_density
 
+    # === Кластеры этажности (v0.9.28) ===
+    # floors_eff — средневзвешенная этажность; для баланса/озеленения квартал
+    # схлопывается в одно число (вычитаемые территории распределены
+    # пропорционально площади кластеров). При отсутствии кластеров = options.floors.
+    _clusters = options.floor_clusters
+    floors_eff = clusters.effective_floors(_clusters, options.floors)
+
     # === Нормативный максимум КИТ ПЗЗ ===
     kit_norm_max = norms.resolve(
         "kit_limits", planning_doc="yes" if options.planning_doc else "no"
@@ -94,7 +102,7 @@ def compute_tep_for_kit(
         apartments_area_v = residential_gfa * apt_ratio
         bi_vri = None
 
-    footprint_v = housing.housing_footprint(gfa_v, options.floors)
+    footprint_v = housing.housing_footprint(gfa_v, floors_eff)
 
     # === Население ===
     hp = norms.resolve("housing_provision")
@@ -466,11 +474,21 @@ def compute_tep_for_kit(
         if options.driveways_intra_share_override is not None
         else norms.resolve("driveways.intra_quarter_share")
     )
-    drive_lot_share = (
-        options.driveways_lot_share_override
-        if options.driveways_lot_share_override is not None
-        else norms.resolve("driveways.housing_lot_share", floors=options.floors)
-    )
+    if options.driveways_lot_share_override is not None:
+        drive_lot_share = options.driveways_lot_share_override
+    elif _clusters:
+        # Доля проездов на ЗУ — piecewise(floors). При кластерах берём
+        # средневзвешенную по площади (= доле пятна застройки): проезды
+        # каждого кластера ∝ его пятну, а пятно_i ∝ area_i.
+        _w = clusters.area_weights(_clusters)
+        drive_lot_share = sum(
+            w * norms.resolve("driveways.housing_lot_share", floors=c.floors)
+            for w, c in zip(_w, _clusters)
+        )
+    else:
+        drive_lot_share = norms.resolve(
+            "driveways.housing_lot_share", floors=options.floors
+        )
     drive_intra_v = driveways.intra_quarter_area(site.area_m2, drive_intra_share)
     drive_lot_v = driveways.housing_lot_driveways_area(footprint_v, drive_lot_share)
 
@@ -585,6 +603,58 @@ def compute_tep_for_kit(
         )
         if znop_cap is not None:
             effective_kit_max = min(kit_norm_max, znop_cap)
+
+    # v0.9.28.1: КИТ — ОБЩИЙ (по всему кварталу), проверяется против
+    # нормативного потолка как обычно. Ранее (v0.9.28) потолок поджимался
+    # под самый высокий кластер по линейной формуле КИТ_i ∝ F_i — но эта
+    # формула неверна (КИТ определяется средневзвешенной этажностью, а не
+    # спредом кластеров; озеленение/парковки ∝ площади квартир насыщают КИТ
+    # с ростом этажей). Поджатие давало ложный «огромный резерв». Покластерный
+    # КИТ остаётся, но только как СПРАВОЧНАЯ величина (см. floor_clusters_detail).
+
+    # === Покластерная разбивка (v0.9.28) — СПРАВОЧНО ===
+    # КИТ_i считается честно: площадь квартир_i / ЗУ_i, где ЗУ_i собирается
+    # из реальных компонентов своей этажности (пятно_i + проезды(F_i) +
+    # озеленение_i + открытые парковки_i). Σ ЗУ_i = ЗУ общий, поэтому КИТ_i —
+    # корректная декомпозиция общего КИТ, а не линейная аппроксимация.
+    floor_clusters_detail: list[dict] = []
+    if _clusters:
+        _gw = clusters.gfa_weights(_clusters)
+        for c, w in zip(_clusters, _gw):
+            gfa_i = gfa_v * w
+            apt_i = apartments_area_v * w
+            footprint_i = gfa_i / c.floors if c.floors > 0 else 0.0
+            if options.driveways_lot_share_override is not None:
+                lot_share_i = options.driveways_lot_share_override
+            else:
+                lot_share_i = norms.resolve(
+                    "driveways.housing_lot_share", floors=c.floors
+                )
+            drive_lot_i = footprint_i * lot_share_i
+            green_i = green_housing_v * w
+            bi_green_i = bi_greening_v * w
+            open_park_i = parking_open_in_lot * w
+            lot_i = footprint_i + drive_lot_i + green_i + bi_green_i + open_park_i
+            kit_i = (apt_i / lot_i) if lot_i > 0 else 0.0
+            floor_clusters_detail.append({
+                "label": c.label or f"Кластер {len(floor_clusters_detail) + 1}",
+                "area_m2": c.area_m2,
+                "floors": c.floors,
+                "gfa": gfa_i,
+                "apartments_area": apt_i,
+                "footprint": footprint_i,
+                "kit": kit_i,
+            })
+        # Σ площадей кластеров vs S_квартала — мягкая проверка (математика
+        # масштабно-инвариантна, но расхождение почти всегда означает опечатку).
+        _cl_total = sum(c.area_m2 for c in _clusters)
+        if site.area_m2 > 0 and abs(_cl_total - site.area_m2) / site.area_m2 > 0.02:
+            warnings.append(_wcprefix(WC.CLUSTER_AREA_MISMATCH,
+                f"Σ площадей кластеров {_cl_total:,.0f} м² ≠ площади квартала "
+                f"{site.area_m2:,.0f} м² (расхождение "
+                f"{abs(_cl_total - site.area_m2) / site.area_m2 * 100:.0f}%). "
+                f"Этажность усреднена по долям; проверьте ввод площадей."
+            ).replace(",", " "))
 
     # === Сборка TEPResult ===
     # Статус КИТ: ERROR, если он превышает effective_kit_max
@@ -991,16 +1061,29 @@ def compute_tep_for_kit(
             formula="застройка + проезды + озеленение + открытые парковки",
         ),
         housing_footprint=_F(
-            footprint_v, unit="m2", formula=f"GFA / этажность = {gfa_v:.0f} / {options.floors}"
+            footprint_v,
+            unit="m2",
+            formula=(
+                f"GFA / этажность = {gfa_v:.0f} / {options.floors}"
+                if not _clusters
+                else f"GFA / средневзвеш. этажность = {gfa_v:.0f} / {floors_eff:.2f} "
+                     f"(кластеров: {len(_clusters)})"
+            ),
         ),
         balance=bal,
         built_in_vri_code=bi_vri,
+        effective_floors=floors_eff,
+        floor_clusters_detail=floor_clusters_detail,
         warnings=warnings,
     )
 
     # === Экономика (v0.8.0) ===
     # После того как ТЭП собран — считаем стоимость / выручку / прибыль
     # и присоединяем к результату. Экономика никак не влияет на сами ТЭП.
+    if not getattr(options, "include_economy", True):
+        # v0.9.29: экономика отключена пользователем — не считаем, UI скроет блоки.
+        result.economy = None
+        return result
     try:
         from urban_model.economy import calc_economy
         result.economy = calc_economy(result, options, site, norms)

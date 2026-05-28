@@ -38,6 +38,13 @@ def split_into_objects(
     if total_places <= 0:
         return []
 
+    # v0.9.31 (аудит P1): если задано только число объектов (без явной
+    # вместимости) — распределяем места ровно на это число. Раньше spec_count
+    # без spec_capacity молча игнорировался (число объектов авто-выбиралось),
+    # из-за чего Optuna-размерность `kg_num_objects` и скан числа ДОО были no-op.
+    if spec_count:
+        return distribute_places_evenly(total_places, int(spec_count), multiple)
+
     n = choose_n_objects(total_places, capacity_min, capacity_max)
     return distribute_places_evenly(total_places, n, multiple)
 

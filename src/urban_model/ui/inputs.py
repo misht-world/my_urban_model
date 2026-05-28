@@ -12,7 +12,7 @@ import pandas as pd
 import streamlit as st
 
 from urban_model.calculations.vpp import VppMode
-from urban_model.models import CalculationOptions, Site
+from urban_model.models import CalculationOptions, FloorCluster, Site
 from urban_model.models.built_in import BuiltInArea
 from urban_model.models.custom_object import CustomObject
 from urban_model.models.parking import ParkingConfig
@@ -161,7 +161,7 @@ def render_params_tab() -> UserInputs:
         )
         (
             site, floors, planning_doc, lot_override,
-            enforce_greening_norm, enforce_density_norm,
+            enforce_greening_norm, enforce_density_norm, floor_clusters,
         ) = _render_essentials()
 
         with st.container(border=True):
@@ -269,6 +269,7 @@ def render_params_tab() -> UserInputs:
     # ==================================================================
     options = CalculationOptions(
         floors=int(floors),
+        floor_clusters=floor_clusters,
         planning_doc=planning_doc,
         include_kindergarten=include_kg,
         include_school=include_school,
@@ -287,6 +288,7 @@ def render_params_tab() -> UserInputs:
         custom_objects=custom_objects_list,
         driveways_intra_share_override=intra_override,
         driveways_lot_share_override=lot_override,
+        include_economy=include_economy,
         residential_class=residential_class,
         enforce_quarter_greening_norm=enforce_greening_norm,
         enforce_density_norm=enforce_density_norm,
@@ -370,19 +372,25 @@ def _render_intra_driveways_tile() -> float | None:
         return intra_pct / 100
 
 
-def _render_essentials() -> tuple[Site, int, bool, "float | None", bool, bool]:
+def _render_essentials() -> tuple[Site, int, bool, "float | None", bool, bool, list]:
     """Общие сведения о территории + нормативы-ограничения.
 
     v0.8.8: блок свёртываемый (st.expander), нормативы 25%/450 чел/га
     встроены сюда же. Возвращает
-    (site, floors, planning_doc, lot_override, enforce_greening, enforce_density).
+    (site, floors, planning_doc, lot_override, enforce_greening, enforce_density,
+     floor_clusters).
     """
+    # v0.9.29: если включён режим зон — площадь и этажность определяются
+    # зонами. Поля выше блокируем (disabled), чтобы не вводить в заблуждение.
+    _clusters_on = bool(st.session_state.get("use_floor_clusters", False))
+
     with st.expander("Общие сведения о территории", expanded=True):
         # Площадь квартала
         unit = st.radio(
             "Единицы площади", ["м²", "га"],
             horizontal=True, key="area_unit",
             label_visibility="collapsed",
+            disabled=_clusters_on,
         )
         if unit == "га":
             area_ga = st.number_input(
@@ -390,6 +398,7 @@ def _render_essentials() -> tuple[Site, int, bool, "float | None", bool, bool]:
                 min_value=0.1, max_value=200.0,
                 value=5.0, step=0.1,
                 key="area_input_ga",
+                disabled=_clusters_on,
             )
             area_m2 = area_ga * 10_000
         else:
@@ -398,7 +407,10 @@ def _render_essentials() -> tuple[Site, int, bool, "float | None", bool, bool]:
                 min_value=1_000.0, max_value=2_000_000.0,
                 value=50_000.0, step=1_000.0,
                 key="area_input_m2",
+                disabled=_clusters_on,
             )
+        if _clusters_on:
+            st.caption("ℹ Площадь и этажность задаются зонами ниже (Σ зон).")
 
         # ДПТ — caption под чекбоксом убран (v0.8.8): и так понятно
         planning_doc = st.checkbox(
@@ -413,7 +425,14 @@ def _render_essentials() -> tuple[Site, int, bool, "float | None", bool, bool]:
             min_value=1, max_value=40, value=12, step=1,
             key="floors",
             help="Средняя этажность жилой застройки. Влияет на долю проездов на ЗУ (зависит от этажности).",
+            disabled=_clusters_on,
         )
+
+        # v0.9.28: кластеры этажности — подучастки с разной высотностью (зоны ПЗЗ)
+        floor_clusters = _render_clusters_editor(area_m2, int(floors))
+        # При активных зонах площадь квартала = сумме площадей зон.
+        if floor_clusters:
+            area_m2 = sum(c.area_m2 for c in floor_clusters)
 
         # Проезды на ЗУ — свёрнутый expander
         lot_override = _render_lot_share_expander()
@@ -440,7 +459,7 @@ def _render_essentials() -> tuple[Site, int, bool, "float | None", bool, bool]:
 
     return (
         Site(area_m2=area_m2), int(floors), planning_doc, lot_override,
-        enforce_greening, enforce_density,
+        enforce_greening, enforce_density, floor_clusters,
     )
 
 
@@ -462,6 +481,109 @@ def _render_lot_share_expander() -> float | None:
             key="drive_lot_pct",
         )
         return lot_pct / 100
+
+
+def _render_clusters_editor(area_m2: float, floors: int) -> list[FloorCluster]:
+    """Редактор кластеров этажности (v0.9.28): до 3 подучастков с разной
+    высотностью. Возвращает [] если режим выключен (→ единая этажность)."""
+    _MAX_CLUSTERS = 3
+    with st.expander("🏗 Разная этажность по зонам (кластеры ПЗЗ)", expanded=False):
+        use_clusters = st.checkbox(
+            "Разделить квартал на зоны с разной этажностью",
+            value=False, key="use_floor_clusters",
+            help=(
+                "Подучастки с собственной высотностью (градостроительные зоны "
+                "ПЗЗ). Вычитаемые территории распределяются пропорционально "
+                "площади зон. Баланс и озеленение — по средневзвешенной "
+                "этажности; КИТ и экономика — покластерно."
+            ),
+        )
+        if not use_clusters:
+            return []
+
+        st.caption(
+            f"Площадь квартала = сумме площадей зон. До {_MAX_CLUSTERS} зон. "
+            f"Диапазон этажности для подбора задаётся колонками «Этаж. мин/макс»."
+        )
+        default_df = pd.DataFrame([
+            {"Зона": "Зона А", "Площадь, м²": round(area_m2 * 0.5),
+             "Этажность": min(floors, 9), "Этаж. мин": 3, "Этаж. макс": 25},
+            {"Зона": "Зона Б", "Площадь, м²": round(area_m2 * 0.5),
+             "Этажность": max(floors, 16), "Этаж. мин": 3, "Этаж. макс": 25},
+        ])
+        edited = st.data_editor(
+            default_df,
+            key="floor_clusters_editor",
+            num_rows="dynamic",
+            hide_index=True,
+            use_container_width=True,
+            column_config={
+                "Зона": st.column_config.TextColumn("Зона", width="small"),
+                "Площадь, м²": st.column_config.NumberColumn(
+                    "Площадь, м²", min_value=1.0, step=1000.0, format="%.0f",
+                ),
+                "Этажность": st.column_config.NumberColumn(
+                    "Этажность", min_value=1, max_value=60, step=1, format="%d",
+                    help="Принятая этажность зоны (для расчёта).",
+                ),
+                "Этаж. мин": st.column_config.NumberColumn(
+                    "Этаж. мин", min_value=1, max_value=60, step=1, format="%d",
+                    help="Нижняя граница этажности зоны для подбора (Оптимизация).",
+                ),
+                "Этаж. макс": st.column_config.NumberColumn(
+                    "Этаж. макс", min_value=1, max_value=60, step=1, format="%d",
+                    help="Верхняя граница этажности зоны для подбора (Оптимизация).",
+                ),
+            },
+        )
+
+        clusters: list[FloorCluster] = []
+        for _, row in edited.iterrows():
+            try:
+                a = float(row["Площадь, м²"])
+                f = int(row["Этажность"])
+            except (TypeError, ValueError):
+                continue
+            if a <= 0 or f < 1:
+                continue
+            label = str(row.get("Зона") or "").strip() or None
+            # Диапазон для подбора; по умолчанию 3..25, clamp к валидному.
+            try:
+                fmin = int(row.get("Этаж. мин", 3))
+            except (TypeError, ValueError):
+                fmin = 3
+            try:
+                fmax = int(row.get("Этаж. макс", 25))
+            except (TypeError, ValueError):
+                fmax = 25
+            fmin = max(1, min(fmin, 60))
+            fmax = max(fmin, min(fmax, 60))
+            # v0.9.31 (аудит P1): диапазон подбора обязан включать принятую
+            # этажность — иначе Optuna не сможет оставить текущее значение зоны.
+            fmin = min(fmin, f)
+            fmax = max(fmax, f)
+            clusters.append(FloorCluster(
+                area_m2=a, floors=f, floors_min=fmin, floors_max=fmax, label=label,
+            ))
+
+        if len(clusters) > _MAX_CLUSTERS:
+            st.warning(
+                f"Учтены только первые {_MAX_CLUSTERS} зоны "
+                f"(задано {len(clusters)})."
+            )
+            clusters = clusters[:_MAX_CLUSTERS]
+
+        if not clusters:
+            st.info("Добавьте хотя бы одну зону с площадью и этажностью.")
+            return []
+
+        total_a = sum(c.area_m2 for c in clusters)
+        feff = sum(c.area_m2 * c.floors for c in clusters) / total_a if total_a else 0.0
+        c1, c2 = st.columns(2)
+        c1.metric("Σ площадей зон (= площадь квартала)",
+                  f"{total_a:,.0f} м²".replace(",", " "))
+        c2.metric("Средневзвеш. этажность", f"{feff:.1f}")
+        return clusters
 
 
 def _render_vpp_tile() -> VppRequest:
@@ -1183,8 +1305,9 @@ def _render_custom_objects_tile() -> list[CustomObject]:
                 "ВРИ-код": st.column_config.SelectboxColumn(
                     "ВРИ-код",
                     options=_VRI_OPTIONS,
-                    required=True,
-                    help="Определяет нормативы парковок и озеленения объекта",
+                    required=False,
+                    help="Необязательно. Если не указан — берётся 4.0 "
+                         "(предпринимательство, коммерческий объект).",
                 ),
                 "Общая площадь, м²": st.column_config.NumberColumn(
                     "Общая площадь, м²",
@@ -1204,7 +1327,9 @@ def _render_custom_objects_tile() -> list[CustomObject]:
                     try:
                         name = str(row["Название"]).strip()
                         plot = float(row["Площадь ЗУ, м²"])
-                        vri = str(row["ВРИ-код"])
+                        # v0.9.29: ВРИ необязателен — по умолчанию 4.0 (коммерция).
+                        vri_raw = row.get("ВРИ-код")
+                        vri = str(vri_raw).strip() if pd.notna(vri_raw) and str(vri_raw).strip() else "4.0"
                         if not name or plot <= 0:
                             continue
                         new_list.append({

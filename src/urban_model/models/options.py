@@ -7,6 +7,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 from urban_model.models.built_in import BuiltInArea
+from urban_model.models.cluster import FloorCluster
 from urban_model.models.custom_object import CustomObject
 from urban_model.models.parking import ParkingConfig
 from urban_model.models.social import KindergartenSpec, SchoolSpec, SportFacilitiesSpec
@@ -18,6 +19,15 @@ class CalculationOptions(BaseModel):
     # Параметры жилья
     floors: int = Field(default=10, ge=1, description="этажность жилья")
     planning_doc: bool = True  # ППТ → КИТ_max = 2.5; иначе 1.4
+
+    # Кластеры этажности (v0.9.28): квартал делится на подучастки со своей
+    # высотностью (зоны ПЗЗ). Пусто → единая этажность `floors` (1 кластер).
+    # Когда задано — баланс/озеленение считаются по floors_eff = Σ(A·F)/ΣA,
+    # экономика и проезды — покластерно, КИТ — покластерно с поджатием потолка.
+    floor_clusters: list[FloorCluster] = Field(
+        default_factory=list,
+        description="Подучастки квартала с разной этажностью (до 3 шт.)",
+    )
 
     # Встроенно-пристроенные помещения (single, legacy от v0.2).
     # С v0.7.1 рекомендуется `built_in_list` для нескольких ВПП с разными ВРИ.
@@ -101,6 +111,11 @@ class CalculationOptions(BaseModel):
     )
 
     # Экономика (v0.8.0): класс жилья влияет на цену продажи м² квартир.
+    # v0.9.29: include_economy=False — экономика не считается (result.economy=None),
+    # и UI скрывает все экономические показатели на всех вкладках.
+    include_economy: bool = Field(
+        default=True, description="Считать экономику (оценку выгодности)"
+    )
     # Конструктив и отделка — пока дефолты из YAML (monolith / standard).
     residential_class: Literal["economy", "comfort", "business"] = Field(
         default="comfort",
@@ -152,3 +167,15 @@ class CalculationOptions(BaseModel):
         le=3.0,
         description="Доля проездов на ЗУ жилой застройки от S_застройки. None = норматив (1.20 СПб)",
     )
+
+    # --- Кластеры: удобные производные (без зависимости от calculations) ---
+    # NB: дублирует `calculations.clusters.effective_floors` намеренно —
+    # models не может импортировать calculations (нижний слой). Формула одна.
+    def effective_floors(self) -> float:
+        """Средневзвешенная этажность Σ(A·F)/ΣA; `floors` если кластеров нет."""
+        if not self.floor_clusters:
+            return float(self.floors)
+        total_a = sum(c.area_m2 for c in self.floor_clusters)
+        if total_a <= 0:
+            return float(self.floors)
+        return sum(c.area_m2 * c.floors for c in self.floor_clusters) / total_a

@@ -354,12 +354,22 @@ def scan_floors(
     hi: int = 25,
     metric: Metric = "apartments_area",
 ) -> ScanResult:
-    """Скан по этажности от `lo` до `hi` включительно (шаг 1)."""
-    base_floors = float(base_options.floors)
+    """Скан по этажности от `lo` до `hi` включительно (шаг 1).
+
+    v0.9.29: при кластерах базовая точка — средневзвешенная этажность, а сам
+    скан выполняется по ЕДИНОЙ этажности (зоны временно схлопываются), т.к.
+    цель карточки — показать чувствительность к высоте при прочих равных.
+    """
+    base_floors = (
+        float(base_options.effective_floors())
+        if base_options.floor_clusters
+        else float(base_options.floors)
+    )
 
     points: list[ScanPoint] = []
     for f in range(lo, hi + 1):
         opts = base_options.model_copy(deep=True)
+        opts.floor_clusters = []  # скан по единой этажности
         opts.floors = f
         try:
             tep = solve_max_kit(site, opts, norms)
@@ -386,4 +396,113 @@ def scan_floors(
         base_point=base,
         recommended_point=recommended,
         metric=metric,
+    )
+
+
+# ---------------------------------------------------------------------------
+# ДОО / СОШ: скан по числу объектов (v0.9.30)
+# ---------------------------------------------------------------------------
+
+import re as _re
+
+
+def _count_objects_from_formula(formula: str | None) -> int:
+    """Число объектов из formula-строки вида '... [120, 120, 180]'."""
+    if not formula:
+        return 0
+    m = _re.search(r"\[([^\]]+)\]", formula)
+    if not m:
+        return 0
+    return len([x for x in m.group(1).split(",") if x.strip()])
+
+
+def _scan_social_objects(
+    site: Site,
+    base_options: CalculationOptions,
+    norms: Normatives,
+    *,
+    kind: Literal["kindergarten", "school"],
+    lo: int,
+    hi: int,
+    metric: Metric,
+    title: str,
+    x_label: str,
+    factor: str,
+) -> ScanResult:
+    """Общий скан по числу объектов соцобъекта (ДОО или СОШ).
+
+    На каждом шаге фиксируем `num_objects = n` (площадь квартир падает,
+    когда объектов больше — суммарный ЗУ соцобъектов растёт). Базовая точка —
+    фактическое число объектов в базовом расчёте.
+    """
+    include = getattr(base_options, f"include_{kind}", True)
+    spec = getattr(base_options, kind)
+    if not include:
+        return ScanResult(
+            factor=factor, title=title, x_axis_label=x_label,
+            points=[], base_point=None, recommended_point=None, metric=metric,
+        )
+
+    # Базовое число объектов: из spec.num_objects, иначе из авто-разбивки базы.
+    try:
+        base_tep0 = solve_max_kit(site, base_options, norms)
+        accepted = getattr(base_tep0, f"{kind}_places_accepted")
+        base_n = spec.num_objects or _count_objects_from_formula(accepted.formula) or lo
+    except (ValueError, KeyError, RuntimeError):
+        base_n = spec.num_objects or lo
+
+    points: list[ScanPoint] = []
+    for n in range(lo, hi + 1):
+        opts = base_options.model_copy(deep=True)
+        new_spec = getattr(opts, kind).model_copy(update={"num_objects": n})
+        setattr(opts, kind, new_spec)
+        try:
+            tep = solve_max_kit(site, opts, norms)
+        except (ValueError, KeyError, RuntimeError) as e:
+            import logging
+            logging.warning("scan %s: solve failed (n=%d): %s", factor, n, e)
+            continue
+        points.append(_point_from_tep(
+            x_value=float(n), x_label=f"{n} шт.", tep=tep,
+        ))
+
+    base, recommended = _mark_base_and_recommended(points, float(base_n), metric)
+    return ScanResult(
+        factor=factor, title=title, x_axis_label=x_label,
+        points=points, base_point=base, recommended_point=recommended,
+        metric=metric,
+    )
+
+
+def scan_kindergarten_objects(
+    site: Site,
+    base_options: CalculationOptions,
+    norms: Normatives,
+    lo: int = 1,
+    hi: int = 5,
+    metric: Metric = "apartments_area",
+) -> ScanResult:
+    """Скан по числу объектов ДОО (1..5)."""
+    return _scan_social_objects(
+        site, base_options, norms, kind="kindergarten",
+        lo=lo, hi=hi, metric=metric,
+        title="Число ДОО", x_label="Число объектов ДОО",
+        factor="kindergarten_objects",
+    )
+
+
+def scan_school_objects(
+    site: Site,
+    base_options: CalculationOptions,
+    norms: Normatives,
+    lo: int = 1,
+    hi: int = 3,
+    metric: Metric = "apartments_area",
+) -> ScanResult:
+    """Скан по числу корпусов СОШ (1..3)."""
+    return _scan_social_objects(
+        site, base_options, norms, kind="school",
+        lo=lo, hi=hi, metric=metric,
+        title="Число СОШ", x_label="Число корпусов СОШ",
+        factor="school_objects",
     )

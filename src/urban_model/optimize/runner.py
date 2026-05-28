@@ -70,6 +70,9 @@ def _vpp_preview_key(opts: CalculationOptions) -> tuple:
     p = opts.parking
     return (
         int(opts.floors),
+        # v0.9.29: этажность зон влияет на footprint/pop через floors_eff —
+        # без них preview-кэш давал бы коллизии при варьировании кластеров.
+        tuple((round(c.area_m2, 1), int(c.floors)) for c in opts.floor_clusters),
         bool(opts.planning_doc),
         p.mode, p.open_share, p.multilevel_share, p.underground_share,
         p.multilevel_levels, p.underground_levels,
@@ -102,8 +105,19 @@ def _build_options_for_trial(
     opts = base_options.model_copy(deep=True)
     sampled: dict = {}
 
-    # --- Этажность ---
-    if space.floors_range is not None:
+    # --- Кластеры этажности (v0.9.29) ---
+    # Если включено варьирование зон И они заданы — подбираем этажность
+    # каждой зоны в её диапазоне. Глобальный floors_range при этом не
+    # применяется (этажность определяется зонами).
+    if getattr(space, "vary_cluster_floors", False) and opts.floor_clusters:
+        new_clusters = []
+        for i, c in enumerate(opts.floor_clusters):
+            f = trial.suggest_int(f"cluster_{i}_floors", c.floors_min, c.floors_max)
+            new_clusters.append(c.model_copy(update={"floors": f}))
+        opts.floor_clusters = new_clusters
+        sampled["cluster_floors"] = [c.floors for c in new_clusters]
+    # --- Этажность (одиночная) ---
+    elif space.floors_range is not None:
         lo, hi = space.floors_range
         opts.floors = trial.suggest_int("floors", lo, hi)
         sampled["floors"] = opts.floors

@@ -97,3 +97,20 @@ class TestKeyChanges:
         base = CalculationOptions(floors=12)  # znop_per_person_override=None → база=0
         changes = _format_key_changes(base, {"znop_per_person": 6.0})
         assert any("ЗНОП" in c for c in changes)
+
+
+# v0.10.1: «Применить к Расчёту» — расчёт по rec_options должен воспроизводить
+# результат карточки (валидирует _rec_options_from_params + override-путь).
+
+def test_apply_reproduces_recommendation(site_large, base_options, norms, bundle):
+    from urban_model.ui.optimizer import _rec_options_from_params
+    if not bundle.recommendations:
+        pytest.skip("нет рекомендаций")
+    rec = bundle.recommendations[0]
+    rec_opts = _rec_options_from_params(base_options, rec.params)
+    reproduced = solve_max_kit(site_large, rec_opts, norms)
+    # Площадь квартир и КИТ совпадают с tep карточки (в пределах допуска).
+    assert reproduced.apartments_area.value == pytest.approx(
+        rec.tep.apartments_area.value, rel=1e-3
+    )
+    assert reproduced.kit.value == pytest.approx(rec.tep.kit.value, rel=1e-3)

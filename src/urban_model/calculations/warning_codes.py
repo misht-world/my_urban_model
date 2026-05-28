@@ -45,6 +45,9 @@ class WC(str, Enum):
     # КИТ выше нормативного потолка.
     KIT_ABOVE_LIMIT = "KIT_ABOVE_LIMIT"
 
+    # Σ площадей кластеров этажности существенно расходится с S_квартала.
+    CLUSTER_AREA_MISMATCH = "CLUSTER_AREA_MISMATCH"
+
 
 def prefix(code: WC, message: str) -> str:
     """Префиксирует сообщение тегом `[CODE] `."""

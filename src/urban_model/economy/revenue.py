@@ -25,6 +25,17 @@ def calc_revenue(tep, options, norms: Normatives) -> RevenueBreakdown:
     p_open = float(norms.resolve("economy.sale_prices.parking_surface"))
     p_vpp = float(norms.resolve("economy.sale_prices.vpp_commercial"))
 
+    # v0.9.14: доля реализации м/м по классу жилья. Не все построенные
+    # места продаются — особенно в эконом/комфорт классе. Непроданные
+    # места приносят 0 выручки, но их себестоимость уже в cost.total.
+    try:
+        park_sale_rate = float(norms.resolve(
+            "economy.sale_rates.parking_by_class",
+            residential_class=options.residential_class,
+        ))
+    except (KeyError, TypeError, ValueError):
+        park_sale_rate = 1.0
+
     apt = (tep.apartments_area.value or 0.0)
     bi_area = (tep.built_in_area.value or 0.0)
     n_open = int(tep.parking_open_places.value or 0)
@@ -32,9 +43,9 @@ def calc_revenue(tep, options, norms: Normatives) -> RevenueBreakdown:
     n_ug = int(tep.parking_underground_places.value or 0)
 
     r_res = apt * p_res
-    r_open = n_open * p_open
-    r_ml = n_ml * p_ml
-    r_ug = n_ug * p_ug
+    r_open = n_open * p_open * park_sale_rate
+    r_ml = n_ml * p_ml * park_sale_rate
+    r_ug = n_ug * p_ug * park_sale_rate
     r_vpp = bi_area * p_vpp
 
     # v0.9.14: компенсация ДОО/СОШ городом — в реальности застройщик

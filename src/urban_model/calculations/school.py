@@ -37,6 +37,10 @@ def split_into_objects(
         return [spec_capacity] * spec_count
     if total_places <= 0:
         return []
+    # v0.9.31 (аудит P1): только число корпусов (без явной вместимости) —
+    # распределяем места ровно на это число (раньше игнорировалось → no-op).
+    if spec_count:
+        return distribute_places_evenly(total_places, int(spec_count), multiple)
     cap_max = capacity_max if capacity_max is not None else total_places
     n = choose_n_objects(total_places, capacity_min, cap_max)
     return distribute_places_evenly(total_places, n, multiple)

@@ -144,6 +144,13 @@ class TEPResult(BaseModel):
     # ВРИ-код ВПП (если задано) — строка, не TEPField, поскольку нечисловое значение
     built_in_vri_code: str | None = None
 
+    # Кластеры этажности (v0.9.28). None / [] — единая этажность (1 кластер).
+    # effective_floors — средневзвешенная этажность для баланса/озеленения.
+    # floor_clusters_detail — покластерная разбивка (площадь, этажи, КИТ_i,
+    # GFA_i, площадь квартир_i, пятно_i, себестоимость жилья_i).
+    effective_floors: float | None = None
+    floor_clusters_detail: list[dict[str, Any]] = Field(default_factory=list)
+
     # Ограничивающий фактор (для обратного расчёта)
     limiting_factor: str | None = None
 

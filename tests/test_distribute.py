@@ -183,3 +183,29 @@ class TestParkingValidationTolerance:
                 multilevel_share=0.5,
                 underground_share=0.5,  # сумма 1.5 — недопустимо
             )
+
+
+# v0.9.31 (аудит P1): split_into_objects честно учитывает число объектов
+# даже без явной вместимости (раньше spec_count в одиночку игнорировался).
+
+def test_kindergarten_split_honors_spec_count_alone():
+    from urban_model.calculations import kindergarten as kg
+    assert len(kg.split_into_objects(1000, None, 5, 90, 350, 5)) == 5
+    assert len(kg.split_into_objects(1000, None, 2, 90, 350, 5)) == 2
+    # суммарно сохраняется (с точностью до кратности)
+    buckets = kg.split_into_objects(1000, None, 4, 90, 350, 5)
+    assert len(buckets) == 4
+    assert abs(sum(buckets) - 1000) <= 4 * 5
+
+
+def test_school_split_honors_spec_count_alone():
+    from urban_model.calculations import school as sch
+    assert len(sch.split_into_objects(1500, None, 3, 550, 2475, 10)) == 3
+    assert len(sch.split_into_objects(1500, None, 1, 550, 2475, 10)) == 1
+
+
+def test_split_still_auto_when_no_spec():
+    from urban_model.calculations import kindergarten as kg
+    # Без spec_count — авто-разбивка (поведение не изменилось).
+    auto = kg.split_into_objects(1000, None, None, 90, 350, 5)
+    assert sum(auto) >= 1000 - 5 and all(90 <= c <= 350 for c in auto)

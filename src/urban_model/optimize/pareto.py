@@ -138,8 +138,16 @@ def _has_token_parking(tep: TEPResult) -> bool:
 def _format_key_changes(base_options: CalculationOptions, scenario_params: dict) -> list[str]:
     """Возвращает человекочитаемые строки про отличия сценария от базы."""
     changes: list[str] = []
-    # Этажность
-    if "floors" in scenario_params:
+    # Этажность зон (кластеры, v0.9.29)
+    if "cluster_floors" in scenario_params and base_options.floor_clusters:
+        new_fl = [int(x) for x in scenario_params["cluster_floors"]]
+        old_fl = [int(c.floors) for c in base_options.floor_clusters]
+        if new_fl != old_fl:
+            changes.append(
+                f"Этажность зон: {old_fl} → {new_fl}".replace("[", "").replace("]", "")
+            )
+    # Этажность (одиночная)
+    elif "floors" in scenario_params:
         new_f = int(scenario_params["floors"])
         if new_f != int(base_options.floors):
             diff = new_f - int(base_options.floors)
@@ -243,6 +251,7 @@ def _params_fingerprint(r: OptimizationResult) -> tuple:
     p = r.params
     return (
         int(p.get("floors", 0)),
+        tuple(int(x) for x in p.get("cluster_floors", [])),
         _parking_archetype(r),
         str(p.get("vpp_mode", "")),
         round(float(p.get("znop_per_person", -1.0)), 1),
@@ -366,8 +375,15 @@ def _select_three(
 # Главная точка входа
 # ---------------------------------------------------------------------------
 
-def _build_search_space(constraints: ParetoConstraints) -> SearchSpace:
-    """SearchSpace с учётом пользовательских ограничений."""
+def _build_search_space(
+    constraints: ParetoConstraints, has_clusters: bool = False
+) -> SearchSpace:
+    """SearchSpace с учётом пользовательских ограничений.
+
+    v0.9.29: если у базы заданы кластеры этажности (`has_clusters`), Optuna
+    варьирует этажность каждой зоны (vary_cluster_floors=True), а глобальный
+    floors_range не используется.
+    """
     # Режимы парковок: если запрещены все «нестандартные» — оставляем что есть.
     parking_modes: list[str] = []
     if constraints.allow_open:
@@ -391,7 +407,9 @@ def _build_search_space(constraints: ParetoConstraints) -> SearchSpace:
     open_range = (0.125, 0.5) if constraints.allow_open else (0.125, 0.125)
 
     return SearchSpace(
-        floors_range=constraints.floors_range,
+        # При кластерах глобальная этажность не варьируется — её определяют зоны.
+        floors_range=None if has_clusters else constraints.floors_range,
+        vary_cluster_floors=has_clusters,
         parking_modes=parking_modes,
         parking_open_share_range=open_range,
         parking_multilevel_share_range=ml_range,
@@ -430,7 +448,7 @@ def generate_pareto_recommendations(
     """
     if constraints is None:
         constraints = ParetoConstraints()
-    space = _build_search_space(constraints)
+    space = _build_search_space(constraints, has_clusters=bool(base_options.floor_clusters))
     report: OptimizationReport = optimize_max_apartments(
         site=site,
         base_options=base_options,

@@ -212,16 +212,39 @@ with tab_params:
 
 # --- Расчёт (только результаты) ---
 with tab_calc:
+    # v0.9.30: «Применить к Расчёту» из Оптимизации — расчёт по применённому
+    # сценарию (override), а не по форме «Параметры». Баннер + кнопка возврата.
+    _applied = st.session_state.get("applied_options")
+    if _applied is not None:
+        _albl = st.session_state.get("applied_label", "сценарий из Оптимизации")
+        bc1, bc2 = st.columns([3, 1])
+        bc1.info(
+            f"▶ Расчёт по применённому сценарию из Оптимизации: **{_albl}**. "
+            f"Параметры формы временно не используются."
+        )
+        if bc2.button("↩ Вернуть форму", use_container_width=True):
+            del st.session_state["applied_options"]
+            st.session_state.pop("applied_label", None)
+            st.rerun()
+        calc_options = _applied
+        calc_mode = "max_kit"
+        calc_vpp_request = None
+        calc_vpp_auto = False
+    else:
+        calc_options = inputs.options
+        calc_mode = inputs.mode
+        calc_vpp_request = inputs.vpp_request
+        calc_vpp_auto = inputs.vpp_auto_one_floor
     try:
         result = run_calculation(
             site=inputs.site,
-            options=inputs.options,
+            options=calc_options,
             norms=norms,
-            mode=inputs.mode,
+            mode=calc_mode,
             target_surplus_m2=inputs.target_surplus_m2,
             verify_kit_value=inputs.verify_kit_value,
-            vpp_auto_one_floor=inputs.vpp_auto_one_floor,
-            vpp_request=inputs.vpp_request,
+            vpp_auto_one_floor=calc_vpp_auto,
+            vpp_request=calc_vpp_request,
         )
     except Exception as e:
         st.error(f"Ошибка расчёта: {e}")
@@ -233,12 +256,16 @@ with tab_calc:
     render_header(result)
     # v0.7.3: «Добавить в сравнение» теперь ВНУТРИ блока «Основные показатели»
     # — render_kpi с scenario_default_name делает actions inline.
+    _name_prefix = (
+        f"[применён] {st.session_state.get('applied_label','')} · "
+        if _applied is not None else ""
+    )
     render_kpi(
         result,
-        scenario_default_name=auto_scenario_name(
+        scenario_default_name=_name_prefix + auto_scenario_name(
             inputs.site,
-            inputs.options,
-            inputs.mode,
+            calc_options,
+            calc_mode,
             target_surplus_m2=inputs.target_surplus_m2,
             verify_kit_value=inputs.verify_kit_value,
         ),

@@ -24,6 +24,15 @@ class SearchSpace(BaseModel):
         description="(min, max) этажность; None = фиксированная из base_options",
     )
 
+    # Кластеры этажности (v0.9.29): если True И base_options.floor_clusters
+    # непусто — Optuna варьирует этажность КАЖДОЙ зоны в её [floors_min,
+    # floors_max], а глобальный floors_range игнорируется (этажность
+    # определяется зонами). Площади зон фиксированы.
+    vary_cluster_floors: bool = Field(
+        default=False,
+        description="Варьировать этажность каждого кластера (зоны ПЗЗ)",
+    )
+
     # Парковки: режим
     parking_modes: list[str] | None = Field(
         default=None,
@@ -109,4 +118,4 @@ class SearchSpace(BaseModel):
                 "vpp_modes",
                 "znop_per_person_choices",
             )
-        ) and not self.try_built_in
+        ) and not self.try_built_in and not self.vary_cluster_floors

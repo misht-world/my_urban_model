@@ -169,13 +169,46 @@ def render_kpi(result: TEPResult, *, scenario_default_name: str | None = None) -
             f"\n"
             f"ЗНОП: {znop_area:,} м² ({znop_pp:.1f} м²/чел)"
         ).replace(",", " ")
+        # v0.9.28.2: разбивка территорий по зонам (если заданы кластеры).
+        if result.floor_clusters_detail:
+            _total_a = sum(d["area_m2"] for d in result.floor_clusters_detail) or 1.0
+            summary_text += (
+                f"\n\n— Кластеры этажности —\n"
+                f"Средневзвеш. этажность: {result.effective_floors:.1f}\n"
+            )
+            for d in result.floor_clusters_detail:
+                _sh = d["area_m2"] / _total_a * 100
+                summary_text += (
+                    f"  {d['label']}: {d['area_m2']:,.0f} м² ({_sh:.0f}%), "
+                    f"{d['floors']} эт., КИТ {d['kit']:.3f}, "
+                    f"квартиры {d['apartments_area']:,.0f} м²\n"
+                ).replace(",", " ")
+            # ЗНОП и прочие территории распределяются пропорционально площади зон
+            znop_total = int(result.znop_area.value or 0)
+            if znop_total > 0:
+                znop_split = " / ".join(
+                    f"{d['label']} {znop_total * d['area_m2'] / _total_a:,.0f}".replace(",", " ")
+                    for d in result.floor_clusters_detail
+                )
+                summary_text += (
+                    f"  ЗНОП по зонам (пропорц.): {znop_split} м²\n"
+                )
+
         if result.economy is not None:
             e = result.economy
             summary_text += (
                 f"\n\n— Оценка выгодности —\n"
-                f"Баллы: {e.profit:+,.0f}\n"
-                f"Маржа: {e.margin * 100:.1f}%; ROI: {e.roi * 100:.1f}%"
+                f"Баллы (итого): {e.profit:+,.0f}\n"
             ).replace(",", " ")
+            _soc = e.cost.kindergarten + e.cost.school + e.cost.social_parking
+            if _soc > 0.5 or e.revenue.social_compensation > 0.5:
+                summary_text += (
+                    f"Без соц. нагрузки: {e.profit_before_social:+,.0f}\n"
+                    f"Соц. нагрузка (ДОО/СОШ): {-e.net_social_burden:+,.0f}\n"
+                ).replace(",", " ")
+            summary_text += (
+                f"Маржа: {e.margin * 100:.1f}%; ROI: {e.roi * 100:.1f}%"
+            )
 
         with copy_col:
             with st.popover("📋 Сводка", use_container_width=True):
@@ -287,6 +320,16 @@ def render_kpi(result: TEPResult, *, scenario_default_name: str | None = None) -
             help="Общая площадь ЗНОП и норма на жителя.",
         )
 
+        # v0.9.29: КИТ по зонам — caption во всю ширину kpi_col (переносится
+        # на 2 строки при необходимости, в отличие от тесного chip под метрикой).
+        if result.floor_clusters_detail:
+            with kpi_col:
+                _zk = " · ".join(
+                    f"**{d['label']}**: {d['kit']:.3f}"
+                    for d in result.floor_clusters_detail
+                )
+                st.caption(f"🏗 КИТ по зонам (справочно): {_zk}")
+
         # v0.9.21: donut в правой колонке на одном уровне с метриками
         with donut_col:
             _render_balance_bar(result)
@@ -303,9 +346,12 @@ def render_kpi(result: TEPResult, *, scenario_default_name: str | None = None) -
                 score_help = (
                     "Баллы выгодности проекта — безразмерный индикатор для "
                     "сравнения вариантов. Положительные значения = проект "
-                    "выгоднее базовой ситуации; отрицательные = убыточнее. "
-                    "Подробное описание формул — `ECONOMY_AUDIT.md`."
+                    "выгоднее базовой ситуации; отрицательные = убыточнее."
                 )
+                _social_cost = (
+                    e.cost.kindergarten + e.cost.school + e.cost.social_parking
+                )
+                _has_social = _social_cost > 0.5 or e.revenue.social_compensation > 0.5
                 ec1, ec2, ec3, ec4 = st.columns(4)
                 ec1.metric(
                     "💰 Оценка выгодности",
@@ -314,21 +360,45 @@ def render_kpi(result: TEPResult, *, scenario_default_name: str | None = None) -
                     delta_color=("normal" if e.profit >= 0 else "inverse"),
                     help=score_help,
                 )
-                ec2.metric(
-                    "Маржа",
-                    f"{e.margin * 100:.1f}%" if e.revenue.total > 0 else "—",
-                    help="profit / revenue",
-                )
-                ec3.metric(
-                    "ROI",
-                    f"{e.roi * 100:.1f}%" if e.cost.total > 0 else "—",
-                    help="profit / cost",
-                )
-                ec4.metric(
-                    "Cost / Revenue",
-                    f"{int(e.cost.total):,} / {int(e.revenue.total):,}".replace(",", " "),
-                    help="Сумма cost-компонентов и revenue-компонентов в баллах",
-                )
+                if _has_social:
+                    # v0.9.28.2: соцобъекты вынесены отдельно от прибыли.
+                    ec2.metric(
+                        "Без соц. нагрузки",
+                        f"{e.profit_before_social:+,.0f}".replace(",", " "),
+                        delta=("плюс" if e.profit_before_social >= 0 else "минус"),
+                        delta_color=("normal" if e.profit_before_social >= 0 else "inverse"),
+                        help="Прибыль проекта без социальных обязательств "
+                             "(profit + чистая соц. нагрузка).",
+                    )
+                    ec3.metric(
+                        "Соц. нагрузка",
+                        f"{-e.net_social_burden:+,.0f}".replace(",", " "),
+                        delta=("убыток" if e.net_social_burden > 0 else "плюс"),
+                        delta_color=("inverse" if e.net_social_burden > 0 else "normal"),
+                        help="Себестоимость ДОО/СОШ/соц.парковок за вычетом "
+                             "компенсации города. Отрицательное = тянет проект в минус.",
+                    )
+                    ec4.metric(
+                        "Маржа",
+                        f"{e.margin * 100:.1f}%" if e.revenue.total > 0 else "—",
+                        help="profit / revenue",
+                    )
+                else:
+                    ec2.metric(
+                        "Маржа",
+                        f"{e.margin * 100:.1f}%" if e.revenue.total > 0 else "—",
+                        help="profit / revenue",
+                    )
+                    ec3.metric(
+                        "ROI",
+                        f"{e.roi * 100:.1f}%" if e.cost.total > 0 else "—",
+                        help="profit / cost",
+                    )
+                    ec4.metric(
+                        "Cost / Revenue",
+                        f"{int(e.cost.total):,} / {int(e.revenue.total):,}".replace(",", " "),
+                        help="Сумма cost-компонентов и revenue-компонентов в баллах",
+                    )
 
         # === Inline-actions: «Добавить в сравнение» + xlsx (внутри блока) ===
         if scenario_default_name is not None:
@@ -485,6 +555,22 @@ def render_details(result: TEPResult) -> None:
         b = result.balance
         comp_rows = []
         site_area = b.site_area
+        # v0.9.28.2: при кластерах добавляем колонки с разбивкой по зонам.
+        # Все территории распределяются пропорционально площади зон
+        # (доступная под застройку доля одинакова для всех зон), поэтому
+        # доля_зоны_i = площадь_зоны_i / Σ площадей зон.
+        _cl = result.floor_clusters_detail
+        _cl_total = sum(d["area_m2"] for d in _cl) if _cl else 0.0
+        _cl_shares = (
+            [(d["label"], d["area_m2"] / _cl_total) for d in _cl]
+            if _cl and _cl_total > 0 else []
+        )
+
+        def _with_zones(row: dict, val: float) -> dict:
+            for label, sh in _cl_shares:
+                row[f"{label}, м²"] = f"{val * sh:,.0f}".replace(",", " ")
+            return row
+
         for name, val in sorted(b.components.items(), key=lambda kv: -kv[1]):
             pct = val / site_area * 100 if site_area > 0 else 0
             pretty = {
@@ -499,23 +585,56 @@ def render_details(result: TEPResult) -> None:
                 "built_in_greening": "Озеленение ВПП",
                 "custom_objects": "Пользовательские объекты",
             }.get(name, name)
-            comp_rows.append({
+            comp_rows.append(_with_zones({
                 "Компонент": pretty,
                 "Площадь, м²": f"{val:,.0f}".replace(",", " "),
                 "Доля квартала, %": f"{pct:.1f}%",
-            })
-        comp_rows.append({
+            }, val))
+        comp_rows.append(_with_zones({
             "Компонент": "— Итого занято",
             "Площадь, м²": f"{b.required_total:,.0f}".replace(",", " "),
             "Доля квартала, %": f"{b.required_total / site_area * 100:.1f}%",
-        })
-        comp_rows.append({
+        }, b.required_total))
+        comp_rows.append(_with_zones({
             "Компонент": "— Резерв (surplus)",
             "Площадь, м²": f"{b.surplus:,.0f}".replace(",", " "),
             "Доля квартала, %": f"{b.surplus / site_area * 100:.1f}%",
-        })
+        }, b.surplus))
         st.dataframe(pd.DataFrame(comp_rows), hide_index=True, use_container_width=True)
-        st.caption(f"Площадь квартала: **{fmt_m2(site_area)}**  ·  {fmt_ga(site_area)}")
+        cap = f"Площадь квартала: **{fmt_m2(site_area)}**  ·  {fmt_ga(site_area)}"
+        if _cl_shares:
+            cap += "  ·  колонки по зонам — пропорционально площади зон"
+        st.caption(cap)
+
+    # 🏗 Кластеры этажности (v0.9.28)
+    if result.floor_clusters_detail:
+        with st.expander("🏗 Кластеры этажности (по зонам)", expanded=True):
+            st.caption(
+                f"Норматив проверяется по **общему КИТ {result.kit.value:.3f}** "
+                f"(средневзвешенная этажность **{result.effective_floors:.1f}**). "
+                f"КИТ по зонам ниже — **справочно**: показывает локальную "
+                f"плотность каждой зоны (Σ площадей квартир сходится с общей)."
+            )
+            cl_rows = []
+            for d in result.floor_clusters_detail:
+                cl_rows.append({
+                    "Зона": d["label"],
+                    "Площадь, м²": f"{d['area_m2']:,.0f}".replace(",", " "),
+                    "Этажей": d["floors"],
+                    "КИТ зоны (справ.)": f"{d['kit']:.3f}",
+                    "Площадь квартир, м²": f"{d['apartments_area']:,.0f}".replace(",", " "),
+                    "Пятно застройки, м²": f"{d['footprint']:,.0f}".replace(",", " "),
+                })
+            st.dataframe(pd.DataFrame(cl_rows), hide_index=True, use_container_width=True)
+            kit_norm = result.kit.normative
+            max_kit = max((d["kit"] for d in result.floor_clusters_detail), default=0.0)
+            if kit_norm and max_kit > kit_norm + 1e-6:
+                st.caption(
+                    f"ℹ Локальный КИТ верхней зоны {max_kit:.3f} выше норматива "
+                    f"{kit_norm} — на отдельном ЗУ такая зона потребовала бы более "
+                    f"высокого предела. В общем балансе квартала это компенсируется "
+                    f"низкими зонами (общий КИТ {result.kit.value:.3f} в норме)."
+                )
 
     # 💰 Экономика
     if result.economy is not None:
@@ -580,15 +699,60 @@ def render_details(result: TEPResult) -> None:
             ]
             st.dataframe(pd.DataFrame(rev_rows), hide_index=True, use_container_width=True)
 
+            # v0.9.14: социальная нагрузка отдельным блоком — наглядно
+            # показывает, сколько «стоит» застройщику социалка после
+            # компенсации города и какой была бы прибыль без неё.
+            social_cost = cb.kindergarten + cb.school + cb.social_parking
+            if social_cost > 0.5 or rb.social_compensation > 0.5:
+                st.markdown("**Социальная нагрузка**")
+                sc1, sc2, sc3 = st.columns(3)
+                sc1.metric(
+                    "Себестоимость соц.",
+                    f"{social_cost:,.0f}".replace(",", " "),
+                    help="ДОО + СОШ + парковки соцобъектов",
+                )
+                sc2.metric(
+                    "Компенсация города",
+                    f"{rb.social_compensation:,.0f}".replace(",", " "),
+                    help="Выкуп / КОТ / бюджетные субсидии",
+                )
+                sc3.metric(
+                    "Чистая нагрузка",
+                    f"{e.net_social_burden:+,.0f}".replace(",", " "),
+                    delta=("минус" if e.net_social_burden > 0 else "плюс"),
+                    delta_color=("inverse" if e.net_social_burden > 0 else "normal"),
+                    help="Себестоимость соц. − компенсация. >0 — соцобъекты в убыток.",
+                )
+
             st.markdown("**Метрики**")
             mc1, mc2, mc3 = st.columns(3)
             mc1.metric(
                 "Оценка выгодности",
                 f"{e.profit:+,.0f}".replace(",", " "),
-                help="Безразмерный индикатор для сравнения вариантов.",
+                help="Безразмерный индикатор для сравнения вариантов (revenue − cost).",
             )
-            mc2.metric("Маржа", f"{e.margin * 100:.1f}%" if rb.total > 0 else "—")
-            mc3.metric("ROI", f"{e.roi * 100:.1f}%" if cb.total > 0 else "—")
+            mc2.metric(
+                "Прибыль без соц.",
+                f"{e.profit_before_social:+,.0f}".replace(",", " "),
+                help="Прибыль проекта без социальных обязательств "
+                     "(profit + чистая соц. нагрузка). Показывает «чистый» девелопмент.",
+            )
+            mc3.metric(
+                "Запас / м²",
+                f"{e.profit_per_site_m2:+.3f}",
+                help="Прибыль на 1 м² участка — основная метрика для сравнения территорий.",
+            )
+
+            mc4, mc5, mc6 = st.columns(3)
+            mc4.metric("Маржа", f"{e.margin * 100:.1f}%" if rb.total > 0 else "—",
+                       help="profit / revenue")
+            mc5.metric("ROI", f"{e.roi * 100:.1f}%" if cb.total > 0 else "—",
+                       help="profit / cost")
+            mc6.metric(
+                "Выход жилья",
+                f"{e.sellable_ratio * 100:.0f}%" if e.sellable_ratio > 0 else "—",
+                help="Площадь квартир / общая GFA — доля продаваемого жилья от всей застройки.",
+            )
 
     # 📋 Полный аудит
     with st.expander("📋 Полный аудит (все TEP-поля + источники)", expanded=False):
@@ -779,9 +943,15 @@ def _render_actions_inline(result: TEPResult, default_name: str) -> None:
     c1, c2, c3 = st.columns([2, 1, 1])
 
     with c1:
+        # v0.9.29: text_input с key сохраняет своё значение между рендерами и
+        # игнорирует value= после первого показа — поэтому при изменении
+        # параметров (этажность, зоны, класс) авто-имя «замораживалось».
+        # Пушим новое авто-имя в session_state, когда оно изменилось.
+        if st.session_state.get("_scenario_name_auto") != default_name:
+            st.session_state["scenario_name_input"] = default_name
+            st.session_state["_scenario_name_auto"] = default_name
         scenario_name = st.text_input(
             "Имя сценария для сравнения",
-            value=default_name,
             placeholder="Введите название расчёта",
             key="scenario_name_input",
             label_visibility="collapsed",
@@ -809,6 +979,32 @@ def _render_actions_inline(result: TEPResult, default_name: str) -> None:
             xlsx_bytes,
             file_name=f"{scenario_name}.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True,
+        )
+
+    # v0.11: деловой DOCX-отчёт по варианту (альбомный, для Заказчика).
+    # Ленивая генерация: кнопка «Сформировать» → download_button.
+    if st.button("📄 Сформировать отчёт по варианту (DOCX)",
+                 use_container_width=True, key="gen_variant_docx"):
+        from urban_model.export import build_variant_report
+        with tempfile.NamedTemporaryFile(suffix=".docx", delete=False) as tmp_v:
+            vpath = tmp_v.name
+        try:
+            build_variant_report(scenario_name, result, vpath)
+            with open(vpath, "rb") as f:
+                st.session_state["_variant_docx_bytes"] = f.read()
+                st.session_state["_variant_docx_name"] = scenario_name
+        finally:
+            try:
+                os.unlink(vpath)
+            except OSError:
+                pass
+    if st.session_state.get("_variant_docx_bytes"):
+        st.download_button(
+            "📄 Скачать отчёт по варианту (DOCX)",
+            st.session_state["_variant_docx_bytes"],
+            file_name=f"Отчёт — {st.session_state.get('_variant_docx_name','вариант')}.docx",
+            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
             use_container_width=True,
         )
 
@@ -862,9 +1058,36 @@ def render_comparison_tab() -> None:
                 os.unlink(tmp_path)
             except OSError:
                 pass
-        st.download_button(
+        dl1, dl2 = st.columns(2)
+        dl1.download_button(
             "💾 Скачать xlsx-сравнение",
             xlsx_bytes,
             file_name="comparison.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True,
         )
+        # v0.10.1: DOCX-отчёт генерируется ЛЕНИВО (по кнопке), а не на каждый
+        # ре-рендер — иначе matplotlib + docx строятся при каждом действии в
+        # сравнении, что заметно тормозит вкладку при многих сценариях.
+        if dl2.button("📄 Сформировать отчёт (DOCX)", use_container_width=True,
+                      key="gen_docx_report"):
+            from urban_model.export import build_report
+            with tempfile.NamedTemporaryFile(suffix=".docx", delete=False) as tmp_d:
+                docx_path = tmp_d.name
+            try:
+                build_report(pairs, docx_path)
+                with open(docx_path, "rb") as f:
+                    st.session_state["_docx_report_bytes"] = f.read()
+            finally:
+                try:
+                    os.unlink(docx_path)
+                except OSError:
+                    pass
+        if st.session_state.get("_docx_report_bytes"):
+            st.download_button(
+                "📄 Скачать отчёт (DOCX)",
+                st.session_state["_docx_report_bytes"],
+                file_name="urban_report.docx",
+                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                use_container_width=True,
+            )

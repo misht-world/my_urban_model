@@ -88,8 +88,20 @@ def calc_cost(tep, options, norms: Normatives) -> CostBreakdown:
     bi_area = (tep.built_in_area.value or 0.0)
     # GFA жилья = общая GFA − площадь ВПП (если есть)
     residential_gfa = max(0.0, gfa_v - bi_area)
-    c_base_res = _resolve_residential_base(int(options.floors), norms)
-    cost_residential = residential_gfa * c_base_res
+    # v0.9.28: при кластерах этажности себестоимость считается покластерно
+    # (C_base нелинейна по этажам): residential_gfa делится по долям GFA,
+    # каждая часть умножается на ставку своей этажности.
+    _clusters = getattr(options, "floor_clusters", None) or []
+    if _clusters:
+        from urban_model.calculations import clusters as _cl
+        _gw = _cl.gfa_weights(_clusters)
+        cost_residential = sum(
+            residential_gfa * w * _resolve_residential_base(int(c.floors), norms)
+            for w, c in zip(_gw, _clusters)
+        )
+    else:
+        c_base_res = _resolve_residential_base(int(options.floors), norms)
+        cost_residential = residential_gfa * c_base_res
 
     # --- ВПП ---
     cost_vpp = bi_area * c_vpp

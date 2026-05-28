@@ -194,3 +194,68 @@ class TestOptunaProfitObjective:
             top1_profit = report.top_n[0].tep.economy.profit
             for other in report.top_n[1:]:
                 assert top1_profit >= other.tep.economy.profit - 1e-3
+
+
+# ---------------------------------------------------------------------------
+# v0.9.14 — sale_rate парковок + соц. метрики
+# ---------------------------------------------------------------------------
+
+class TestParkingSaleRate:
+    """Доля реализации м/м по классу применяется к выручке парковок."""
+
+    def test_sale_rate_loaded_by_class(self, spb):
+        assert spb.resolve(
+            "economy.sale_rates.parking_by_class", residential_class="economy"
+        ) == 0.20
+        assert spb.resolve(
+            "economy.sale_rates.parking_by_class", residential_class="business"
+        ) == 0.75
+
+    def test_business_parking_revenue_higher_than_economy(self, spb, site):
+        """При одинаковых ТЭП выручка парковок бизнес-класса выше эконома
+        ровно из-за разной доли реализации (0.75 vs 0.20)."""
+        opts_e = CalculationOptions(floors=12, residential_class="economy")
+        opts_b = CalculationOptions(floors=12, residential_class="business")
+        rev_e = verify_kit(1.5, site, opts_e, spb).economy.revenue
+        rev_b = verify_kit(1.5, site, opts_b, spb).economy.revenue
+        park_e = rev_e.parking_open + rev_e.parking_multilevel + rev_e.parking_underground
+        park_b = rev_b.parking_open + rev_b.parking_multilevel + rev_b.parking_underground
+        if park_e > 0:
+            assert park_b > park_e
+
+
+class TestSocialMetrics:
+    """net_social_burden / profit_before_social / sellable_ratio."""
+
+    def test_profit_before_social_identity(self, spb, site):
+        e = verify_kit(1.5, site, CalculationOptions(floors=12), spb).economy
+        assert e.profit_before_social == pytest.approx(e.profit + e.net_social_burden)
+
+    def test_net_social_burden_definition(self, spb, site):
+        e = verify_kit(1.5, site, CalculationOptions(floors=12), spb).economy
+        cb, rb = e.cost, e.revenue
+        expected = (cb.kindergarten + cb.school + cb.social_parking) - rb.social_compensation
+        assert e.net_social_burden == pytest.approx(expected)
+
+    def test_sellable_ratio_in_range(self, spb, site):
+        e = verify_kit(1.5, site, CalculationOptions(floors=12), spb).economy
+        assert 0.0 < e.sellable_ratio <= 1.0
+
+    def test_profit_before_land_equals_profit_when_no_land(self, spb, site):
+        e = verify_kit(1.5, site, CalculationOptions(floors=12), spb).economy
+        # fixed (земля/ТУ/снос) = 0 → profit_before_land == profit
+        assert e.profit_before_land == pytest.approx(e.profit)
+
+
+class TestIncludeEconomyToggle:
+    """v0.9.29: include_economy=False → result.economy is None."""
+
+    def test_economy_computed_by_default(self, spb, site):
+        r = verify_kit(1.5, site, CalculationOptions(floors=12), spb)
+        assert r.economy is not None
+
+    def test_economy_skipped_when_excluded(self, spb, site):
+        r = verify_kit(
+            1.5, site, CalculationOptions(floors=12, include_economy=False), spb
+        )
+        assert r.economy is None
