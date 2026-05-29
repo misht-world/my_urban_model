@@ -97,13 +97,13 @@ def calc_cost(tep, options, norms: Normatives) -> CostBreakdown:
         getattr(options.kindergarten, "building_type", "detached")
         if _kg_included else "detached"
     )
-    _kg_only_demand_pre = (
+    kg_only_demand = (
         bool(getattr(options.kindergarten, "only_demand", False))
         if _kg_included else True
     )
     kg_bld_in_gfa = (
         float(tep.kindergarten_building_area.value or 0.0)
-        if (kg_btype == "built_in" and not _kg_only_demand_pre) else 0.0
+        if (kg_btype == "built_in" and not kg_only_demand) else 0.0
     )
     # GFA жилья = общая GFA − площадь ВПП − площадь здания встроенного ДОО
     residential_gfa = max(0.0, gfa_v - bi_area - kg_bld_in_gfa)
@@ -145,8 +145,7 @@ def calc_cost(tep, options, norms: Normatives) -> CostBreakdown:
     # «фантомный убыток» от объекта, который мы не строим.
     kg_bld = (tep.kindergarten_building_area.value or 0.0)
     sch_bld = (tep.school_building_area.value or 0.0)
-    kg_only_demand = bool(getattr(options.kindergarten, "only_demand", False)) \
-        if getattr(options, "include_kindergarten", True) else True
+    # kg_only_demand уже вычислен выше (для вычета здания встроенного ДОО).
     sch_only_demand = bool(getattr(options.school, "only_demand", False)) \
         if getattr(options, "include_school", True) else True
     cost_kg = 0.0 if kg_only_demand else kg_bld * c_kg
