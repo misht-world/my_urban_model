@@ -46,6 +46,26 @@ st.markdown("""
   /* v0.10.18 stylesheet marker — стиль «Минимал · Спецификация». bump кэша. */
   /* Уменьшаем верхний отступ всего блока */
   div.block-container {padding-top: 1.5rem; padding-bottom: 1rem;}
+  /* v0.10.18: общая типографика «спецификации» — выровненные моноширинные
+     цифры и аккуратный кёрнинг (как в утверждённом макете). */
+  html, body, [data-testid="stAppViewContainer"] {
+      font-variant-numeric: tabular-nums;
+      -webkit-font-smoothing: antialiased;
+      text-rendering: optimizeLegibility;
+  }
+  /* Главный заголовок страницы (st.title → h1) — тонкий и крупный,
+     с выраженным отрицательным трекингом. Изящнее жирного дефолта. */
+  h1#модель-застройки-территории, .stApp h1 {
+      font-weight: 300 !important;
+      letter-spacing: -1px !important;
+      color: #111111 !important;
+  }
+  /* Подзаголовки секций уровня h2/h3/h4 — спокойный вес */
+  .stApp h2, .stApp h3, .stApp h4 {
+      font-weight: 600;
+      letter-spacing: -0.3px;
+      color: #1A1A1A;
+  }
   /* v0.11.0: кнопки — прямоугольные, чёрный контур (стиль спецификации).
      По наведению — заливка графитом. Download-кнопки выглядят так же. */
   div[data-testid="stButton"] > button,
@@ -117,38 +137,38 @@ st.markdown("""
      Также сохранены fallback-селекторы по testid на случай отсутствия
      `:has` (старые браузеры).
   */
-  /* Главный селектор через :has — окрашивает ВСЮ колонку */
-  /* v0.10.3: приглушённые «деловые» карточки колонок вместо ярких заливок.
-     Нейтральный фон + тонкий акцент слева для различения ввод/настройки. */
+  /* v0.10.18: колонки «Параметры» в стиле спецификации — белый фон,
+     волосяная рамка, почти прямые углы; различие ввод/настройки — тонкий
+     2px-акцент слева (графит = данные, амбер = настройки), без серой заливки. */
   [data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:has(.params-col-input),
   [data-testid="stHorizontalBlock"] > [data-testid="column"]:has(.params-col-input) {
-      background-color: #FAFBFC !important;
-      border: 1px solid #E5E9EF !important;
-      border-left: 3px solid #94A3B8 !important;
-      border-radius: 6px;
-      padding: 14px !important;
+      background-color: #FFFFFF !important;
+      border: 1px solid #EDEDED !important;
+      border-left: 2px solid #1A1A1A !important;
+      border-radius: 3px;
+      padding: 16px 18px !important;
   }
   [data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:has(.params-col-settings),
   [data-testid="stHorizontalBlock"] > [data-testid="column"]:has(.params-col-settings) {
-      background-color: #FAFBFC !important;
-      border: 1px solid #E5E9EF !important;
-      border-left: 3px solid #A8B7A0 !important;
-      border-radius: 6px;
-      padding: 14px !important;
+      background-color: #FFFFFF !important;
+      border: 1px solid #EDEDED !important;
+      border-left: 2px solid #F5A623 !important;
+      border-radius: 3px;
+      padding: 16px 18px !important;
   }
-  /* Fallback (legacy): окрашиваем по nth-position если :has не поддерживается */
+  /* Fallback (legacy): различаем по nth-position если :has не поддерживается */
   @supports not (selector(:has(*))) {
       [data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:nth-of-type(1) {
-          background-color: #FAFBFC !important;
-          border-left: 3px solid #94A3B8 !important;
-          border-radius: 6px;
-          padding: 14px !important;
+          background-color: #FFFFFF !important;
+          border-left: 2px solid #1A1A1A !important;
+          border-radius: 3px;
+          padding: 16px 18px !important;
       }
       [data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:nth-of-type(2) {
-          background-color: #FAFBFC !important;
-          border-left: 3px solid #A8B7A0 !important;
-          border-radius: 6px;
-          padding: 14px !important;
+          background-color: #FFFFFF !important;
+          border-left: 2px solid #F5A623 !important;
+          border-radius: 3px;
+          padding: 16px 18px !important;
       }
   }
   /* Слайдеры внутри border-блоков — ограничение ширины до ~65%.
@@ -187,9 +207,11 @@ st.markdown("""
      моноширинные; подписи — мелкие UPPERCASE. */
   [data-testid="stMetricValue"] {
       font-weight: 300 !important;
+      font-size: 2.05rem !important;
       color: #111111 !important;
       font-variant-numeric: tabular-nums;
       letter-spacing: -0.5px;
+      line-height: 1.15;
   }
   [data-testid="stMetricLabel"] p {
       font-size: 0.74rem !important;
