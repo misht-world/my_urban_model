@@ -77,21 +77,30 @@ def render_header(result: TEPResult) -> None:
         st.caption(f"🔻 **Ограничивающий фактор:** {result.limiting_factor}")
     # v0.8.6: префиксы [CODE] из warning_codes.WC прячем от пользователя —
     # они служат для машинной фильтрации (Optuna feasibility, тесты).
-    from urban_model.calculations.warning_codes import WC, any_with_code, strip_code
+    from urban_model.calculations.warning_codes import strip_code
     for w in result.warnings:
         st.warning(f"⚠️ {strip_code(w)}")
 
-    # v0.9.11 (AUDIT S-2): если есть WARNING про вместимость соцобъекта меньше
-    # нормативного минимума — предложить пользователю «Только потребность».
-    # Это типичная ситуация на квартале < 5000 м² (3-50 чел населения),
-    # где ДОО на 5 мест или СОШ на 25 мест физически невозможны.
-    if any_with_code(result.warnings, WC.SOC_CAP_MIN_BELOW):
+    # v0.10.9 (#1): когда ограничивает норматив плотности 450 чел/га и при этом
+    # есть заметный резерв территории — объясняем, что земля высвобождена
+    # плотностью (её нельзя застроить жильём) и как её использовать.
+    dens = result.density_chel_per_ga
+    surplus = result.balance.surplus
+    site_a = result.balance.site_area or 1.0
+    density_limited = (
+        dens.normative and dens.value is not None
+        and dens.value >= dens.normative - 1.0
+        and surplus > site_a * 0.02
+    )
+    if density_limited:
         st.info(
-            "💡 **Подсказка:** на малых кварталах нормативные ДОО/СОШ "
-            "невозможны (вместимость < минимума). Если объект размещается "
-            "за пределами квартала — включите «Только рассчитать потребность» "
-            "в плитках ДОО/СОШ на вкладке «Параметры». Тогда место будет "
-            "учитываться, но ЗУ объекта не войдёт в баланс."
+            f"💡 **Резерв обусловлен нормативом плотности.** Население достигло "
+            f"потолка {dens.normative:.0f} чел/га — больше жилья разместить нельзя "
+            f"без превышения плотности. Резерв {fmt_int(surplus)} м² уходит в "
+            f"озеленение/двор. Чтобы задействовать его под застройку: разместите "
+            f"**нежилые объекты** (офис/коммерция во вкладке «Параметры» → "
+            f"«Дополнительные объекты») — они занимают землю, но не дают населения; "
+            f"либо отключите норматив плотности (для экспериментов)."
         )
 
 
@@ -231,6 +240,13 @@ def render_kpi(result: TEPResult, *, scenario_default_name: str | None = None) -
             f"(ДПТ: {'да' if result.kit_normative_max.value == 2.5 else 'нет'})"
         )
         c1.metric("КИТ (ПЗЗ)", f"{result.kit.value:.3f}", help=kit_help)
+        # v0.10.10 (#1): КИТ по зонам — сразу под метрикой КИТ (в её колонке).
+        if result.floor_clusters_detail:
+            _zk = " · ".join(
+                f"**{d['label']}**: {d['kit']:.3f}"
+                for d in result.floor_clusters_detail
+            )
+            c1.caption(f"🏗 КИТ зон: {_zk}")
         c2.metric(
             "Население", f"{fmt_int(result.population.value)} чел.",
             help="Жилищная обеспеченность: 28 м²/чел (НГП СПб).",
@@ -290,7 +306,7 @@ def render_kpi(result: TEPResult, *, scenario_default_name: str | None = None) -
             f"{sch_total} мест" if sch_total > 0 else "—",
             delta=_buckets_delta(sch_buckets_str, sch_total),
             delta_color="off",
-            help="Принятая суммарная вместимость и число корпусов СОШ.",
+            help="Принятая суммарная вместимость и число объектов СОШ.",
         )
 
         # Парковки — сводка по типам
@@ -319,16 +335,6 @@ def render_kpi(result: TEPResult, *, scenario_default_name: str | None = None) -
             delta_color="off",
             help="Общая площадь ЗНОП и норма на жителя.",
         )
-
-        # v0.9.29: КИТ по зонам — caption во всю ширину kpi_col (переносится
-        # на 2 строки при необходимости, в отличие от тесного chip под метрикой).
-        if result.floor_clusters_detail:
-            with kpi_col:
-                _zk = " · ".join(
-                    f"**{d['label']}**: {d['kit']:.3f}"
-                    for d in result.floor_clusters_detail
-                )
-                st.caption(f"🏗 КИТ по зонам (справочно): {_zk}")
 
         # v0.9.21: donut в правой колонке на одном уровне с метриками
         with donut_col:
@@ -571,6 +577,20 @@ def render_details(result: TEPResult) -> None:
                 row[f"{label}, м²"] = f"{val * sh:,.0f}".replace(",", " ")
             return row
 
+        # v0.10.8 (#8): «Требуется» — фактическая площадь компонента, даже если
+        # он в режиме «только потребность» и в баланс НЕ входит (тогда «В балансе»=0).
+        # Источник — соответствующие TEP-поля (а не balance.components).
+        required_map = {
+            "housing_lot": result.housing_lot_area.value,
+            "kindergarten_plot": result.kindergarten_plot_area.value,
+            "school_plot": result.school_plot_area.value,
+            "sport_facilities": result.sport_facilities_plot_area.value,
+            "social_parking_plot": result.social_parking_area.value,
+            "znop": result.znop_area.value,
+            "intra_quarter_driveways": result.driveways_intra_quarter_area.value,
+            "parking_multilevel": result.parking_multilevel_area.value,
+        }
+
         for name, val in sorted(b.components.items(), key=lambda kv: -kv[1]):
             pct = val / site_area * 100 if site_area > 0 else 0
             pretty = {
@@ -585,30 +605,40 @@ def render_details(result: TEPResult) -> None:
                 "built_in_greening": "Озеленение ВПП",
                 "custom_objects": "Пользовательские объекты",
             }.get(name, name)
+            req = required_map.get(name, val)
+            if req is None:
+                req = val
             comp_rows.append(_with_zones({
                 "Компонент": pretty,
-                "Площадь, м²": f"{val:,.0f}".replace(",", " "),
+                "Требуется, м²": f"{req:,.0f}".replace(",", " "),
+                "В балансе, м²": f"{val:,.0f}".replace(",", " "),
                 "Доля квартала, %": f"{pct:.1f}%",
             }, val))
         comp_rows.append(_with_zones({
             "Компонент": "— Итого занято",
-            "Площадь, м²": f"{b.required_total:,.0f}".replace(",", " "),
+            "Требуется, м²": "",
+            "В балансе, м²": f"{b.required_total:,.0f}".replace(",", " "),
             "Доля квартала, %": f"{b.required_total / site_area * 100:.1f}%",
         }, b.required_total))
         comp_rows.append(_with_zones({
             "Компонент": "— Резерв (surplus)",
-            "Площадь, м²": f"{b.surplus:,.0f}".replace(",", " "),
+            "Требуется, м²": "",
+            "В балансе, м²": f"{b.surplus:,.0f}".replace(",", " "),
             "Доля квартала, %": f"{b.surplus / site_area * 100:.1f}%",
         }, b.surplus))
         st.dataframe(pd.DataFrame(comp_rows), hide_index=True, use_container_width=True)
-        cap = f"Площадь квартала: **{fmt_m2(site_area)}**  ·  {fmt_ga(site_area)}"
+        cap = (
+            f"Площадь квартала: **{fmt_m2(site_area)}**  ·  {fmt_ga(site_area)}  ·  "
+            f"«Требуется» — фактическая площадь; «В балансе» = 0 у компонентов в "
+            f"режиме «только потребность» (размещаются вне квартала)."
+        )
         if _cl_shares:
             cap += "  ·  колонки по зонам — пропорционально площади зон"
         st.caption(cap)
 
     # 🏗 Кластеры этажности (v0.9.28)
     if result.floor_clusters_detail:
-        with st.expander("🏗 Кластеры этажности (по зонам)", expanded=True):
+        with st.expander("🏗 Кластеры этажности (по зонам)", expanded=False):
             st.caption(
                 f"Норматив проверяется по **общему КИТ {result.kit.value:.3f}** "
                 f"(средневзвешенная этажность **{result.effective_floors:.1f}**). "
@@ -934,19 +964,50 @@ def _render_balance_bar(result: TEPResult) -> None:
 # Кнопки внизу: добавить в сравнение, скачать xlsx
 # ---------------------------------------------------------------------------
 
+def _result_sig(result: TEPResult) -> tuple:
+    """Лёгкая сигнатура результата — меняется только при изменении расчёта.
+    Используется для мемоизации тяжёлых отчётов (не пересобирать на каждый ре-рендер)."""
+    return (
+        round(result.kit.value or 0.0, 4),
+        round(result.apartments_area.value or 0.0, 1),
+        round(result.balance.surplus, 1),
+        round(result.economy.profit, 1) if result.economy is not None else None,
+        round(result.effective_floors or 0.0, 2),
+    )
+
+
+def _variant_report_bytes(name: str, result: TEPResult) -> bytes:
+    """DOCX-отчёт по варианту с мемоизацией по (имя + сигнатура расчёта).
+    Пересобирается только когда меняются параметры — поэтому download_button
+    отдаёт готовые байты в ОДИН клик, без отдельной кнопки «Сформировать»."""
+    sig = (name, _result_sig(result))
+    if st.session_state.get("_vr_sig") != sig:
+        from urban_model.export import build_variant_report
+        with tempfile.NamedTemporaryFile(suffix=".docx", delete=False) as tmp_v:
+            vpath = tmp_v.name
+        try:
+            build_variant_report(name, result, vpath)
+            with open(vpath, "rb") as f:
+                st.session_state["_vr_bytes"] = f.read()
+        finally:
+            try:
+                os.unlink(vpath)
+            except OSError:
+                pass
+        st.session_state["_vr_sig"] = sig
+    return st.session_state["_vr_bytes"]
+
+
 def _render_actions_inline(result: TEPResult, default_name: str) -> None:
-    """Inline-actions: text_input + кнопки «Добавить» / «Скачать xlsx».
-
-    Используется внутри блока «Основные показатели» — без отдельного разделителя
-    сверху (его рисует caller, чтобы actions были ВНУТРИ container).
-    """
-    c1, c2, c3 = st.columns([2, 1, 1])
-
+    """Inline-actions: имя + «Добавить в сравнение», ниже — выгрузки рядом."""
+    # v0.10.9 (#5): всё поджато влево — имя + кнопки кластеризованы в левой
+    # части, чтобы не «уезжали» вправо и не терялись из виду.
+    # v0.10.10 (#3): кнопки заполняют свои узкие колонки (use_container_width) —
+    # стоят вплотную друг к другу слева, без разрывов и без растяжки на весь экран.
+    c1, c2, _c3 = st.columns([2.5, 2, 3.5])
     with c1:
-        # v0.9.29: text_input с key сохраняет своё значение между рендерами и
-        # игнорирует value= после первого показа — поэтому при изменении
-        # параметров (этажность, зоны, класс) авто-имя «замораживалось».
-        # Пушим новое авто-имя в session_state, когда оно изменилось.
+        # v0.9.29: text_input с key сохраняет значение и игнорирует value=
+        # после первого показа — поэтому при смене параметров пушим авто-имя.
         if st.session_state.get("_scenario_name_auto") != default_name:
             st.session_state["scenario_name_input"] = default_name
             st.session_state["_scenario_name_auto"] = default_name
@@ -961,8 +1022,10 @@ def _render_actions_inline(result: TEPResult, default_name: str) -> None:
             st.session_state.scenarios.append((scenario_name, result))
             st.toast(f"Сценарий «{scenario_name}» добавлен", icon="✅")
             st.rerun()
-    with c3:
-        # xlsx-экспорт текущего сценария
+
+    # Выгрузки — вплотную, слева. Отчёт DOCX — в ОДИН клик (мемоизация).
+    d1, d2, _ = st.columns([1.7, 2.3, 4.5])
+    with d1:
         with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False) as tmp:
             tmp_path = tmp.name
         try:
@@ -981,29 +1044,11 @@ def _render_actions_inline(result: TEPResult, default_name: str) -> None:
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             use_container_width=True,
         )
-
-    # v0.11: деловой DOCX-отчёт по варианту (альбомный, для Заказчика).
-    # Ленивая генерация: кнопка «Сформировать» → download_button.
-    if st.button("📄 Сформировать отчёт по варианту (DOCX)",
-                 use_container_width=True, key="gen_variant_docx"):
-        from urban_model.export import build_variant_report
-        with tempfile.NamedTemporaryFile(suffix=".docx", delete=False) as tmp_v:
-            vpath = tmp_v.name
-        try:
-            build_variant_report(scenario_name, result, vpath)
-            with open(vpath, "rb") as f:
-                st.session_state["_variant_docx_bytes"] = f.read()
-                st.session_state["_variant_docx_name"] = scenario_name
-        finally:
-            try:
-                os.unlink(vpath)
-            except OSError:
-                pass
-    if st.session_state.get("_variant_docx_bytes"):
+    with d2:
         st.download_button(
-            "📄 Скачать отчёт по варианту (DOCX)",
-            st.session_state["_variant_docx_bytes"],
-            file_name=f"Отчёт — {st.session_state.get('_variant_docx_name','вариант')}.docx",
+            "📄 Отчёт по варианту (DOCX)",
+            _variant_report_bytes(default_name, result),
+            file_name=f"Отчёт — {default_name}.docx",
             mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
             use_container_width=True,
         )
@@ -1058,36 +1103,34 @@ def render_comparison_tab() -> None:
                 os.unlink(tmp_path)
             except OSError:
                 pass
-        dl1, dl2 = st.columns(2)
+        dl1, dl2, _ = st.columns([1, 1, 2])
         dl1.download_button(
             "💾 Скачать xlsx-сравнение",
             xlsx_bytes,
             file_name="comparison.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            use_container_width=True,
         )
-        # v0.10.1: DOCX-отчёт генерируется ЛЕНИВО (по кнопке), а не на каждый
-        # ре-рендер — иначе matplotlib + docx строятся при каждом действии в
-        # сравнении, что заметно тормозит вкладку при многих сценариях.
-        if dl2.button("📄 Сформировать отчёт (DOCX)", use_container_width=True,
-                      key="gen_docx_report"):
+        # v0.10.8 (#4): DOCX-отчёт сравнения — в ОДИН клик. Мемоизация по
+        # сигнатуре всех сценариев: пересобирается только при изменении набора,
+        # а не на каждый ре-рендер (matplotlib/docx не тормозят вкладку).
+        cmp_sig = tuple((nm, _result_sig(t)) for nm, t in pairs)
+        if st.session_state.get("_cmp_docx_sig") != cmp_sig:
             from urban_model.export import build_report
             with tempfile.NamedTemporaryFile(suffix=".docx", delete=False) as tmp_d:
                 docx_path = tmp_d.name
             try:
                 build_report(pairs, docx_path)
                 with open(docx_path, "rb") as f:
-                    st.session_state["_docx_report_bytes"] = f.read()
+                    st.session_state["_cmp_docx_bytes"] = f.read()
             finally:
                 try:
                     os.unlink(docx_path)
                 except OSError:
                     pass
-        if st.session_state.get("_docx_report_bytes"):
-            st.download_button(
-                "📄 Скачать отчёт (DOCX)",
-                st.session_state["_docx_report_bytes"],
-                file_name="urban_report.docx",
-                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                use_container_width=True,
-            )
+            st.session_state["_cmp_docx_sig"] = cmp_sig
+        dl2.download_button(
+            "📄 Скачать отчёт (DOCX)",
+            st.session_state["_cmp_docx_bytes"],
+            file_name="urban_report.docx",
+            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        )

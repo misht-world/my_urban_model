@@ -14,3 +14,8 @@ info/*.txt
 output/
 .claude/
 *.log
+
+# Generated/local artifacts
+cloudflared.exe
+пример_отчёта.pptx
+*.docx

@@ -1,6 +1,6 @@
 [project]
 name = "urban-model"
-version = "0.10.2"
+version = "0.10.13"
 description = "Математическая модель застройки территории: обратный расчёт КИТ + Optuna-оптимизация"
 requires-python = ">=3.11"
 dependencies = [
@@ -11,6 +11,7 @@ dependencies = [
     "optuna>=3.5",
     "python-docx>=1.2.0",
     "matplotlib>=3.10.9",
+    "python-pptx>=1.0.2",
 ]
 
 [project.optional-dependencies]

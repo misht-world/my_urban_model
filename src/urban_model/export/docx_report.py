@@ -298,14 +298,28 @@ def _chart_balance(tep: TEPResult) -> BytesIO | None:
     labels = [x[0] for x in items]
     vals = [x[1] for x in items]
     pcts = [v / site * 100 for v in vals]
-    fig, ax = plt.subplots(figsize=(7.0, 0.45 * len(items) + 1.0))
-    bars = ax.barh(labels, vals, color="#1F4E79")
-    for bar, pct in zip(bars, pcts):
-        ax.text(bar.get_width(), bar.get_y() + bar.get_height() / 2,
-                f" {pct:.1f}%", va="center", fontsize=8, color="#333333")
+    # v0.10.10: цветные столбцы (палитра) вместо однотонных — нагляднее.
+    palette = [
+        "#1F4E79", "#2E75B6", "#5B9BD5", "#9DC3E6", "#70AD47", "#A9D18E",
+        "#F5A623", "#ED7D31", "#C0C0C0", "#BFBFBF",
+    ]
+    colors = [palette[i % len(palette)] for i in range(len(items))]
+    # Резерв — мягкий зелёный (последний/первый элемент = озеленение)
+    for i, lbl in enumerate(labels):
+        if "Резерв" in lbl:
+            colors[i] = "#9CCC65"
+    fig, ax = plt.subplots(figsize=(7.2, 0.5 * len(items) + 1.0))
+    bars = ax.barh(labels, vals, color=colors, edgecolor="white", height=0.7)
+    xmax = max(vals) if vals else 1.0
+    for bar, pct, v in zip(bars, pcts, vals):
+        ax.text(bar.get_width() + xmax * 0.01, bar.get_y() + bar.get_height() / 2,
+                f"{v:,.0f} м² · {pct:.0f}%".replace(",", " "),
+                va="center", fontsize=8.5, color="#333333")
+    ax.set_xlim(0, xmax * 1.28)  # место под подписи
     ax.set_xlabel("Площадь, м²")
-    ax.set_title("Баланс территории")
+    ax.set_title("Баланс территории квартала", fontweight="bold", color="#1F4E79")
     ax.grid(axis="y", visible=False)
+    ax.spines["top"].set_visible(False); ax.spines["right"].set_visible(False)
     fig.tight_layout()
     return _save(fig, plt)
 
@@ -317,45 +331,32 @@ def _chart_economy(tep: TEPResult) -> BytesIO | None:
         plt = _mpl()
     except Exception:  # noqa: BLE001
         return None
-    c = tep.economy.cost
-    r = tep.economy.revenue
-    cost_parts = [
-        ("Жильё", c.residential), ("ВПП", c.vpp),
-        ("ДОО+СОШ", c.kindergarten + c.school),
-        ("Парковки", c.parking_open + c.parking_multilevel + c.parking_underground),
-        ("Накладные", c.networks + c.landscaping + c.design + c.contingency),
-        ("Прочее", c.social_parking + c.sport + c.custom_objects),
-    ]
-    rev_parts = [
-        ("Жильё", r.residential), ("Парковки", r.parking_open + r.parking_multilevel + r.parking_underground),
-        ("Коммерция", r.vpp_commercial + r.custom_commercial),
-        ("Компенс. соц.", r.social_compensation),
-    ]
-    plt_ = plt
-    fig, ax = plt_.subplots(figsize=(7.0, 4.0))
-    # стек себестоимости (x=0) и выручки (x=1)
-    palette_c = ["#1F4E79", "#2E75B6", "#5B9BD5", "#9DC3E6", "#BDD7EE", "#D6E4F0"]
-    palette_r = ["#2E7D32", "#4CAF50", "#81C784", "#C8E6C9"]
-    bottom = 0.0
-    for (lbl, val), col in zip(cost_parts, palette_c):
-        if val <= 0:
-            continue
-        ax.bar(0, val, bottom=bottom, width=0.5, color=col, label=f"cost: {lbl}")
-        bottom += val
-    bottom_r = 0.0
-    for (lbl, val), col in zip(rev_parts, palette_r):
-        if val <= 0:
-            continue
-        ax.bar(1, val, bottom=bottom_r, width=0.5, color=col, label=f"rev: {lbl}")
-        bottom_r += val
-    ax.set_xticks([0, 1])
-    ax.set_xticklabels(["Себестоимость", "Выручка"])
+    e = tep.economy
+    # v0.10.10: простая и понятная картинка — 3 столбца:
+    # Себестоимость / Выручка / Прибыль (последний может быть отрицательным).
+    cost_t = e.cost.total
+    rev_t = e.revenue.total
+    profit = e.profit
+    labels = ["Себестоимость", "Выручка", "Прибыль"]
+    vals = [cost_t, rev_t, profit]
+    colors = ["#C0504D", "#4CAF50", "#1F4E79" if profit >= 0 else "#C0504D"]
+    fig, ax = plt.subplots(figsize=(6.6, 4.0))
+    bars = ax.bar(labels, vals, color=colors, width=0.55, edgecolor="white")
+    ax.axhline(0, color="#888888", linewidth=0.8)
+    for bar, v in zip(bars, vals):
+        ax.text(bar.get_x() + bar.get_width() / 2,
+                bar.get_height() + (max(abs(x) for x in vals) * 0.02
+                                    if v >= 0 else -max(abs(x) for x in vals) * 0.05),
+                f"{v:+,.0f}".replace(",", " ") if v is profit else f"{v:,.0f}".replace(",", " "),
+                ha="center", va="bottom" if v >= 0 else "top",
+                fontsize=11, fontweight="bold", color="#222222")
     ax.set_ylabel("Баллы выгодности")
-    ax.set_title("Экономика: себестоимость vs выручка")
+    ax.set_title("Экономика: себестоимость → выручка → прибыль",
+                 fontweight="bold", color="#1F4E79")
     ax.grid(axis="x", visible=False)
-    ax.legend(fontsize=6, ncol=2, loc="upper center", bbox_to_anchor=(0.5, -0.08))
+    ax.spines["top"].set_visible(False); ax.spines["right"].set_visible(False)
     fig.tight_layout()
-    return _save(fig, plt_)
+    return _save(fig, plt)
 
 
 def _chart_comparison(scenarios: list[Scenario]) -> BytesIO | None:

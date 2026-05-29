@@ -246,11 +246,118 @@ class TestClusterOptimization:
             ],
         )
         base_tep = solve_max_kit(site, base, spb)
+        # v0.10.4: зоны варьируются при заданных диапазонах ПО КАЖДОЙ зоне.
         bundle = generate_pareto_recommendations(
             site, base, spb, base_tep, n_trials=60,
-            constraints=ParetoConstraints(floors_range=(3, 25)),
+            constraints=ParetoConstraints(cluster_floors_ranges=((3, 25), (3, 25))),
         )
         assert bundle.recommendations
         for rec in bundle.recommendations:
             cf = rec.params.get("cluster_floors")
             assert cf is not None and len(cf) == 2
+
+    def test_pareto_per_zone_ranges_respected(self, spb):
+        """Диапазоны соблюдаются ПО КАЖДОЙ зоне независимо."""
+        from urban_model import solve_max_kit
+        from urban_model.optimize.pareto import (
+            ParetoConstraints, generate_pareto_recommendations,
+        )
+        site = Site(area_m2=100_000)
+        base = CalculationOptions(
+            floors=12, planning_doc=True,
+            floor_clusters=[
+                FloorCluster(area_m2=50_000, floors=9),
+                FloorCluster(area_m2=50_000, floors=12),
+            ],
+        )
+        base_tep = solve_max_kit(site, base, spb)
+        bundle = generate_pareto_recommendations(
+            site, base, spb, base_tep, n_trials=80,
+            constraints=ParetoConstraints(cluster_floors_ranges=((4, 8), (16, 22))),
+        )
+        assert bundle.recommendations
+        for rec in bundle.recommendations:
+            cf = rec.params.get("cluster_floors")
+            assert cf is not None and len(cf) == 2
+            assert 4 <= cf[0] <= 8
+            assert 16 <= cf[1] <= 22
+
+    def test_pareto_zones_fixed_without_range(self, spb):
+        """Без cluster_floors_ranges этажность зон НЕ варьируется (как в базе)."""
+        from urban_model import solve_max_kit
+        from urban_model.optimize.pareto import generate_pareto_recommendations
+        site = Site(area_m2=100_000)
+        base = CalculationOptions(
+            floors=12, planning_doc=True,
+            floor_clusters=[
+                FloorCluster(area_m2=50_000, floors=9),
+                FloorCluster(area_m2=50_000, floors=12),
+            ],
+        )
+        base_tep = solve_max_kit(site, base, spb)
+        bundle = generate_pareto_recommendations(site, base, spb, base_tep, n_trials=40)
+        for rec in bundle.recommendations:
+            assert "cluster_floors" not in rec.params
+
+
+# ---------------------------------------------------------------------------
+# Консистентность кластеров + объяснение «пика этажности» (норматив ЗНОП)
+# ---------------------------------------------------------------------------
+
+class TestClusterConsistencyAndZnopWall:
+    """Гарантирует: (а) кластеры с равной этажностью == одиночная этажность
+    бит-в-бит; (б) «пик площади на средних этажах» — следствие ступени ЗНОП
+    ПЗЗ (КИТ≈1.6), а не ошибки; (в) без ЗНОП площадь монотонно растёт."""
+
+    @pytest.fixture
+    def site60(self):
+        return Site(area_m2=60_000)
+
+    def test_equal_floor_clusters_match_single(self, spb, site60):
+        for f in (5, 8, 12):
+            single = solve_max_kit(site60, CalculationOptions(floors=f, planning_doc=True), spb)
+            clustered = solve_max_kit(
+                site60,
+                CalculationOptions(
+                    floors=99, planning_doc=True,
+                    floor_clusters=[
+                        FloorCluster(area_m2=35_000, floors=f),
+                        FloorCluster(area_m2=25_000, floors=f),
+                    ],
+                ),
+                spb,
+            )
+            assert clustered.apartments_area.value == pytest.approx(
+                single.apartments_area.value, rel=1e-6)
+            assert clustered.kit.value == pytest.approx(single.kit.value, rel=1e-6)
+
+    def test_znop_step_creates_interior_apt_peak(self, spb, site60):
+        """С ЗНОП максимум площади — на СРЕДНИХ этажах (не на максимуме),
+        и на пике ЗНОП=0 (КИТ ниже порога 1.6)."""
+        res = {
+            f: solve_max_kit(site60, CalculationOptions(floors=f, planning_doc=True), spb)
+            for f in range(4, 16)
+        }
+        apts = {f: (r.apartments_area.value or 0.0) for f, r in res.items()}
+        best_f = max(apts, key=apts.get)
+        # пик внутри диапазона, не на максимуме
+        assert 4 < best_f < 15
+        # на пике ЗНОП ещё 0 (КИТ впритык под 1.6), а на высоких этажах ЗНОП>0
+        assert res[best_f].znop_per_person.value == 0
+        assert res[15].znop_per_person.value > 0
+        # площадь на пике выше, чем на максимальной этажности (контринтуитивно, но верно)
+        assert apts[best_f] > apts[15]
+
+    def test_no_znop_apt_monotonic_in_floors(self, spb, site60):
+        """Без ЗНОП «стены» нет — площадь не убывает с ростом этажности
+        (подтверждает, что причина пика — именно норматив ЗНОП)."""
+        prev = -1.0
+        for f in (4, 6, 8, 10, 12):
+            r = solve_max_kit(
+                site60,
+                CalculationOptions(floors=f, planning_doc=True, include_znop=False),
+                spb,
+            )
+            apt = r.apartments_area.value or 0.0
+            assert apt >= prev - 1.0  # неубывание (с допуском на округление)
+            prev = apt

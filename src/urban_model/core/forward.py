@@ -125,12 +125,10 @@ def compute_tep_for_kit(
         density_status = Status.OK
 
     warnings: list[str] = []
-    if _density_over:
-        soft = "" if options.enforce_density_norm else " (норматив отключён пользователем)"
-        warnings.append(_wcprefix(
-            WC.DENSITY_ABOVE_LIMIT,
-            f"Плотность {density_check_v:.0f} чел/га > норматива {density_max} (по 20 м²/чел){soft}",
-        ))
+    # v0.10.11 (фикс): предупреждение о плотности добавляется ПОЗЖЕ — после
+    # возможной корректировки жилой GFA на здание встроенного ДОО (которая
+    # снижает население/плотность). Иначе в warnings попадало устаревшее
+    # значение (напр. 474), хотя итоговая плотность уже ≤ норматива (449.9).
 
     # === ДОО ===
     # Резолвим нормативы заранее, чтобы они были доступны для formula-строк
@@ -249,7 +247,21 @@ def compute_tep_for_kit(
         pop_check_v = population.population(apartments_area_v, hp_check)
         density_v = population.density_chel_per_ga(pop_v, site.area_m2)
         density_check_v = population.density_chel_per_ga(pop_check_v, site.area_m2)
-        density_status = Status.OK if density_check_v <= density_max else Status.ERROR
+        # v0.10.11: статус с учётом enforce_density_norm (как в раннем блоке).
+        _density_over = density_check_v > density_max
+        density_status = (
+            Status.ERROR if (_density_over and options.enforce_density_norm)
+            else Status.OK
+        )
+
+    # v0.10.11: предупреждение о плотности — по ИТОГОВОМУ значению (после
+    # корректировки на встроенный ДОО), чтобы не показывать устаревшее число.
+    if _density_over:
+        soft = "" if options.enforce_density_norm else " (норматив отключён пользователем)"
+        warnings.append(_wcprefix(
+            WC.DENSITY_ABOVE_LIMIT,
+            f"Плотность {density_check_v:.0f} чел/га > норматива {density_max} (по 20 м²/чел){soft}",
+        ))
 
     # === СОШ ===
     # Резолвим нормативы заранее (см. ДОО выше).

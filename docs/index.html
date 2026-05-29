@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<!--
+  Лендинг «Модель застройки территории».
+  СКРИНШОТЫ: положите PNG в папку assets/ рядом с этим файлом под именами
+  screen-calc.png, screen-balance.png, screen-optimize.png, screen-report.png.
+  Если файла нет — на его месте показывается стилизованная заглушка с подписью.
+  Открывается двойным кликом в браузере. Самодостаточный (стили внутри).
+-->
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Модель застройки территории — обратный расчёт ТЭП</title>
+<style>
+  :root{
+    --blue:#1565C0; --blue-d:#1F4E79; --amber:#F5A623;
+    --ink:#1E293B; --muted:#64748B; --bg:#F8FAFC; --card:#FFFFFF;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;
+       color:var(--ink);background:var(--bg);line-height:1.55}
+  .wrap{max-width:1120px;margin:0 auto;padding:0 24px}
+  a{color:inherit}
+
+  /* HERO */
+  .hero{background:linear-gradient(135deg,#1F4E79 0%,#1565C0 60%,#2E86DE 100%);
+        color:#fff;padding:84px 0 76px;position:relative;overflow:hidden}
+  .hero::after{content:"";position:absolute;right:-120px;top:-120px;width:420px;
+        height:420px;background:radial-gradient(circle,rgba(245,166,35,.35),transparent 70%)}
+  .badge{display:inline-block;background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);
+        padding:6px 14px;border-radius:999px;font-size:13px;letter-spacing:.3px;margin-bottom:22px}
+  .hero h1{font-size:46px;line-height:1.1;font-weight:800;max-width:780px;margin-bottom:18px}
+  .hero p{font-size:20px;max-width:680px;color:#DCEAFB}
+  .hero .accent{height:5px;width:120px;background:var(--amber);border-radius:3px;margin:30px 0 0}
+  .pills{margin-top:28px;display:flex;gap:12px;flex-wrap:wrap}
+  .pill{background:#fff;color:var(--blue-d);font-weight:600;padding:10px 18px;
+        border-radius:10px;font-size:14px}
+  .pill.ghost{background:rgba(255,255,255,.12);color:#fff;border:1px solid rgba(255,255,255,.35)}
+  .pill[title]{cursor:help}
+  .cta{display:inline-block;background:var(--amber);color:#1F2937;font-weight:800;
+        padding:14px 30px;border-radius:12px;font-size:16px;text-decoration:none;
+        box-shadow:0 6px 20px rgba(245,166,35,.4);transition:.2s}
+  .cta:hover{transform:translateY(-2px);box-shadow:0 12px 30px rgba(245,166,35,.55)}
+  .card[title]{cursor:help}
+
+  /* SECTIONS */
+  section{padding:64px 0}
+  .eyebrow{color:var(--blue);font-weight:700;letter-spacing:1.2px;text-transform:uppercase;
+        font-size:13px;margin-bottom:10px}
+  h2{font-size:32px;font-weight:800;margin-bottom:14px}
+  .lead{color:var(--muted);font-size:18px;max-width:760px;margin-bottom:36px}
+
+  /* FEATURES */
+  .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:20px}
+  .card{background:var(--card);border:1px solid #E5E9EF;border-radius:14px;padding:26px;
+        transition:.2s;border-top:3px solid var(--blue)}
+  .card:hover{transform:translateY(-3px);box-shadow:0 10px 30px rgba(21,101,192,.12)}
+  .ico{width:46px;height:46px;border-radius:12px;display:flex;align-items:center;
+        justify-content:center;font-size:24px;margin-bottom:14px;
+        background:linear-gradient(135deg,#E8F1FB,#D6E4F5)}
+  .card h3{font-size:18px;margin-bottom:8px}
+  .card p{color:var(--muted);font-size:15px}
+
+  /* STEPS */
+  .steps{display:grid;grid-template-columns:repeat(4,1fr);gap:18px}
+  .step{position:relative;padding:24px;background:var(--card);border:1px solid #E5E9EF;border-radius:14px}
+  .step .num{width:38px;height:38px;border-radius:50%;background:var(--blue);color:#fff;
+        font-weight:800;display:flex;align-items:center;justify-content:center;margin-bottom:14px}
+  .step h4{font-size:16px;margin-bottom:6px}
+  .step p{color:var(--muted);font-size:14px}
+
+  /* SHOTS */
+  .alt{background:#EEF4FB}
+  .shots{display:grid;grid-template-columns:repeat(2,1fr);gap:24px}
+  figure{background:#fff;border:1px solid #DCE6F2;border-radius:14px;overflow:hidden;
+        box-shadow:0 6px 24px rgba(30,41,59,.07)}
+  .frame{position:relative;aspect-ratio:16/10;background:
+        linear-gradient(135deg,#E8F1FB,#CFE0F5)}
+  .frame img{width:100%;height:100%;object-fit:cover;display:block}
+  .ph{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;
+        justify-content:center;color:var(--blue-d);text-align:center;padding:20px}
+  .ph .big{font-size:40px;opacity:.5;margin-bottom:8px}
+  .ph small{color:var(--muted)}
+  figcaption{padding:14px 18px;font-weight:600}
+  figcaption span{display:block;font-weight:400;color:var(--muted);font-size:14px;margin-top:2px}
+
+  /* METRICS strip */
+  .metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:18px;margin-top:8px}
+  .metric{text-align:center;padding:22px;background:var(--card);border:1px solid #E5E9EF;border-radius:14px}
+  .metric .v{font-size:34px;font-weight:800;color:var(--blue)}
+  .metric .l{color:var(--muted);font-size:14px;margin-top:4px}
+
+  footer{background:var(--blue-d);color:#C7D7E8;padding:40px 0;text-align:center;font-size:14px}
+  footer b{color:#fff}
+
+  @media(max-width:900px){
+    .grid,.steps,.shots,.metrics{grid-template-columns:1fr 1fr}
+    .hero h1{font-size:34px}
+  }
+  @media(max-width:560px){.grid,.steps,.shots,.metrics{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="wrap">
+    <div class="badge">Санкт-Петербург · ПЗЗ / СП / НГП</div>
+    <h1>Математическая модель застройки территории</h1>
+    <p>Задайте площадь квартала и ограничения — система подберёт максимально
+       допустимый КИТ, сбалансирует территорию по нормативам и рассчитает ТЭП
+       и экономику.</p>
+    <div class="accent"></div>
+    <div class="pills">
+      <span class="pill" title="Бисекция подбирает максимальный КИТ, при котором выполняются баланс территории и все нормативные ограничения (ПЗЗ/СП/НГП СПб).">Обратный расчёт КИТ</span>
+      <span class="pill ghost" title="Optuna перебирает этажность, парковки, зоны и подбирает лучшие сценарии по площади квартир и по прибыли.">Оптимизация Optuna</span>
+      <span class="pill ghost" title="Деловые документы для Заказчика: подробный отчёт по варианту и сравнение вариантов в Word и PowerPoint.">Отчёты DOCX / PPTX</span>
+    </div>
+    <div style="margin-top:30px">
+      <!-- ССЫЛКА НА ПРОГРАММУ (Streamlit Cloud). ПОСЛЕ ДЕПЛОЯ замените
+           на ваш реальный адрес вида https://ваш-поддомен.streamlit.app -->
+      <a href="https://my-urban-model.streamlit.app" class="cta" target="_blank">▶ Открыть программу</a>
+    </div>
+  </div>
+</header>
+
+<section>
+  <div class="wrap">
+    <div class="eyebrow">Возможности</div>
+    <h2>Всё для оценки вариантов проектных решений</h2>
+    <p class="lead">Один расчётный движок — все режимы. Каждый показатель несёт
+       источник, формулу и статус. Наведите на карточку — краткое пояснение.</p>
+    <div class="grid">
+      <div class="card" title="Площадь квартир / ЗУ жилой застройки. Бисекция ищет максимум КИТ при балансе территории и нормативах ПЗЗ (≤1.4 без ДПТ, ≤2.5 с ДПТ)."><div class="ico">📐</div><h3>Обратный расчёт КИТ</h3>
+        <p>Бисекция находит максимально допустимый КИТ при выполнении баланса
+           территории и всех нормативных ограничений.</p></div>
+      <div class="card" title="Все компоненты квартала вычитаются из площади; контролируются норматив 25%-озеленения и предельная плотность 450 чел/га."><div class="ico">⚖️</div><h3>Баланс территории</h3>
+        <p>Жильё, ДОО/СОШ, парковки, ЗНОП, проезды, спорт — с контролем
+           25%-озеленения и плотности 450 чел/га.</p></div>
+      <div class="card" title="Парковки трёх типов с расчётом пятна; ДОО/СОШ — вместимость, число объектов, ЗУ по нормативам ПЗЗ СПб."><div class="ico">🅿️</div><h3>Парковки и соцобъекты</h3>
+        <p>Открытые / многоуровневые / подземные; ДОО и СОШ по нормативам ПЗЗ
+           с разбивкой на объекты.</p></div>
+      <div class="card" title="Optuna подбирает топ-3 сценария (макс. площадь / прибыль / баланс); пофакторный анализ и торнадо-чувствительность."><div class="ico">🧬</div><h3>Оптимизация</h3>
+        <p>Optuna подбирает лучшие сценарии по площади и прибыли; пофакторный
+           анализ и чувствительность.</p></div>
+      <div class="card" title="Квартал делится на зоны с разной высотностью; КИТ и экономика считаются покластерно, баланс — по средневзвешенной этажности."><div class="ico">🏗</div><h3>Разная этажность по зонам</h3>
+        <p>Кластеры этажности: покластерный КИТ и экономика, средневзвешенная
+           этажность для баланса.</p></div>
+      <div class="card" title="Себестоимость, выручка и выгодность в условных баллах; деловые отчёты Word (альбомные) и презентации PowerPoint для Заказчика."><div class="ico">💰</div><h3>Экономика и отчёты</h3>
+        <p>Себестоимость, выручка, выгодность; деловые отчёты в DOCX и
+           презентации PPTX «под Заказчика».</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="alt">
+  <div class="wrap">
+    <div class="eyebrow">Как это работает</div>
+    <h2>От площади квартала — к готовым ТЭП за секунды</h2>
+    <div class="steps">
+      <div class="step"><div class="num">1</div><h4>Параметры</h4>
+        <p>Площадь, этажность (в т.ч. по зонам), что учитывать в расчёте.</p></div>
+      <div class="step"><div class="num">2</div><h4>Расчёт</h4>
+        <p>КИТ, население, баланс территории, парковки, экономика — мгновенно.</p></div>
+      <div class="step"><div class="num">3</div><h4>Оптимизация</h4>
+        <p>Топ-3 рекомендации и пофакторный анализ «что улучшить».</p></div>
+      <div class="step"><div class="num">4</div><h4>Отчёт</h4>
+        <p>Сравнение вариантов и выгрузка DOCX / PPTX для Заказчика.</p></div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <div class="eyebrow">Интерфейс</div>
+    <h2>Скриншоты</h2>
+    <div class="shots">
+      <figure>
+        <div class="frame">
+          <img src="assets/screen-calc.png" alt="Расчёт"
+               onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+          <div class="ph" style="display:none"><div class="big">📊</div>
+            <b>Вкладка «Расчёт»</b><small>assets/screen-calc.png</small></div>
+        </div>
+        <figcaption>Основные показатели<span>КИТ, население, баланс, экономика</span></figcaption>
+      </figure>
+      <figure>
+        <div class="frame">
+          <img src="assets/screen-balance.png" alt="Баланс"
+               onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+          <div class="ph" style="display:none"><div class="big">⚖️</div>
+            <b>Баланс территории</b><small>assets/screen-balance.png</small></div>
+        </div>
+        <figcaption>Распределение территории<span>диаграмма и таблица по компонентам</span></figcaption>
+      </figure>
+      <figure>
+        <div class="frame">
+          <img src="assets/screen-optimize.png" alt="Оптимизация"
+               onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+          <div class="ph" style="display:none"><div class="big">🧬</div>
+            <b>Оптимизация</b><small>assets/screen-optimize.png</small></div>
+        </div>
+        <figcaption>Подбор сценариев<span>рекомендации Optuna + чувствительность</span></figcaption>
+      </figure>
+      <figure>
+        <div class="frame">
+          <img src="assets/screen-report.png" alt="Отчёт"
+               onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+          <div class="ph" style="display:none"><div class="big">📄</div>
+            <b>Отчёты</b><small>assets/screen-report.png</small></div>
+        </div>
+        <figcaption>DOCX / PPTX<span>деловые документы для Заказчика</span></figcaption>
+      </figure>
+    </div>
+  </div>
+</section>
+
+<section class="alt">
+  <div class="wrap">
+    <div class="eyebrow">Под капотом</div>
+    <h2>Прозрачно и нормативно</h2>
+    <div class="metrics">
+      <div class="metric"><div class="v">5</div><div class="l">слоёв архитектуры</div></div>
+      <div class="metric"><div class="v">ВРИ</div><div class="l">ось нормативов</div></div>
+      <div class="metric"><div class="v">375+</div><div class="l">автотестов</div></div>
+      <div class="metric"><div class="v">Python</div><div class="l">+ Streamlit · Optuna</div></div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <b>Модель застройки территории</b> — обратный расчёт ТЭП · профиль Санкт-Петербург<br>
+    Источник истины — ПЗЗ / СП 42.13330 / НГП СПб. © 2026
+  </div>
+</footer>
+
+</body>
+</html>

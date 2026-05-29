@@ -154,12 +154,16 @@ def _render_base_snapshot(
 # Секция 2: Топ-3 рекомендации
 # ---------------------------------------------------------------------------
 
-def _render_pareto_constraints() -> ParetoConstraints:
+def _render_pareto_constraints(base_options: CalculationOptions) -> ParetoConstraints:
     """Сворачиваемый блок с ограничениями подбора Парето (v0.9.3).
 
     Возвращает ParetoConstraints. Все значения по умолчанию = без ограничений
     (5..25 этажей, все типы парковок разрешены).
+
+    v0.10.3: при кластерах вместо единой этажности — диапазон этажности ЗОН
+    (опционально; если выключено — этажность зон берётся из базы).
     """
+    has_clusters = bool(base_options.floor_clusters)
     with st.expander("⚙ Настройки подбора (необязательно)", expanded=False):
         st.caption(
             "Здесь можно ограничить пространство перебора — например, задать "
@@ -167,14 +171,41 @@ def _render_pareto_constraints() -> ParetoConstraints:
         )
 
         c1, c2 = st.columns(2)
+        floors_range = (5, 25)
+        cluster_floors_ranges: tuple[tuple[int, int], ...] | None = None
         with c1:
-            st.markdown("**Этажность**")
-            lo, hi = st.slider(
-                "Диапазон", 4, 30, (5, 25),
-                key="pareto_floors_range",
-                help="Optuna будет рассматривать только этажность в этом диапазоне.",
-            )
-            floors_range = (int(lo), int(hi))
+            if has_clusters:
+                st.markdown("**Этажность зон**")
+                vary_zones = st.checkbox(
+                    "Подбирать этажность зон",
+                    value=False, key="pareto_vary_zones",
+                    help="Если выключено — этажность зон берётся из базового "
+                         "варианта (вкладка «Параметры»). Включите, чтобы Optuna "
+                         "перебирал высотность КАЖДОЙ зоны в своём диапазоне.",
+                )
+                if vary_zones:
+                    st.caption("Диапазон подбора для каждой зоны:")
+                    rngs = []
+                    for i, c in enumerate(base_options.floor_clusters):
+                        label = c.label or f"Зона {i + 1}"
+                        lo, hi = st.slider(
+                            f"{label} (текущая {c.floors} эт.)",
+                            3, 30, (3, 25),
+                            key=f"pareto_zone_range_{i}",
+                        )
+                        rngs.append((int(lo), int(hi)))
+                    if len(rngs) == len(base_options.floor_clusters):
+                        cluster_floors_ranges = tuple(rngs)
+                else:
+                    st.caption("Этажность зон фиксирована (как в базе).")
+            else:
+                st.markdown("**Этажность**")
+                lo, hi = st.slider(
+                    "Диапазон", 3, 30, (5, 25),
+                    key="pareto_floors_range",
+                    help="Optuna будет рассматривать только этажность в этом диапазоне.",
+                )
+                floors_range = (int(lo), int(hi))
 
         with c2:
             st.markdown("**Разрешённые типы парковок**")
@@ -212,6 +243,7 @@ def _render_pareto_constraints() -> ParetoConstraints:
             allow_multilevel=allow_multilevel,
             allow_underground=allow_underground,
             restrict_parking_combos=restrict_combos,
+            cluster_floors_ranges=cluster_floors_ranges,
         )
 
 
@@ -224,7 +256,7 @@ def _render_recommendations_section(
         "разным критериям. Дельты — относительно базы выше."
     )
 
-    constraints = _render_pareto_constraints()
+    constraints = _render_pareto_constraints(base_options)
 
     # Ключ для определения «устарел ли bundle»: hash от base_options + site_area
     # + constraints (если поменялся диапазон/разрешения — пересчитываем)
@@ -232,6 +264,7 @@ def _render_recommendations_section(
         base_options.model_dump_json()
         + f"|site={site.area_m2}"
         + f"|floors={constraints.floors_range}"
+        + f"|zones={constraints.cluster_floors_ranges}"
         + f"|park={constraints.allow_open}{constraints.allow_multilevel}{constraints.allow_underground}"
         + f"|combos={constraints.restrict_parking_combos}"
     )
@@ -244,7 +277,6 @@ def _render_recommendations_section(
         clicked = st.button(
             "🎯 Подобрать сценарии",
             type="primary",
-            use_container_width=True,
             help="Optuna 400 испытаний. Длительность зависит от размера квартала и параметров (типично 1-2 мин).",
         )
     with col_msg:
@@ -628,14 +660,14 @@ def _render_recommendation_card(
                     st.markdown(f"• {c}")
 
         bcol1, bcol2 = st.columns(2)
-        if bcol1.button("➕ В сравнение", key=f"add_rec_{idx}", use_container_width=True):
+        if bcol1.button("➕ В сравнение", key=f"add_rec_{idx}"):
             st.session_state.scenarios.append((f"opt:{rec.label}", rec.tep))
             st.toast(f"Добавлено: {rec.label}", icon="✅")
         # v0.9.30: «Применить к Расчёту» — переносит параметры сценария на
         # вкладку Расчёт через override (надёжнее патча виджетов: переносит
         # этажность/зоны/парковки целиком). Расчёт покажет баннер + «вернуть форму».
         if bcol2.button("📥 Применить к Расчёту", key=f"apply_rec_{idx}",
-                        use_container_width=True):
+                        ):
             st.session_state["applied_options"] = rec_options
             st.session_state["applied_label"] = rec.label
             st.toast(f"Применено: {rec.label} → вкладка «Расчёт»", icon="📥")
@@ -710,6 +742,11 @@ def _scan_to_dataframe(scan: ScanResult) -> pd.DataFrame:
     маркер (фиолетовый ромб с красным крестом), иначе они визуально
     сливаются — видна только одна из двух.
     """
+    # v0.10.8: отметка «лучший по прибыли» среди feasible (отдельный маркер).
+    feas_profit = [p for p in scan.points if p.feasible and p.profit is not None]
+    best_profit_x = (
+        max(feas_profit, key=lambda p: p.profit).x_value if feas_profit else None
+    )
     rows = []
     for p in scan.points:
         rows.append({
@@ -722,6 +759,8 @@ def _scan_to_dataframe(scan: ScanResult) -> pd.DataFrame:
             "is_base": 1 if p.is_base else 0,
             "is_recommended": 1 if p.is_recommended else 0,
             "is_both": 1 if (p.is_base and p.is_recommended) else 0,
+            "is_best_profit": 1 if (best_profit_x is not None
+                                    and abs(p.x_value - best_profit_x) < 1e-9) else 0,
         })
     return pd.DataFrame(rows)
 
@@ -753,23 +792,31 @@ def _render_scan_chart(scan: ScanResult) -> None:
         y=alt.Y("apt:Q", title="Площадь квартир, м²",
                 scale=alt.Scale(zero=False, padding=20)),
     )
-    line = base_chart.mark_line(color="#1565C0", point=True)
-    # v0.9.19: оба маркера — кружки разного размера. Большой красный
-    # снизу (база, 280), маленький зелёный сверху (рекомендация, 120).
-    # При наложении видно зелёный кружок внутри красного «кольца» —
-    # пользователь сразу понимает, что точки совпадают.
+    # v0.10.8: нейтральная серая линия, чтобы цветные маркеры были контрастны.
+    line = base_chart.mark_line(color="#9AA7B4", point=alt.OverlayMarkDef(
+        color="#9AA7B4", size=28, filled=True))
+    # Три плоских маркера (filled, тонкая белая обводка, без теней):
+    #   • жёлтый, самый КРУПНЫЙ — лучший по прибыли (нижний слой);
+    #   • синий — база;
+    #   • красный — лучший по площади (верхний слой).
+    # Слои от большого к малому → при совпадении видны вложенные кольца.
     # Фильтр по int 0/1 — vega-lite надёжнее с int, чем с bool после JSON.
+    profit_dot = (
+        base_chart.transform_filter("datum.is_best_profit == 1")
+        .mark_point(color="#F5B301", size=420, filled=True,
+                    stroke="#7A5B00", strokeWidth=1)
+    )
     base_dot = (
         base_chart.transform_filter("datum.is_base == 1")
-        .mark_point(color="#D32F2F", size=280, filled=True,
-                    stroke="white", strokeWidth=2)
+        .mark_point(color="#1565C0", size=210, filled=True,
+                    stroke="white", strokeWidth=1.5)
     )
     rec_dot = (
         base_chart.transform_filter("datum.is_recommended == 1")
-        .mark_point(color="#2E7D32", size=120, filled=True,
-                    stroke="white", strokeWidth=2)
+        .mark_point(color="#D32F2F", size=110, filled=True,
+                    stroke="white", strokeWidth=1.5)
     )
-    chart = (line + base_dot + rec_dot).properties(height=240)
+    chart = (line + profit_dot + base_dot + rec_dot).properties(height=240)
     st.altair_chart(chart, use_container_width=True)
 
 
@@ -803,7 +850,7 @@ def _render_scan_summary(scan: ScanResult) -> None:
         d_apt = best_apt.apartments_area - base.apartments_area
         d_apt_pct = (d_apt / base.apartments_area * 100.0) if base.apartments_area > 1e-9 else 0.0
         st.markdown(
-            f"🟢 **Лучший по площади:** {best_apt.x_label}  \n"
+            f"🔴 **Лучший по площади:** {best_apt.x_label}  \n"
             f"Δ площадь: {d_apt:+,.0f} м² ({d_apt_pct:+.1f}%)".replace(",", " ")
         )
 
@@ -817,10 +864,10 @@ def _render_scan_summary(scan: ScanResult) -> None:
             and abs(best_profit.x_value - best_apt.x_value) < 1e-6
         )
         if same_as_apt:
-            st.caption(f"💰 По прибыли — то же значение: {best_profit.x_label}")
+            st.caption(f"🟡 По прибыли — то же значение: {best_profit.x_label}")
         else:
             st.markdown(
-                f"💰 **Лучший по прибыли:** {best_profit.x_label}  \n"
+                f"🟡 **Лучший по прибыли:** {best_profit.x_label}  \n"
                 f"Δ выгодность: {d_profit:+,.0f} ({d_profit_pct:+.1f}%) баллов".replace(",", " ")
             )
 
@@ -830,7 +877,6 @@ def _render_scan_summary(scan: ScanResult) -> None:
         if st.button(
             "➕ Лучший по площади в сравнение",
             key=f"add_scan_{scan.factor}",
-            use_container_width=True,
         ):
             st.session_state.scenarios.append(
                 (f"scan:{scan.factor}={rec_for_btn.x_label}", rec_for_btn.tep)
@@ -901,11 +947,6 @@ def _render_social_count_card(scan: ScanResult) -> None:
             "Статус": status,
         })
 
-    st.caption(
-        f"Площадь квартир от числа {obj_word} **не зависит** (суммарный ЗУ ≈ "
-        f"const × число мест). Выбор — по **реализуемости**: вместимость "
-        f"объекта должна быть в нормативных границах."
-    )
     st.dataframe(pd.DataFrame(rows), hide_index=True, use_container_width=True)
     if valid_counts:
         rec_n = min(valid_counts)
@@ -913,11 +954,12 @@ def _render_social_count_card(scan: ScanResult) -> None:
             f"🟢 **Рекомендуется:** {rec_n} {obj_word} "
             f"(минимум объектов с допустимой вместимостью)."
         )
-    else:
-        st.warning(
-            f"Ни одно число {obj_word} в диапазоне не даёт нормативной "
-            f"вместимости — рассмотрите «только потребность» или вынос за квартал."
-        )
+    # Вывод под таблицей (#1): пояснение, что число объектов не влияет на площадь.
+    st.caption(
+        f"Площадь квартир от числа {obj_word} **не зависит** (суммарный ЗУ ≈ "
+        f"const × число мест). Выбор — по **реализуемости**: вместимость "
+        f"объекта должна быть в нормативных границах."
+    )
 
 
 def _render_scan_card(scan: ScanResult) -> None:
@@ -944,8 +986,17 @@ def _render_what_to_improve_section(
     st.caption(
         "Каждая карточка варьирует **ОДИН параметр**, остальные — как в базе. "
         "Это **локальный** анализ; Парето-рекомендации сверху могут давать другие "
-        "значения, т.к. меняют параметры в комбинации. "
-        "🔴 база · 🟢 лучшее по площади."
+        "значения, т.к. меняют параметры в комбинации."
+    )
+    # Плоская легенда маркеров (без глянцевых emoji) — совпадает с графиком.
+    def _dot(color: str, stroke: str = "white") -> str:
+        return (f"<span style='display:inline-block;width:11px;height:11px;"
+                f"border-radius:50%;background:{color};border:1px solid {stroke};"
+                f"vertical-align:middle;margin:0 3px 2px 0;'></span>")
+    st.markdown(
+        f"{_dot('#1565C0')} база  &nbsp; {_dot('#D32F2F')} лучшее по площади  "
+        f"&nbsp; {_dot('#F5B301', '#7A5B00')} лучшее по прибыли",
+        unsafe_allow_html=True,
     )
 
     opts_json = base_options.model_dump_json()
@@ -960,7 +1011,7 @@ def _render_what_to_improve_section(
         ("🌳 ЗНОП: норматив м²/чел", _cached_scan_znop),
         ("🏢 Этажность", _cached_scan_floors),
         ("🎒 ДОО: число объектов", _cached_scan_kg),
-        ("🏫 СОШ: число корпусов", _cached_scan_sch),
+        ("🏫 СОШ: число объектов", _cached_scan_sch),
     ]
     for row_start in range(0, len(scan_configs), 2):
         cols = st.columns(2, gap="medium")
@@ -1073,7 +1124,7 @@ def _render_advanced_optuna_mode(
         st.info("⬅ Отметьте хотя бы один параметр для перебора.")
         return
 
-    if st.button("🚀 Запустить полный перебор", type="primary", use_container_width=True):
+    if st.button("🚀 Запустить полный перебор", type="primary"):
         progress = st.progress(0.0, text="Запускаем оптимизацию...")
 
         def cb(current: int, total: int, best: float) -> None:
@@ -1142,7 +1193,7 @@ def _render_advanced_optuna_mode(
     from urban_model.ui.output import render_details
     render_details(preview.tep)
 
-    if st.button(f"➕ Добавить #{preview.rank} в сравнение", use_container_width=True):
+    if st.button(f"➕ Добавить #{preview.rank} в сравнение"):
         params_summary = ", ".join(f"{k}={v}" for k, v in preview.params.items())
         name = f"opt#{preview.rank} ({params_summary})"
         st.session_state.scenarios.append((name, preview.tep))
@@ -1205,7 +1256,7 @@ def _render_search_space_form(base_options: CalculationOptions) -> SearchSpace:
             with st.container(border=True):
                 st.markdown("##### 🏠 Этажность")
                 lo, hi = st.slider(
-                    "Диапазон", min_value=4, max_value=30, value=(8, 25),
+                    "Диапазон", min_value=3, max_value=30, value=(8, 25),
                     key="opt_floors_range",
                 )
                 floors_range = (int(lo), int(hi))

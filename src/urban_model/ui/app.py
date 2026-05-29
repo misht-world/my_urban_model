@@ -43,9 +43,26 @@ st.set_page_config(
 # страницу. Hard refresh (Ctrl+F5) сбрасывает кэш.
 st.markdown("""
 <style>
-  /* v0.9.17 stylesheet marker — bump на каждом релизе, чтобы инвалидировать кэш */
+  /* v0.10.13 stylesheet marker — bump на каждом релизе, чтобы инвалидировать кэш */
   /* Уменьшаем верхний отступ всего блока */
   div.block-container {padding-top: 1.5rem; padding-bottom: 1rem;}
+  /* v0.10.3: кнопки — чёткий «кнопочный» вид, не растянутые баннеры.
+     Натуральная ширина по содержимому + аккуратные отступы/скругление. */
+  div[data-testid="stButton"] > button {
+      border-radius: 6px;
+      padding: 0.35rem 1.1rem;
+      font-weight: 500;
+      border: 1px solid #CBD5E1;
+  }
+  div[data-testid="stButton"] > button:hover {
+      border-color: #1565C0;
+      color: #1565C0;
+  }
+  div[data-testid="stDownloadButton"] > button {
+      border-radius: 6px;
+      padding: 0.35rem 1.1rem;
+      font-weight: 500;
+  }
   /* Плотнее интервалы между виджетами */
   div[data-testid="stVerticalBlock"] {gap: 0.5rem;}
   /* Вкладки — более выразительные */
@@ -74,6 +91,8 @@ st.markdown("""
       color: #1565C0 !important;
       border: 1px solid #BFDBFE !important;
       border-bottom: 2px solid #FFFFFF !important;
+      /* v0.10.13: амбер-акцент активной вкладки — единый стиль с лендингом */
+      box-shadow: inset 0 -3px 0 0 #F5A623;
   }
   /* Цветовая дифференциация левой/правой колонок на «Параметрах»:
      • левая (вводные данные) — голубой акцент слева + светло-голубой фон
@@ -89,33 +108,35 @@ st.markdown("""
      `:has` (старые браузеры).
   */
   /* Главный селектор через :has — окрашивает ВСЮ колонку */
+  /* v0.10.3: приглушённые «деловые» карточки колонок вместо ярких заливок.
+     Нейтральный фон + тонкий акцент слева для различения ввод/настройки. */
   [data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:has(.params-col-input),
   [data-testid="stHorizontalBlock"] > [data-testid="column"]:has(.params-col-input) {
-      background-color: #EBF3FA !important;
-      border: 1px solid #C9D9E8 !important;
-      border-left: 3px solid #5285B3 !important;
+      background-color: #FAFBFC !important;
+      border: 1px solid #E5E9EF !important;
+      border-left: 3px solid #94A3B8 !important;
       border-radius: 6px;
       padding: 14px !important;
   }
   [data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:has(.params-col-settings),
   [data-testid="stHorizontalBlock"] > [data-testid="column"]:has(.params-col-settings) {
-      background-color: #EDF5EE !important;
-      border: 1px solid #C9DBCC !important;
-      border-left: 3px solid #5B8C66 !important;
+      background-color: #FAFBFC !important;
+      border: 1px solid #E5E9EF !important;
+      border-left: 3px solid #A8B7A0 !important;
       border-radius: 6px;
       padding: 14px !important;
   }
   /* Fallback (legacy): окрашиваем по nth-position если :has не поддерживается */
   @supports not (selector(:has(*))) {
       [data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:nth-of-type(1) {
-          background-color: #EBF3FA !important;
-          border-left: 3px solid #5285B3 !important;
+          background-color: #FAFBFC !important;
+          border-left: 3px solid #94A3B8 !important;
           border-radius: 6px;
           padding: 14px !important;
       }
       [data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:nth-of-type(2) {
-          background-color: #EDF5EE !important;
-          border-left: 3px solid #5B8C66 !important;
+          background-color: #FAFBFC !important;
+          border-left: 3px solid #A8B7A0 !important;
           border-radius: 6px;
           padding: 14px !important;
       }
@@ -154,6 +175,12 @@ st.markdown("""
 col_title, col_meta = st.columns([3, 1])
 with col_title:
     st.title("Модель застройки территории")
+    # v0.10.13: амбер-акцент под заголовком — фирменный стиль (как в лендинге).
+    st.markdown(
+        "<div style='height:4px;width:150px;background:#F5A623;"
+        "border-radius:2px;margin:-8px 0 6px;'></div>",
+        unsafe_allow_html=True,
+    )
     st.caption(
         "Обратный расчёт КИТ по площади квартала. "
         "Профиль нормативов — Санкт-Петербург."
@@ -179,10 +206,10 @@ with st.sidebar:
     st.caption(
         "Параметры — на вкладке «Параметры». Здесь — служебные действия."
     )
-    if st.button("Сбросить сравнение", use_container_width=True):
+    if st.button("Сбросить сравнение"):
         st.session_state.scenarios = []
         st.toast("Сценарии очищены", icon="🗑")
-    if st.button("Сбросить объекты", use_container_width=True):
+    if st.button("Сбросить объекты"):
         st.session_state.custom_objects = []
         st.toast("Объекты очищены", icon="📦")
 
@@ -222,7 +249,7 @@ with tab_calc:
             f"▶ Расчёт по применённому сценарию из Оптимизации: **{_albl}**. "
             f"Параметры формы временно не используются."
         )
-        if bc2.button("↩ Вернуть форму", use_container_width=True):
+        if bc2.button("↩ Вернуть форму"):
             del st.session_state["applied_options"]
             st.session_state.pop("applied_label", None)
             st.rerun()

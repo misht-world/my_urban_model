@@ -115,3 +115,58 @@ class TestInverse:
         assert res.population.source is not None
         assert res.population.formula is not None
         assert res.znop_per_person.formula is not None
+
+
+# v0.10.7: на крупном участке КИТ ограничивает норматив плотности 450 чел/га,
+# а не территория — limiting_factor должен это явно сообщать (большой «резерв»
+# = высвобожденная плотностью земля, уходит в озеленение).
+
+def test_density_norm_identified_as_limiting_factor():
+    from urban_model import solve_max_kit
+    from urban_model.models import CalculationOptions, Site
+    from urban_model.models.parking import ParkingConfig
+    from urban_model.normatives import load_normatives
+    n = load_normatives("spb")
+    r = solve_max_kit(
+        Site(area_m2=500_000),
+        CalculationOptions(floors=12, planning_doc=True, parking=ParkingConfig(mode="all_open")),
+        n,
+    )
+    # плотность у норматива
+    assert r.density_chel_per_ga.value >= r.density_chel_per_ga.normative - 1.0
+    # резерв заметный
+    assert r.balance.surplus > 500_000 * 0.005
+    # limiting_factor сообщает про плотность
+    assert "плотност" in (r.limiting_factor or "").lower()
+
+
+def test_small_site_not_density_limited():
+    """На малом участке плотность НЕ у норматива → density-сообщение не выводится."""
+    from urban_model import solve_max_kit
+    from urban_model.models import CalculationOptions, Site
+    from urban_model.normatives import load_normatives
+    n = load_normatives("spb")
+    r = solve_max_kit(Site(area_m2=50_000), CalculationOptions(floors=12, planning_doc=True), n)
+    assert r.density_chel_per_ga.value < r.density_chel_per_ga.normative
+    assert "плотност" not in (r.limiting_factor or "").lower()
+
+
+def test_no_stale_density_warning_with_builtin_doo():
+    """v0.10.11: при встроенном ДОО (вычитает GFA) итоговая плотность ≤ 450,
+    и устаревшего предупреждения «плотность > норматива» быть не должно."""
+    from urban_model import solve_max_kit
+    from urban_model.models import CalculationOptions, KindergartenSpec, SchoolSpec, Site
+    from urban_model.normatives import load_normatives
+    n = load_normatives("spb")
+    r = solve_max_kit(
+        Site(area_m2=50_000),
+        CalculationOptions(
+            floors=12, planning_doc=True,
+            kindergarten=KindergartenSpec(building_type="built_in"),
+            school=SchoolSpec(only_demand=True),
+        ),
+        n,
+    )
+    assert r.density_chel_per_ga.value <= r.density_chel_per_ga.normative + 0.5
+    assert r.density_chel_per_ga.status.value == "ok"
+    assert not any("DENSITY_ABOVE" in w for w in r.warnings)

@@ -119,6 +119,17 @@ def _identify_limiting_factor(result: TEPResult) -> str:
             f"в норматив. {suggestion}."
         )
 
+    # (1.5) Плотность населения у норматива (450 чел/га) — типичная причина
+    # большого «резерва»: население упёрлось в потолок плотности, а территория
+    # ещё осталась (её нельзя застроить жильём без превышения плотности).
+    dens = result.density_chel_per_ga
+    if (
+        dens.normative and dens.value is not None
+        and dens.value >= dens.normative - 1.0
+        and site_area > 0 and bal.surplus > site_area * 0.005
+    ):
+        return f"плотность {dens.value:.0f} чел/га достигла норматива"
+
     if bal.greening_required > 0:
         slack = bal.greening_actual - bal.greening_required
         # «Прижатие» к нормативу: запас < 1% от требуемого

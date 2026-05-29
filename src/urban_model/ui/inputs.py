@@ -484,106 +484,79 @@ def _render_lot_share_expander() -> float | None:
 
 
 def _render_clusters_editor(area_m2: float, floors: int) -> list[FloorCluster]:
-    """Редактор кластеров этажности (v0.9.28): до 3 подучастков с разной
-    высотностью. Возвращает [] если режим выключен (→ единая этажность)."""
+    """Редактор зон этажности (v0.10.3): до 3 подучастков с разной высотностью.
+
+    Единый чекбокс (без вложенного expander). При включении площадь квартала =
+    Σ площадей зон. Диапазон этажности для подбора задаётся НЕ здесь, а во
+    вкладке «Оптимизация» → «Настройки подбора».
+    """
     _MAX_CLUSTERS = 3
-    with st.expander("🏗 Разная этажность по зонам (кластеры ПЗЗ)", expanded=False):
-        use_clusters = st.checkbox(
-            "Разделить квартал на зоны с разной этажностью",
-            value=False, key="use_floor_clusters",
-            help=(
-                "Подучастки с собственной высотностью (градостроительные зоны "
-                "ПЗЗ). Вычитаемые территории распределяются пропорционально "
-                "площади зон. Баланс и озеленение — по средневзвешенной "
-                "этажности; КИТ и экономика — покластерно."
+    use_clusters = st.checkbox(
+        "🏗 Разная этажность по зонам",
+        value=False, key="use_floor_clusters",
+        help=(
+            "Делит квартал на подучастки с собственной этажностью. "
+            "Площадь квартала = сумме площадей зон (поле «Площадь квартала» "
+            "выше при этом не используется). Баланс и озеленение — по "
+            "средневзвешенной этажности; КИТ и экономика — покластерно."
+        ),
+    )
+    if not use_clusters:
+        return []
+
+    st.caption(
+        "Площадь квартала = Σ площадей зон ниже. Диапазон этажности для "
+        "подбора — во вкладке «Оптимизация» → «Настройки подбора»."
+    )
+    default_df = pd.DataFrame([
+        {"Зона": "Зона А", "Площадь, м²": round(area_m2 * 0.5), "Этажность": min(floors, 9)},
+        {"Зона": "Зона Б", "Площадь, м²": round(area_m2 * 0.5), "Этажность": max(floors, 16)},
+    ])
+    edited = st.data_editor(
+        default_df,
+        key="floor_clusters_editor",
+        num_rows="dynamic",
+        hide_index=True,
+        use_container_width=True,
+        column_config={
+            "Зона": st.column_config.TextColumn("Зона", width="small"),
+            "Площадь, м²": st.column_config.NumberColumn(
+                "Площадь, м²", min_value=1.0, step=1000.0, format="%.0f",
             ),
-        )
-        if not use_clusters:
-            return []
+            "Этажность": st.column_config.NumberColumn(
+                "Этажность", min_value=1, max_value=60, step=1, format="%d",
+                help="Принятая этажность зоны.",
+            ),
+        },
+    )
 
-        st.caption(
-            f"Площадь квартала = сумме площадей зон. До {_MAX_CLUSTERS} зон. "
-            f"Диапазон этажности для подбора задаётся колонками «Этаж. мин/макс»."
-        )
-        default_df = pd.DataFrame([
-            {"Зона": "Зона А", "Площадь, м²": round(area_m2 * 0.5),
-             "Этажность": min(floors, 9), "Этаж. мин": 3, "Этаж. макс": 25},
-            {"Зона": "Зона Б", "Площадь, м²": round(area_m2 * 0.5),
-             "Этажность": max(floors, 16), "Этаж. мин": 3, "Этаж. макс": 25},
-        ])
-        edited = st.data_editor(
-            default_df,
-            key="floor_clusters_editor",
-            num_rows="dynamic",
-            hide_index=True,
-            use_container_width=True,
-            column_config={
-                "Зона": st.column_config.TextColumn("Зона", width="small"),
-                "Площадь, м²": st.column_config.NumberColumn(
-                    "Площадь, м²", min_value=1.0, step=1000.0, format="%.0f",
-                ),
-                "Этажность": st.column_config.NumberColumn(
-                    "Этажность", min_value=1, max_value=60, step=1, format="%d",
-                    help="Принятая этажность зоны (для расчёта).",
-                ),
-                "Этаж. мин": st.column_config.NumberColumn(
-                    "Этаж. мин", min_value=1, max_value=60, step=1, format="%d",
-                    help="Нижняя граница этажности зоны для подбора (Оптимизация).",
-                ),
-                "Этаж. макс": st.column_config.NumberColumn(
-                    "Этаж. макс", min_value=1, max_value=60, step=1, format="%d",
-                    help="Верхняя граница этажности зоны для подбора (Оптимизация).",
-                ),
-            },
-        )
+    clusters: list[FloorCluster] = []
+    for _, row in edited.iterrows():
+        try:
+            a = float(row["Площадь, м²"])
+            f = int(row["Этажность"])
+        except (TypeError, ValueError):
+            continue
+        if a <= 0 or f < 1:
+            continue
+        label = str(row.get("Зона") or "").strip() or None
+        clusters.append(FloorCluster(area_m2=a, floors=f, label=label))
 
-        clusters: list[FloorCluster] = []
-        for _, row in edited.iterrows():
-            try:
-                a = float(row["Площадь, м²"])
-                f = int(row["Этажность"])
-            except (TypeError, ValueError):
-                continue
-            if a <= 0 or f < 1:
-                continue
-            label = str(row.get("Зона") or "").strip() or None
-            # Диапазон для подбора; по умолчанию 3..25, clamp к валидному.
-            try:
-                fmin = int(row.get("Этаж. мин", 3))
-            except (TypeError, ValueError):
-                fmin = 3
-            try:
-                fmax = int(row.get("Этаж. макс", 25))
-            except (TypeError, ValueError):
-                fmax = 25
-            fmin = max(1, min(fmin, 60))
-            fmax = max(fmin, min(fmax, 60))
-            # v0.9.31 (аудит P1): диапазон подбора обязан включать принятую
-            # этажность — иначе Optuna не сможет оставить текущее значение зоны.
-            fmin = min(fmin, f)
-            fmax = max(fmax, f)
-            clusters.append(FloorCluster(
-                area_m2=a, floors=f, floors_min=fmin, floors_max=fmax, label=label,
-            ))
+    if len(clusters) > _MAX_CLUSTERS:
+        st.warning(f"Учтены только первые {_MAX_CLUSTERS} зоны (задано {len(clusters)}).")
+        clusters = clusters[:_MAX_CLUSTERS]
 
-        if len(clusters) > _MAX_CLUSTERS:
-            st.warning(
-                f"Учтены только первые {_MAX_CLUSTERS} зоны "
-                f"(задано {len(clusters)})."
-            )
-            clusters = clusters[:_MAX_CLUSTERS]
+    if not clusters:
+        st.info("Добавьте хотя бы одну зону с площадью и этажностью.")
+        return []
 
-        if not clusters:
-            st.info("Добавьте хотя бы одну зону с площадью и этажностью.")
-            return []
-
-        total_a = sum(c.area_m2 for c in clusters)
-        feff = sum(c.area_m2 * c.floors for c in clusters) / total_a if total_a else 0.0
-        c1, c2 = st.columns(2)
-        c1.metric("Σ площадей зон (= площадь квартала)",
-                  f"{total_a:,.0f} м²".replace(",", " "))
-        c2.metric("Средневзвеш. этажность", f"{feff:.1f}")
-        return clusters
+    total_a = sum(c.area_m2 for c in clusters)
+    feff = sum(c.area_m2 * c.floors for c in clusters) / total_a if total_a else 0.0
+    c1, c2 = st.columns(2)
+    c1.metric("Σ площадей зон (= площадь квартала)",
+              f"{total_a:,.0f} м²".replace(",", " "))
+    c2.metric("Средневзвеш. этажность", f"{feff:.1f}")
+    return clusters
 
 
 def _render_vpp_tile() -> VppRequest:
@@ -1321,7 +1294,7 @@ def _render_custom_objects_tile() -> list[CustomObject]:
 
         col1, col2, _ = st.columns([1, 1, 3])
         with col1:
-            if st.button("Применить", type="primary", use_container_width=True):
+            if st.button("Применить", type="primary"):
                 new_list = []
                 for _, row in edited_df.iterrows():
                     try:
@@ -1347,7 +1320,7 @@ def _render_custom_objects_tile() -> list[CustomObject]:
                 st.toast(f"Применено: {len(new_list)} объект(а/ов)", icon="📦")
                 st.rerun()
         with col2:
-            if st.button("Очистить", use_container_width=True,
+            if st.button("Очистить",
                          disabled=not st.session_state.custom_objects):
                 st.session_state.custom_objects = []
                 st.rerun()

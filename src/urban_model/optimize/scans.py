@@ -503,6 +503,6 @@ def scan_school_objects(
     return _scan_social_objects(
         site, base_options, norms, kind="school",
         lo=lo, hi=hi, metric=metric,
-        title="Число СОШ", x_label="Число корпусов СОШ",
+        title="Число СОШ", x_label="Число объектов СОШ",
         factor="school_objects",
     )

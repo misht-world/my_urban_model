@@ -81,6 +81,10 @@ class ParetoConstraints:
     allow_multilevel: bool = True
     allow_underground: bool = True
     restrict_parking_combos: bool = True
+    # v0.10.4: диапазон этажности ПО КАЖДОЙ ЗОНЕ для подбора (список (lo,hi) в
+    # порядке зон). None → этажность зон НЕ варьируется (берётся из базы).
+    # Длина должна совпадать с числом зон; иначе варьирование игнорируется.
+    cluster_floors_ranges: tuple[tuple[int, int], ...] | None = None
 
 
 def _is_hybrid_parking(params: dict, threshold: float = 0.10) -> bool:
@@ -376,13 +380,15 @@ def _select_three(
 # ---------------------------------------------------------------------------
 
 def _build_search_space(
-    constraints: ParetoConstraints, has_clusters: bool = False
+    constraints: ParetoConstraints,
+    has_clusters: bool = False,
+    vary_zones: bool = False,
 ) -> SearchSpace:
     """SearchSpace с учётом пользовательских ограничений.
 
-    v0.9.29: если у базы заданы кластеры этажности (`has_clusters`), Optuna
-    варьирует этажность каждой зоны (vary_cluster_floors=True), а глобальный
-    floors_range не используется.
+    v0.9.29/v0.10.3: при кластерах глобальная этажность не варьируется
+    (`has_clusters` → floors_range=None). Этажность зон варьируется только
+    если `vary_zones=True` (пользователь задал диапазон в настройках подбора).
     """
     # Режимы парковок: если запрещены все «нестандартные» — оставляем что есть.
     parking_modes: list[str] = []
@@ -409,7 +415,7 @@ def _build_search_space(
     return SearchSpace(
         # При кластерах глобальная этажность не варьируется — её определяют зоны.
         floors_range=None if has_clusters else constraints.floors_range,
-        vary_cluster_floors=has_clusters,
+        vary_cluster_floors=vary_zones,
         parking_modes=parking_modes,
         parking_open_share_range=open_range,
         parking_multilevel_share_range=ml_range,
@@ -448,7 +454,29 @@ def generate_pareto_recommendations(
     """
     if constraints is None:
         constraints = ParetoConstraints()
-    space = _build_search_space(constraints, has_clusters=bool(base_options.floor_clusters))
+
+    # v0.10.4: этажность зон варьируется ТОЛЬКО если заданы диапазоны ПО КАЖДОЙ
+    # зоне (список совпадает по длине с числом зон). Иначе зоны фиксированы.
+    _ranges = constraints.cluster_floors_ranges
+    _n_zones = len(base_options.floor_clusters)
+    vary_zones = (
+        _n_zones > 0 and _ranges is not None and len(_ranges) == _n_zones
+    )
+    if vary_zones:
+        base_options = base_options.model_copy(update={
+            "floor_clusters": [
+                c.model_copy(update={
+                    "floors_min": int(min(rng)), "floors_max": int(max(rng)),
+                })
+                for c, rng in zip(base_options.floor_clusters, _ranges)
+            ]
+        })
+
+    space = _build_search_space(
+        constraints,
+        has_clusters=bool(base_options.floor_clusters),
+        vary_zones=vary_zones,
+    )
     report: OptimizationReport = optimize_max_apartments(
         site=site,
         base_options=base_options,

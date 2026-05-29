@@ -119,3 +119,20 @@ def test_comparison_report_landscape(scenarios):
     finally:
         if os.path.exists(path):
             os.unlink(path)
+
+
+# v0.10.9: PPTX-презентация по варианту (MVP).
+def test_variant_pptx_creates_deck(spb):
+    from urban_model.export import build_variant_pptx
+    s = Site(area_m2=60_000)
+    tep = solve_max_kit(s, CalculationOptions(floors=12, planning_doc=True, residential_class="business"), spb)
+    path = tempfile.mktemp(suffix=".pptx")
+    try:
+        build_variant_pptx("Тест", tep, path)
+        assert os.path.getsize(path) > 10000
+        from pptx import Presentation
+        prs = Presentation(path)
+        assert len(prs.slides) >= 3  # титул + ТЭП + баланс (+эконом)
+    finally:
+        if os.path.exists(path):
+            os.unlink(path)
