@@ -39,6 +39,16 @@ from urban_model.optimize.sensitivity import compute_sensitivity
 from urban_model.ui.formatting import fmt_int, fmt_m2
 
 
+def _flat_dot(color: str, stroke: str = "white") -> str:
+    """Плоский кружок-маркер (без объёма/глянца) — единое обозначение
+    в легенде и резюме сканов, совпадает с точками на графике."""
+    return (
+        f"<span style='display:inline-block;width:11px;height:11px;"
+        f"border-radius:50%;background:{color};border:1px solid {stroke};"
+        f"vertical-align:middle;margin:0 4px 2px 0;'></span>"
+    )
+
+
 # ---------------------------------------------------------------------------
 # Старая Optuna (для «Продвинутого режима»)
 # ---------------------------------------------------------------------------
@@ -164,7 +174,7 @@ def _render_pareto_constraints(base_options: CalculationOptions) -> ParetoConstr
     (опционально; если выключено — этажность зон берётся из базы).
     """
     has_clusters = bool(base_options.floor_clusters)
-    with st.expander("⚙ Настройки подбора (необязательно)", expanded=False):
+    with st.expander("⚙ Настройки подбора", expanded=False):
         st.caption(
             "Здесь можно ограничить пространство перебора — например, задать "
             "узкий диапазон этажности или запретить подземные парковки."
@@ -842,7 +852,7 @@ def _render_scan_summary(scan: ScanResult) -> None:
         if feasible_with_profit else None
     )
 
-    st.markdown(f"**База:** {base.x_label}")
+    st.markdown(f"{_flat_dot('#1565C0')} **База:** {base.x_label}", unsafe_allow_html=True)
     st.markdown("---")
 
     # Лучший по площади
@@ -850,8 +860,9 @@ def _render_scan_summary(scan: ScanResult) -> None:
         d_apt = best_apt.apartments_area - base.apartments_area
         d_apt_pct = (d_apt / base.apartments_area * 100.0) if base.apartments_area > 1e-9 else 0.0
         st.markdown(
-            f"🔴 **Лучший по площади:** {best_apt.x_label}  \n"
-            f"Δ площадь: {d_apt:+,.0f} м² ({d_apt_pct:+.1f}%)".replace(",", " ")
+            f"{_flat_dot('#D32F2F')} **Лучший по площади:** {best_apt.x_label}  \n"
+            + f"Δ площадь: {d_apt:+,.0f} м² ({d_apt_pct:+.1f}%)".replace(",", " "),
+            unsafe_allow_html=True,
         )
 
     # Лучший по прибыли — если отличается
@@ -864,11 +875,16 @@ def _render_scan_summary(scan: ScanResult) -> None:
             and abs(best_profit.x_value - best_apt.x_value) < 1e-6
         )
         if same_as_apt:
-            st.caption(f"🟡 По прибыли — то же значение: {best_profit.x_label}")
+            st.markdown(
+                f"{_flat_dot('#F5B301', '#7A5B00')} По прибыли — то же значение: "
+                f"{best_profit.x_label}",
+                unsafe_allow_html=True,
+            )
         else:
             st.markdown(
-                f"🟡 **Лучший по прибыли:** {best_profit.x_label}  \n"
-                f"Δ выгодность: {d_profit:+,.0f} ({d_profit_pct:+.1f}%) баллов".replace(",", " ")
+                f"{_flat_dot('#F5B301', '#7A5B00')} **Лучший по прибыли:** {best_profit.x_label}  \n"
+                + f"Δ выгодность: {d_profit:+,.0f} ({d_profit_pct:+.1f}%) баллов".replace(",", " "),
+                unsafe_allow_html=True,
             )
 
     # Кнопка добавить в сравнение — добавляет «лучший по площади» (как и раньше)
@@ -989,13 +1005,9 @@ def _render_what_to_improve_section(
         "значения, т.к. меняют параметры в комбинации."
     )
     # Плоская легенда маркеров (без глянцевых emoji) — совпадает с графиком.
-    def _dot(color: str, stroke: str = "white") -> str:
-        return (f"<span style='display:inline-block;width:11px;height:11px;"
-                f"border-radius:50%;background:{color};border:1px solid {stroke};"
-                f"vertical-align:middle;margin:0 3px 2px 0;'></span>")
     st.markdown(
-        f"{_dot('#1565C0')} база  &nbsp; {_dot('#D32F2F')} лучшее по площади  "
-        f"&nbsp; {_dot('#F5B301', '#7A5B00')} лучшее по прибыли",
+        f"{_flat_dot('#1565C0')} база  &nbsp; {_flat_dot('#D32F2F')} лучшее по площади  "
+        f"&nbsp; {_flat_dot('#F5B301', '#7A5B00')} лучшее по прибыли",
         unsafe_allow_html=True,
     )
 

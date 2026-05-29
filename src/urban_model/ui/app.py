@@ -155,6 +155,10 @@ st.markdown("""
      border и едва заметный фон. Subheader'ы становятся ненавязчивыми. */
   div[data-testid="stVerticalBlockBorderWrapper"] {
       border: 1px solid #DFE5EC !important;
+      /* v0.10.14: синий акцент-утолщение сверху карточки — единый стиль
+         с лендингом (карточки на главной странице). Применяется ко всем
+         st.container(border=True): Расчёт / Оптимизация / Сравнение / Параметры. */
+      border-top: 3px solid #1565C0 !important;
       background-color: #FAFBFC;
       border-radius: 6px;
   }
