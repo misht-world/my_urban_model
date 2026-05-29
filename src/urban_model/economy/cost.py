@@ -86,8 +86,27 @@ def calc_cost(tep, options, norms: Normatives) -> CostBreakdown:
     # --- Жильё ---
     gfa_v = (tep.gfa.value or 0.0)
     bi_area = (tep.built_in_area.value or 0.0)
-    # GFA жилья = общая GFA − площадь ВПП (если есть)
-    residential_gfa = max(0.0, gfa_v - bi_area)
+    # AUDIT v0.10.17 (двойной учёт встроенного ДОО): здание встроенно-
+    # пристроенного ДОО физически входит в общую GFA (gfa_v), а в forward.py
+    # вычитается из жилой GFA ТОЛЬКО при расчёте площади квартир. Здесь же
+    # `residential_gfa` считался от полной GFA → здание ДОО облагалось дважды:
+    # как жильё (×1.00) и как ДОО (×1.40). Симметрично логике forward.py
+    # вычитаем площадь здания встроенного ДОО (не only_demand) из жилой GFA.
+    _kg_included = getattr(options, "include_kindergarten", True)
+    kg_btype = (
+        getattr(options.kindergarten, "building_type", "detached")
+        if _kg_included else "detached"
+    )
+    _kg_only_demand_pre = (
+        bool(getattr(options.kindergarten, "only_demand", False))
+        if _kg_included else True
+    )
+    kg_bld_in_gfa = (
+        float(tep.kindergarten_building_area.value or 0.0)
+        if (kg_btype == "built_in" and not _kg_only_demand_pre) else 0.0
+    )
+    # GFA жилья = общая GFA − площадь ВПП − площадь здания встроенного ДОО
+    residential_gfa = max(0.0, gfa_v - bi_area - kg_bld_in_gfa)
     # v0.9.28: при кластерах этажности себестоимость считается покластерно
     # (C_base нелинейна по этажам): residential_gfa делится по долям GFA,
     # каждая часть умножается на ставку своей этажности.
@@ -102,6 +121,18 @@ def calc_cost(tep, options, norms: Normatives) -> CostBreakdown:
     else:
         c_base_res = _resolve_residential_base(int(options.floors), norms)
         cost_residential = residential_gfa * c_base_res
+
+    # v0.10.17 (аудит #2): повышающий коэффициент себестоимости по классу
+    # жилья (бизнес дороже строить). Применяется ко всей жилой себестоимости,
+    # включая покластерный случай. Если ключа нет (старый профиль) → 1.0.
+    try:
+        class_factor = float(norms.resolve(
+            "economy.construction.residential_class_factor",
+            residential_class=options.residential_class,
+        ))
+    except (KeyError, TypeError, ValueError):
+        class_factor = 1.0
+    cost_residential *= class_factor
 
     # --- ВПП ---
     cost_vpp = bi_area * c_vpp

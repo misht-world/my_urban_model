@@ -455,6 +455,19 @@ economy:
         - { up_to: .inf, value: 1.48 }     # tower_25fl+
       unit: "unit_per_m2_gfa"
       source: "SPEC.md (стартовые коэф, типичные пропорции РФ)"
+    # v0.10.17 (аудит #2): повышающий коэффициент себестоимости по классу.
+    # Бизнес дороже строить (фасады, инженерия, МОП, отделка, высота этажей),
+    # эконом — дешевле. Без него бизнес-класс выглядел чрезмерно прибыльным
+    # (ROI ~36% при той же себестоимости) и почти всегда побеждал в оптимизаторе.
+    residential_class_factor:
+      type: conditional
+      argument: residential_class
+      cases:
+        economy:  0.95
+        comfort:  1.00
+        business: 1.15
+      unit: "multiplier"
+      source: "оценка по практике СПб (фасады/инженерия/отделка бизнес-класса)"
     vpp_commercial:
       type: scalar
       value: 0.78
