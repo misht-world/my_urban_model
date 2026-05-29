@@ -33,9 +33,13 @@
   .hero p{font-size:20px;max-width:680px;color:#DCEAFB}
   .hero .accent{height:5px;width:120px;background:var(--amber);border-radius:3px;margin:30px 0 0}
   .pills{margin-top:28px;display:flex;gap:12px;flex-wrap:wrap}
-  .pill{background:#fff;color:var(--blue-d);font-weight:600;padding:10px 18px;
-        border-radius:10px;font-size:14px}
-  .pill.ghost{background:rgba(255,255,255,.12);color:#fff;border:1px solid rgba(255,255,255,.35)}
+  /* Метки-теги возможностей (НЕ кнопки): все одинаковые, полупрозрачные,
+     ни одна не выделена. Скруглённая «таблетка» + точка-маркер слева. */
+  .pill{background:rgba(255,255,255,.12);color:#fff;font-weight:600;
+        padding:8px 16px 8px 14px;border-radius:999px;font-size:14px;
+        border:1px solid rgba(255,255,255,.3);display:inline-flex;align-items:center;gap:8px}
+  .pill::before{content:"";width:7px;height:7px;border-radius:50%;
+        background:var(--amber);flex:none}
   .pill[title]{cursor:help}
   .cta{display:inline-block;background:var(--amber);color:#1F2937;font-weight:800;
         padding:14px 30px;border-radius:12px;font-size:16px;text-decoration:none;
@@ -121,8 +125,8 @@
     <div class="accent"></div>
     <div class="pills">
       <span class="pill" title="Бисекция подбирает максимальный КИТ, при котором выполняются баланс территории и все нормативные ограничения (ПЗЗ/СП/НГП СПб).">Обратный расчёт КИТ</span>
-      <span class="pill ghost" title="Optuna перебирает этажность, парковки, зоны и подбирает лучшие сценарии по площади квартир и по прибыли.">Оптимизация Optuna</span>
-      <span class="pill ghost" title="Деловые документы для Заказчика: подробный отчёт по варианту и сравнение вариантов в Word и PowerPoint.">Отчёты DOCX / PPTX</span>
+      <span class="pill" title="Optuna перебирает этажность, парковки, зоны и подбирает лучшие сценарии по площади квартир и по прибыли.">Оптимизация Optuna</span>
+      <span class="pill" title="Деловые документы для Заказчика: подробный отчёт по варианту и сравнение вариантов в Word и PowerPoint.">Отчёты DOCX / PPTX</span>
     </div>
     <div style="margin-top:30px">
       <!-- ССЫЛКА НА ПРОГРАММУ: замените href на адрес запущенного приложения

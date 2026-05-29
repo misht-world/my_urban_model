@@ -669,15 +669,18 @@ def _render_recommendation_card(
                 for c in d.key_changes:
                     st.markdown(f"• {c}")
 
+        # v0.10.15: кнопки одинаковой ширины (use_container_width в равных
+        # колонках), стоят вплотную — единый стиль с вкладкой «Расчёт».
         bcol1, bcol2 = st.columns(2)
-        if bcol1.button("➕ В сравнение", key=f"add_rec_{idx}"):
+        if bcol1.button("➕ В сравнение", key=f"add_rec_{idx}",
+                        use_container_width=True):
             st.session_state.scenarios.append((f"opt:{rec.label}", rec.tep))
             st.toast(f"Добавлено: {rec.label}", icon="✅")
         # v0.9.30: «Применить к Расчёту» — переносит параметры сценария на
         # вкладку Расчёт через override (надёжнее патча виджетов: переносит
         # этажность/зоны/парковки целиком). Расчёт покажет баннер + «вернуть форму».
         if bcol2.button("📥 Применить к Расчёту", key=f"apply_rec_{idx}",
-                        ):
+                        use_container_width=True):
             st.session_state["applied_options"] = rec_options
             st.session_state["applied_label"] = rec.label
             st.toast(f"Применено: {rec.label} → вкладка «Расчёт»", icon="📥")

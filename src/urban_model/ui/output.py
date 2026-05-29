@@ -1004,8 +1004,12 @@ def _render_actions_inline(result: TEPResult, default_name: str) -> None:
     # части, чтобы не «уезжали» вправо и не терялись из виду.
     # v0.10.10 (#3): кнопки заполняют свои узкие колонки (use_container_width) —
     # стоят вплотную друг к другу слева, без разрывов и без растяжки на весь экран.
-    c1, c2, _c3 = st.columns([2.5, 2, 3.5])
-    with c1:
+    # v0.10.15: единая сетка действий. Имя сценария занимает ширину двух
+    # кнопок (3+3 = 6 ед.), под ним — три кнопки ОДИНАКОВОЙ ширины (по 3 ед.)
+    # с хвостовым спейсером (3 ед.), чтобы не растягиваться на весь экран.
+    # Кнопки привязаны по ширине к полю ввода — единообразная сетка.
+    name_col, _name_sp = st.columns([6, 3])
+    with name_col:
         # v0.9.29: text_input с key сохраняет значение и игнорирует value=
         # после первого показа — поэтому при смене параметров пушим авто-имя.
         if st.session_state.get("_scenario_name_auto") != default_name:
@@ -1017,15 +1021,14 @@ def _render_actions_inline(result: TEPResult, default_name: str) -> None:
             key="scenario_name_input",
             label_visibility="collapsed",
         )
-    with c2:
-        if st.button("➕ Добавить в сравнение", use_container_width=True):
+
+    b_add, b_xlsx, b_doc, _btn_sp = st.columns([3, 3, 3, 3])
+    with b_add:
+        if st.button("➕ В сравнение", use_container_width=True):
             st.session_state.scenarios.append((scenario_name, result))
             st.toast(f"Сценарий «{scenario_name}» добавлен", icon="✅")
             st.rerun()
-
-    # Выгрузки — вплотную, слева. Отчёт DOCX — в ОДИН клик (мемоизация).
-    d1, d2, _ = st.columns([1.7, 2.3, 4.5])
-    with d1:
+    with b_xlsx:
         with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False) as tmp:
             tmp_path = tmp.name
         try:
@@ -1044,9 +1047,9 @@ def _render_actions_inline(result: TEPResult, default_name: str) -> None:
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             use_container_width=True,
         )
-    with d2:
+    with b_doc:
         st.download_button(
-            "📄 Отчёт по варианту (DOCX)",
+            "📄 Отчёт (DOCX)",
             _variant_report_bytes(default_name, result),
             file_name=f"Отчёт — {default_name}.docx",
             mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -1103,12 +1106,14 @@ def render_comparison_tab() -> None:
                 os.unlink(tmp_path)
             except OSError:
                 pass
-        dl1, dl2, _ = st.columns([1, 1, 2])
+        # v0.10.15: две кнопки одинаковой ширины вплотную + хвостовой спейсер.
+        dl1, dl2, _ = st.columns([3, 3, 6])
         dl1.download_button(
-            "💾 Скачать xlsx-сравнение",
+            "💾 Скачать xlsx",
             xlsx_bytes,
             file_name="comparison.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True,
         )
         # v0.10.8 (#4): DOCX-отчёт сравнения — в ОДИН клик. Мемоизация по
         # сигнатуре всех сценариев: пересобирается только при изменении набора,
@@ -1129,8 +1134,9 @@ def render_comparison_tab() -> None:
                     pass
             st.session_state["_cmp_docx_sig"] = cmp_sig
         dl2.download_button(
-            "📄 Скачать отчёт (DOCX)",
+            "📄 Отчёт (DOCX)",
             st.session_state["_cmp_docx_bytes"],
             file_name="urban_report.docx",
             mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            use_container_width=True,
         )

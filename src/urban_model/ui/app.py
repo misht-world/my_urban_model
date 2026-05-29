@@ -62,6 +62,18 @@ st.markdown("""
       border-radius: 6px;
       padding: 0.35rem 1.1rem;
       font-weight: 500;
+      border: 1px solid #CBD5E1;
+  }
+  div[data-testid="stDownloadButton"] > button:hover {
+      border-color: #1565C0;
+      color: #1565C0;
+  }
+  /* v0.10.15: единый размер кнопок в ряду — внутри узких колонок кнопки
+     заполняют свою колонку (use_container_width), а текст центрируется.
+     Так соседние кнопки одинаковой ширины колонок выглядят одинаково. */
+  div[data-testid="stButton"] > button,
+  div[data-testid="stDownloadButton"] > button {
+      white-space: nowrap;
   }
   /* Плотнее интервалы между виджетами */
   div[data-testid="stVerticalBlock"] {gap: 0.5rem;}
