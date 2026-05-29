@@ -43,37 +43,35 @@ st.set_page_config(
 # страницу. Hard refresh (Ctrl+F5) сбрасывает кэш.
 st.markdown("""
 <style>
-  /* v0.10.16 stylesheet marker — bump на каждом релизе, чтобы инвалидировать кэш */
+  /* v0.10.18 stylesheet marker — стиль «Минимал · Спецификация». bump кэша. */
   /* Уменьшаем верхний отступ всего блока */
   div.block-container {padding-top: 1.5rem; padding-bottom: 1rem;}
-  /* v0.10.3: кнопки — чёткий «кнопочный» вид, не растянутые баннеры.
-     Натуральная ширина по содержимому + аккуратные отступы/скругление. */
-  div[data-testid="stButton"] > button {
-      border-radius: 6px;
-      padding: 0.35rem 1.1rem;
-      font-weight: 500;
-      border: 1px solid #CBD5E1;
-  }
-  div[data-testid="stButton"] > button:hover {
-      border-color: #1565C0;
-      color: #1565C0;
-  }
-  div[data-testid="stDownloadButton"] > button {
-      border-radius: 6px;
-      padding: 0.35rem 1.1rem;
-      font-weight: 500;
-      border: 1px solid #CBD5E1;
-  }
-  div[data-testid="stDownloadButton"] > button:hover {
-      border-color: #1565C0;
-      color: #1565C0;
-  }
-  /* v0.10.15: единый размер кнопок в ряду — внутри узких колонок кнопки
-     заполняют свою колонку (use_container_width), а текст центрируется.
-     Так соседние кнопки одинаковой ширины колонок выглядят одинаково. */
+  /* v0.11.0: кнопки — прямоугольные, чёрный контур (стиль спецификации).
+     По наведению — заливка графитом. Download-кнопки выглядят так же. */
   div[data-testid="stButton"] > button,
   div[data-testid="stDownloadButton"] > button {
+      border-radius: 2px;
+      padding: 0.4rem 1.15rem;
+      font-weight: 600;
+      border: 1px solid #1A1A1A;
+      background: #FFFFFF;
+      color: #1A1A1A;
       white-space: nowrap;
+      transition: background .12s, color .12s;
+  }
+  div[data-testid="stButton"] > button:hover,
+  div[data-testid="stDownloadButton"] > button:hover {
+      background: #1A1A1A;
+      color: #FFFFFF;
+      border-color: #1A1A1A;
+  }
+  /* primary-кнопки — сразу залиты графитом */
+  div[data-testid="stButton"] > button[kind="primary"] {
+      background: #1A1A1A;
+      color: #FFFFFF;
+  }
+  div[data-testid="stButton"] > button[kind="primary"]:hover {
+      background: #333333;
   }
   /* Плотнее интервалы между виджетами */
   div[data-testid="stVerticalBlock"] {gap: 0.5rem;}
@@ -99,11 +97,11 @@ st.markdown("""
   button[data-baseweb="tab"][aria-selected="true"] {
       font-weight: 700 !important;
       font-size: 1.13rem !important;
-      background: #EBF3FF !important;
-      color: #1565C0 !important;
-      border: 1px solid #BFDBFE !important;
-      border-bottom: 2px solid #FFFFFF !important;
-      /* v0.10.13: амбер-акцент активной вкладки — единый стиль с лендингом */
+      background: transparent !important;
+      color: #111111 !important;
+      border: 1px solid transparent !important;
+      border-bottom: none !important;
+      /* v0.11.0: амбер-подчёркивание активной вкладки (минимал) */
       box-shadow: inset 0 -3px 0 0 #F5A623;
   }
   /* Цветовая дифференциация левой/правой колонок на «Параметрах»:
@@ -165,24 +163,49 @@ st.markdown("""
   /* v0.9.15: единый деловой стиль для ВСЕХ вкладок.
      Контейнеры st.container(border=True) получают тонкий приглушённый
      border и едва заметный фон. Subheader'ы становятся ненавязчивыми. */
+  /* v0.11.0: стиль «спецификация» — белые секции с волосяной рамкой,
+     без синего акцента сверху, почти прямые углы. */
   div[data-testid="stVerticalBlockBorderWrapper"] {
-      border: 1px solid #DFE5EC !important;
-      /* v0.10.14: синий акцент-утолщение сверху карточки — единый стиль
-         с лендингом (карточки на главной странице). Применяется ко всем
-         st.container(border=True): Расчёт / Оптимизация / Сравнение / Параметры. */
-      border-top: 3px solid #1565C0 !important;
-      background-color: #FAFBFC;
-      border-radius: 6px;
+      border: 1px solid #EDEDED !important;
+      background-color: #FFFFFF;
+      border-radius: 3px;
   }
-  /* Однотипное оформление H5-заголовков внутри контейнеров — деловой look */
+  /* H5-заголовки секций — мелкий UPPERCASE с жирной графитовой чертой снизу
+     (как заголовки разделов в техническом паспорте). */
   div[data-testid="stVerticalBlockBorderWrapper"] h5 {
-      color: #334155;
-      font-size: 1.0rem;
-      font-weight: 600;
+      color: #8a8a8a;
+      font-size: 0.78rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
       margin-top: 0.1rem;
-      margin-bottom: 0.5rem;
-      padding-bottom: 0.3rem;
-      border-bottom: 1px solid #E5E9EF;
+      margin-bottom: 0.8rem;
+      padding-bottom: 0.55rem;
+      border-bottom: 2px solid #1A1A1A;
+  }
+  /* KPI-показатели (st.metric) в духе спецификации: тонкие крупные цифры,
+     моноширинные; подписи — мелкие UPPERCASE. */
+  [data-testid="stMetricValue"] {
+      font-weight: 300 !important;
+      color: #111111 !important;
+      font-variant-numeric: tabular-nums;
+      letter-spacing: -0.5px;
+  }
+  [data-testid="stMetricLabel"] p {
+      font-size: 0.74rem !important;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      color: #999999 !important;
+  }
+  /* Вертикальные волосяные линии между KPI-колонками (сетка-спецификация).
+     Колонки, содержащие st.metric, получают разделитель слева; у первой — нет. */
+  [data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:has([data-testid="stMetric"]) {
+      border-left: 1px solid #EDEDED;
+      padding-left: 16px;
+  }
+  [data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:first-child:has([data-testid="stMetric"]) {
+      border-left: none;
+      padding-left: 0;
   }
 </style>
 """, unsafe_allow_html=True)
