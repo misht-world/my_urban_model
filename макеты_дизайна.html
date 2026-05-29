@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Макеты — минимализм, вариации</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, "Segoe UI", Roboto, sans-serif; background: #eef1f5; color: #1f2937; }
+
+  /* ===== Переключатель ===== */
+  .switcher { position: sticky; top: 0; z-index: 100; display: flex; gap: 8px; align-items: center;
+    flex-wrap: wrap; padding: 14px 24px; background: #0f172a; color: #fff; box-shadow: 0 2px 12px rgba(0,0,0,.2); }
+  .switcher b { margin-right: 8px; font-size: 15px; }
+  .switcher button { border: 1px solid rgba(255,255,255,.25); background: rgba(255,255,255,.08);
+    color: #fff; padding: 8px 16px; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600; transition: .15s; }
+  .switcher button:hover { background: rgba(255,255,255,.2); }
+  .switcher button.active { background: #f5a623; color: #1f2937; border-color: #f5a623; }
+  .hint { width: 100%; margin-top: 6px; font-size: 12px; opacity: .6; }
+
+  .stage { padding: 44px; display: flex; justify-content: center; }
+  .app { width: 100%; max-width: 1040px; }
+
+  /* ===== Общая сетка ===== */
+  .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 22px; }
+  .row-gap { height: 22px; }
+  .actions { display: flex; gap: 18px; align-items: center; flex-wrap: wrap; }
+  .bar-row { display: flex; align-items: center; gap: 14px; margin-bottom: 12px; font-size: 13px; }
+  .bar-row .name { width: 180px; }
+  .bar-track { flex: 1; height: 6px; border-radius: 3px; overflow: hidden; }
+  .bar-fill { height: 100%; border-radius: 3px; }
+  .bar-row .num { width: 110px; text-align: right; font-variant-numeric: tabular-nums; }
+  .pos { color: #15803d; } .neg { color: #c0392b; }
+
+  /* ====================================================================
+     M1 · МИНИМАЛ (базовый)
+     ==================================================================== */
+  body[data-theme="M1"] .stage { background: #fff; }
+  body[data-theme="M1"] h1 { font-size: 28px; font-weight: 300; color: #111; letter-spacing: -.5px; }
+  body[data-theme="M1"] h1 b { font-weight: 700; }
+  body[data-theme="M1"] .subtitle { color: #999; font-size: 14px; margin: 6px 0 40px; }
+  body[data-theme="M1"] .card { background: transparent; border: none; padding: 0 0 34px; margin-bottom: 34px; border-bottom: 1px solid #f0f0f0; }
+  body[data-theme="M1"] .card h2 { font-size: 12px; color: #bbb; margin-bottom: 24px; font-weight: 600; text-transform: uppercase; letter-spacing: 2.5px; }
+  body[data-theme="M1"] .kpi .label { font-size: 12px; color: #aaa; margin-bottom: 8px; }
+  body[data-theme="M1"] .kpi .value { font-size: 34px; font-weight: 200; color: #111; letter-spacing: -1px; }
+  body[data-theme="M1"] .kpi .sub { font-size: 12px; color: #bbb; margin-top: 4px; }
+  body[data-theme="M1"] .bar-track { background: #f4f4f4; } body[data-theme="M1"] .bar-row .name { color: #888; } body[data-theme="M1"] .bar-row .num { color: #333; }
+  body[data-theme="M1"] .scenario-chip { color: #aaa; font-size: 13px; }
+  body[data-theme="M1"] .btn { border: none; background: transparent; color: #1565c0; padding: 8px 4px; font-weight: 600; cursor: pointer; font-size: 14px; border-bottom: 2px solid transparent; }
+  body[data-theme="M1"] .btn:hover { border-bottom-color: #1565c0; }
+  body[data-theme="M1"] .btn.primary { color: #f5a623; }
+
+  /* ====================================================================
+     M2 · МИНИМАЛ · ГЕРОЙ — один огромный фокусный показатель
+     ==================================================================== */
+  body[data-theme="M2"] .stage { background: #fdfdfd; }
+  body[data-theme="M2"] h1 { font-size: 26px; font-weight: 300; color: #111; }
+  body[data-theme="M2"] h1 b { font-weight: 700; }
+  body[data-theme="M2"] .subtitle { color: #aaa; font-size: 14px; margin: 6px 0 8px; }
+  body[data-theme="M2"] .card { background: transparent; border: none; padding: 32px 0; margin: 0; border-top: 1px solid #f2f2f2; }
+  body[data-theme="M2"] .card:first-of-type { border-top: none; }
+  body[data-theme="M2"] .card h2 { font-size: 11px; color: #ccc; margin-bottom: 26px; font-weight: 600; text-transform: uppercase; letter-spacing: 3px; }
+  body[data-theme="M2"] .kpi .label { font-size: 12px; color: #aaa; margin-bottom: 8px; }
+  body[data-theme="M2"] .kpi .value { font-size: 30px; font-weight: 200; color: #111; letter-spacing: -1px; }
+  body[data-theme="M2"] .kpi .sub { font-size: 12px; color: #ccc; margin-top: 4px; }
+  /* герой: первый показатель первого блока */
+  body[data-theme="M2"] .card:first-of-type .kpi-grid:first-of-type .kpi:first-child { grid-row: span 1; }
+  body[data-theme="M2"] .card:first-of-type .kpi-grid:first-of-type .kpi:first-child .value { font-size: 88px; font-weight: 100; letter-spacing: -3px; line-height: 1; color: #0f172a; }
+  body[data-theme="M2"] .card:first-of-type .kpi-grid:first-of-type .kpi:first-child .label { font-size: 13px; letter-spacing: 1px; text-transform: uppercase; }
+  body[data-theme="M2"] .card:first-of-type .kpi-grid:first-of-type { grid-template-columns: 1.6fr 1fr 1fr 1fr; align-items: end; }
+  body[data-theme="M2"] .bar-track { background: #f4f4f4; } body[data-theme="M2"] .bar-row .name { color: #999; } body[data-theme="M2"] .bar-row .num { color: #333; }
+  body[data-theme="M2"] .scenario-chip { color: #bbb; font-size: 13px; }
+  body[data-theme="M2"] .btn { border: none; background: transparent; color: #1565c0; padding: 8px 4px; font-weight: 600; cursor: pointer; font-size: 14px; border-bottom: 2px solid transparent; }
+  body[data-theme="M2"] .btn:hover { border-bottom-color: #1565c0; }
+  body[data-theme="M2"] .btn.primary { color: #f5a623; }
+
+  /* ====================================================================
+     M3 · МИНИМАЛ · СЕТКА — спецификация с волосяными линиями
+     ==================================================================== */
+  body[data-theme="M3"] .stage { background: #fff; }
+  body[data-theme="M3"] h1 { font-size: 26px; font-weight: 400; color: #1a1a1a; letter-spacing: -.3px; }
+  body[data-theme="M3"] h1 b { font-weight: 700; }
+  body[data-theme="M3"] .subtitle { color: #999; font-size: 13px; margin: 6px 0 36px; font-variant-numeric: tabular-nums; }
+  body[data-theme="M3"] .card { background: transparent; border: none; padding: 0; margin-bottom: 32px; }
+  body[data-theme="M3"] .card h2 { font-size: 11px; color: #999; margin-bottom: 0; font-weight: 700; text-transform: uppercase; letter-spacing: 2px; padding-bottom: 10px; border-bottom: 2px solid #1a1a1a; }
+  body[data-theme="M3"] .kpi-grid { gap: 0; border-bottom: 1px solid #ededed; }
+  body[data-theme="M3"] .kpi { padding: 20px 22px; border-right: 1px solid #ededed; }
+  body[data-theme="M3"] .kpi:last-child { border-right: none; }
+  body[data-theme="M3"] .row-gap { display: none; }
+  body[data-theme="M3"] .kpi .label { font-size: 11px; color: #aaa; margin-bottom: 10px; text-transform: uppercase; letter-spacing: .6px; }
+  body[data-theme="M3"] .kpi .value { font-size: 30px; font-weight: 300; color: #1a1a1a; font-variant-numeric: tabular-nums; }
+  body[data-theme="M3"] .kpi .sub { font-size: 12px; color: #bbb; margin-top: 4px; }
+  body[data-theme="M3"] .bar-track { background: #f2f2f2; height: 8px; } body[data-theme="M3"] .bar-row .name { color: #888; } body[data-theme="M3"] .bar-row .num { color: #1a1a1a; }
+  body[data-theme="M3"] .scenario-chip { color: #aaa; font-size: 12px; font-variant-numeric: tabular-nums; }
+  body[data-theme="M3"] .btn { border: 1px solid #1a1a1a; background: transparent; color: #1a1a1a; padding: 8px 18px; border-radius: 0; font-weight: 600; cursor: pointer; font-size: 13px; }
+  body[data-theme="M3"] .btn.primary { background: #1a1a1a; color: #fff; }
+
+  /* ====================================================================
+     M4 · МИНИМАЛ · ТЁПЛЫЙ — бумага off-white, амбер-засечки
+     ==================================================================== */
+  body[data-theme="M4"] .stage { background: #faf8f3; }
+  body[data-theme="M4"] .app { color: #2a2622; }
+  body[data-theme="M4"] h1 { font-size: 29px; font-weight: 300; color: #2a2622; letter-spacing: -.5px; }
+  body[data-theme="M4"] h1 b { font-weight: 700; }
+  body[data-theme="M4"] .subtitle { color: #a39a8c; font-size: 14px; margin: 6px 0 40px; }
+  body[data-theme="M4"] .card { background: transparent; border: none; padding: 0 0 32px; margin-bottom: 32px; border-bottom: 1px solid #ece6da; }
+  body[data-theme="M4"] .card h2 { font-size: 12px; color: #b5a98f; margin-bottom: 24px; font-weight: 600; text-transform: uppercase; letter-spacing: 2.5px; }
+  body[data-theme="M4"] .kpi { padding-left: 14px; border-left: 2px solid #ece6da; }
+  body[data-theme="M4"] .kpi .label { font-size: 12px; color: #a39a8c; margin-bottom: 8px; }
+  body[data-theme="M4"] .kpi .value { font-size: 33px; font-weight: 200; color: #2a2622; letter-spacing: -1px; }
+  body[data-theme="M4"] .kpi .sub { font-size: 12px; color: #bcb3a4; margin-top: 4px; }
+  /* ключевые показатели — амбер-засечка */
+  body[data-theme="M4"] .kpi.key { border-left-color: #d98c00; }
+  body[data-theme="M4"] .bar-track { background: #efe9dd; } body[data-theme="M4"] .bar-row .name { color: #8a8073; } body[data-theme="M4"] .bar-row .num { color: #2a2622; }
+  body[data-theme="M4"] .scenario-chip { color: #a39a8c; font-size: 13px; }
+  body[data-theme="M4"] .btn { border: none; background: transparent; color: #2a2622; padding: 8px 4px; font-weight: 600; cursor: pointer; font-size: 14px; border-bottom: 2px solid transparent; }
+  body[data-theme="M4"] .btn:hover { border-bottom-color: #d98c00; }
+  body[data-theme="M4"] .btn.primary { color: #d98c00; }
+</style>
+</head>
+<body data-theme="M1">
+
+<div class="switcher">
+  <b>Минимализм — вариации:</b>
+  <button data-set="M1" class="active">Базовый</button>
+  <button data-set="M2">Герой-цифра</button>
+  <button data-set="M3">Сетка-спецификация</button>
+  <button data-set="M4">Тёплая бумага</button>
+  <span class="hint">Все — вариации «минимала». Макет на согласование, рабочая программа не меняется.</span>
+</div>
+
+<div class="stage">
+<div class="app">
+
+  <h1>Расчёт <b>варианта</b></h1>
+  <div class="subtitle">Квартал 5,0 га · 9 эт. · комфорт · парковки только открытые · встроенный ДОО</div>
+
+  <!-- Основные показатели -->
+  <div class="card">
+    <h2>Основные показатели</h2>
+    <div class="kpi-grid">
+      <div class="kpi key"><div class="label">КИТ (ПЗЗ)</div><div class="value">1,20</div><div class="sub">в норме · ≤ 2,50</div></div>
+      <div class="kpi key"><div class="label">Площадь квартир</div><div class="value">44 992</div><div class="sub">м²</div></div>
+      <div class="kpi"><div class="label">Население</div><div class="value">1 606</div><div class="sub">чел · 321 чел/га</div></div>
+      <div class="kpi"><div class="label">GFA (общая)</div><div class="value">63 140</div><div class="sub">м²</div></div>
+    </div>
+    <div class="row-gap"></div>
+    <div class="kpi-grid">
+      <div class="kpi"><div class="label">ДОО</div><div class="value">85</div><div class="sub">1 объект · встроенный</div></div>
+      <div class="kpi"><div class="label">СОШ</div><div class="value">—</div><div class="sub">не учитывается</div></div>
+      <div class="kpi"><div class="label">Парковки</div><div class="value">563</div><div class="sub">все открытые</div></div>
+      <div class="kpi"><div class="label">ЗНОП</div><div class="value">4</div><div class="sub">м²/чел</div></div>
+    </div>
+  </div>
+
+  <!-- Экономика -->
+  <div class="card">
+    <h2>Экономическая оценка · условные единицы</h2>
+    <div class="kpi-grid">
+      <div class="kpi key"><div class="label">Выгодность</div><div class="value pos">+8 026</div><div class="sub">прибыль</div></div>
+      <div class="kpi"><div class="label">Без соц. нагрузки</div><div class="value pos">+9 349</div><div class="sub">баллов</div></div>
+      <div class="kpi"><div class="label">Соц. нагрузка</div><div class="value neg">−1 323</div><div class="sub">ДОО (нетто)</div></div>
+      <div class="kpi key"><div class="label">Маржа / ROI</div><div class="value pos">8,8%</div><div class="sub">ROI 9,6%</div></div>
+    </div>
+  </div>
+
+  <!-- Баланс -->
+  <div class="card">
+    <h2>Баланс территории</h2>
+    <div class="bar-wrap">
+      <div class="bar-row"><div class="name">ЗУ жилой застройки</div><div class="bar-track"><div class="bar-fill" style="width:62%;background:#1565c0"></div></div><div class="num">31 250 м²</div></div>
+      <div class="bar-row"><div class="name">Озеленение (ЗНОП)</div><div class="bar-track"><div class="bar-fill" style="width:13%;background:#2e9e5b"></div></div><div class="num">6 424 м²</div></div>
+      <div class="bar-row"><div class="name">Парковки открытые</div><div class="bar-track"><div class="bar-fill" style="width:23%;background:#f5a623"></div></div><div class="num">11 682 м²</div></div>
+      <div class="bar-row"><div class="name">Проезды + соц.</div><div class="bar-track"><div class="bar-fill" style="width:2%;background:#94a3b8"></div></div><div class="num">644 м²</div></div>
+    </div>
+  </div>
+
+  <!-- Действия -->
+  <div class="card" style="border-bottom:none">
+    <div class="actions">
+      <span class="scenario-chip">5 га · 9 эт · комфорт · парк: открытые</span>
+      <button class="btn primary">➕ В сравнение</button>
+      <button class="btn">💾 Скачать xlsx</button>
+      <button class="btn">📄 Отчёт (DOCX)</button>
+    </div>
+  </div>
+
+</div>
+</div>
+
+<script>
+  const btns = document.querySelectorAll('.switcher button');
+  btns.forEach(b => b.addEventListener('click', () => {
+    document.body.dataset.theme = b.dataset.set;
+    btns.forEach(x => x.classList.remove('active'));
+    b.classList.add('active');
+  }));
+</script>
+</body>
+</html>
