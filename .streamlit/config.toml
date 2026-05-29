@@ -10,8 +10,11 @@ textColor = "#1F2937"                  # графитовый — основно
 font = "sans serif"
 
 [server]
-headless = false
-runOnSave = true
+# headless = true — обязательно для серверного деплоя (Streamlit Cloud):
+# при false Streamlit запускает интерактивный welcome/email-промпт и сервер
+# не поднимается (health check падает с connection refused). Локально просто
+# не открывает браузер автоматически — адрес печатается в консоли.
+headless = true
 
 [browser]
 gatherUsageStats = false
