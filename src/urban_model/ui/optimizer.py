@@ -582,11 +582,14 @@ def _render_kpi_block(
     `_extract_kpi_fields`. Один и тот же формат в snapshot базы и в
     карточках рекомендаций → можно сравнивать визуально по строкам.
     """
+    # v0.10.16: st.dataframe(use_container_width) вместо markdown-таблицы —
+    # markdown-таблица не растягивается на ширину карточки (оставляла
+    # пустое место справа). dataframe заполняет блок целиком.
     rows = _extract_kpi_fields(tep, options)
-    md = "| Показатель | Значение |\n|---|---|\n"
-    for label, value in rows:
-        md += f"| {label} | **{value}** |\n"
-    st.markdown(md)
+    df = pd.DataFrame(
+        [{"Показатель": label, "Значение": value} for label, value in rows]
+    )
+    st.dataframe(df, hide_index=True, use_container_width=True)
 
 
 def _rec_options_from_params(
