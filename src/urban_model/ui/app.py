@@ -44,11 +44,20 @@ st.set_page_config(
 st.markdown("""
 <style>
   /* v0.10.18 stylesheet marker — стиль «Минимал · Спецификация». bump кэша. */
-  /* Уменьшаем верхний отступ всего блока */
-  div.block-container {padding-top: 1.5rem; padding-bottom: 1rem;}
-  /* v0.10.18: общая типографика «спецификации» — выровненные моноширинные
-     цифры и аккуратный кёрнинг (как в утверждённом макете). */
-  html, body, [data-testid="stAppViewContainer"] {
+  /* v0.10.18: ограничение ширины контента — макет рассчитан на ~1180px,
+     не на весь экран. Контейнер центрируется. */
+  div.block-container {
+      padding-top: 1.5rem;
+      padding-bottom: 1rem;
+      max-width: 1180px !important;
+      margin: 0 auto !important;
+  }
+  /* v0.10.18: единое шрифт-семейство как в макете «Сетка-Спецификация».
+     Streamlit по умолчанию использует Source Sans Pro — это отличается от
+     системного стека макета. Приводим к одному. */
+  html, body, [data-testid="stAppViewContainer"],
+  [data-testid="stAppViewContainer"] * {
+      font-family: -apple-system, "Segoe UI", Roboto, Arial, sans-serif !important;
       font-variant-numeric: tabular-nums;
       -webkit-font-smoothing: antialiased;
       text-rendering: optimizeLegibility;

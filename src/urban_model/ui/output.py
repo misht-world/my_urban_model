@@ -230,7 +230,10 @@ def render_kpi(result: TEPResult, *, scenario_default_name: str | None = None) -
         # Все ряды st.columns(4) создаются ВНУТРИ kpi_col; затем
         # c1.metric/c5.metric/... рисуют в этой колонке. Donut —
         # отдельно в donut_col, на одном вертикальном уровне.
-        kpi_col, donut_col = st.columns([3, 2], gap="medium")
+        # v0.10.18: KPI занимают всю ширину, treemap «Баланс территории»
+        # рендерится отдельной секцией НИЖЕ (как в утверждённом макете).
+        kpi_col = st.container()
+        donut_col = st.container()
         with kpi_col:
             c1, c2, c3, c4 = st.columns(4)  # ряд 1
             c5, c6, c7, c8 = st.columns(4)  # ряд 2
@@ -336,8 +339,10 @@ def render_kpi(result: TEPResult, *, scenario_default_name: str | None = None) -
             help="Общая площадь ЗНОП и норма на жителя.",
         )
 
-        # v0.9.21: donut в правой колонке на одном уровне с метриками
+        # v0.10.18: donut/treemap — теперь отдельной секцией под KPI,
+        # с собственным заголовком в стиле «Спецификация».
         with donut_col:
+            st.markdown("##### 🧮 Баланс территории")
             _render_balance_bar(result)
 
         # === Ряд 3: экономика — ВНУТРИ kpi_col, под метриками ===
