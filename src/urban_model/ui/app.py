@@ -376,35 +376,38 @@ st.markdown("""
       border-radius: 3px !important;
       position: relative !important;
   }
-  /* v0.10.18: ✕-кнопка в плитке. Безрамочная, серая, темнеет на hover.
-     Перекрываю ВСЁ от общего .stButton-правила. Несколько вариантов
-     селектора под разные версии Streamlit (title/aria-label/data-testid). */
+  /* v0.10.18: type="tertiary" кнопки Streamlit (минимал-тип) — для ✕
+     в плитках. Без рамки/фона по умолчанию, только серый × → темнее
+     на hover. Также перекрываем aria-label/title для совместимости
+     со старыми версиями, где tertiary недоступен. */
+  button[kind="tertiary"],
+  button[data-testid="stBaseButton-tertiary"],
+  div[data-testid="stButton"] > button[kind="tertiary"],
   button[aria-label*="Скрыть блок"],
-  button[title*="Скрыть блок"],
-  [data-testid="stTooltipHoverTarget"]:has(button[aria-label*="Скрыть блок"]) button,
-  div[data-testid="stButton"]:has(button[title*="Скрыть блок"]) > button {
+  button[title*="Скрыть блок"] {
       min-width: 0 !important;
       min-height: 0 !important;
-      padding: 0 4px !important;
+      padding: 0 6px !important;
       width: auto !important;
       height: auto !important;
-      font-size: 16px !important;
+      font-size: 18px !important;
       line-height: 1 !important;
       background: transparent !important;
       background-color: transparent !important;
       color: #bbb !important;
-      border: 0 none transparent !important;
+      border: 0 !important;
       box-shadow: none !important;
       border-radius: 0 !important;
       font-weight: 400 !important;
   }
+  button[kind="tertiary"]:hover,
+  button[data-testid="stBaseButton-tertiary"]:hover,
   button[aria-label*="Скрыть блок"]:hover,
-  button[title*="Скрыть блок"]:hover,
-  div[data-testid="stButton"]:has(button[title*="Скрыть блок"]) > button:hover {
+  button[title*="Скрыть блок"]:hover {
       color: #111 !important;
       background: transparent !important;
       background-color: transparent !important;
-      border: 0 none transparent !important;
+      border: 0 !important;
   }
   /* v0.10.18: повышаем специфичность шрифтового правила для md-заголовков —
      раньше Streamlit-тема (Source Sans Pro) могла перебивать. */
@@ -564,23 +567,45 @@ st.markdown("""
       background-color: #1A1A1A !important;
       background-image: none !important;
   }
-  /* v0.10.18: внутренний padding в колонках Параметров — чтобы текст
-     не лип к границе. Раньше padding был только на самой колонке,
-     а виджеты упирались в края. */
+  /* v0.10.18: внутренний padding ВНЕ + ВНУТРИ колонок Параметров — чтобы
+     текст и виджеты не лепились к границе с обеих сторон. */
   [data-testid="stColumn"]:has(.params-col-input),
   [data-testid="column"]:has(.params-col-input),
   [data-testid="stColumn"]:has(.params-col-settings),
   [data-testid="column"]:has(.params-col-settings) {
       padding: 18px 22px !important;
   }
+  /* Внутренние вертикальные блоки тоже получают padding, иначе элементы
+     внутри (expander, чекбоксы) могут касаться правого края. */
+  [data-testid="stColumn"]:has(.params-col-input) > [data-testid="stVerticalBlock"],
+  [data-testid="stColumn"]:has(.params-col-settings) > [data-testid="stVerticalBlock"] {
+      padding: 0 4px !important;
+  }
   /* Выравнивание карточек сканов в ряду «Пофакторный анализ»: грид с
-     одинаковой высотой ячеек (низ ровно по соседу). */
-  [data-testid="stHorizontalBlock"]:has([data-testid="stVerticalBlockBorderWrapper"]) {
+     одинаковой высотой + flex-1 на содержимое чтобы низ был выровнен. */
+  [data-testid="stHorizontalBlock"] {
       align-items: stretch !important;
   }
-  /* Размер шрифта expander summary = размер h5 секций (единообразие). */
-  [data-testid="stExpander"] details > summary {
+  [data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:has(> div > [data-testid="stVerticalBlockBorderWrapper"]) {
+      display: flex !important;
+      flex-direction: column !important;
+  }
+  [data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:has(> div > [data-testid="stVerticalBlockBorderWrapper"]) > div {
+      flex: 1 !important;
+      display: flex !important;
+      flex-direction: column !important;
+  }
+  /* Размер и стиль шрифта expander summary = h5 секций (единообразие).
+     Уточняю ВСЁ для надёжности. */
+  [data-testid="stExpander"] details > summary,
+  [data-testid="stExpander"] details > summary p,
+  [data-testid="stExpander"] details > summary span {
       font-size: 0.78rem !important;
+      font-weight: 700 !important;
+      text-transform: uppercase !important;
+      letter-spacing: 1.5px !important;
+      color: #8a8a8a !important;
+      line-height: 1.4 !important;
   }
   /* Вертикальные волосяные линии между KPI-колонками (сетка-спецификация).
      Колонки, содержащие st.metric, получают разделитель слева; у первой — нет. */
@@ -739,7 +764,7 @@ with tab_compare:
 
 st.markdown("---")
 st.caption(
-    "© 2026 Михаил. Модель застройки территории — обратный расчёт ТЭП. "
+    "© 2026. Модель застройки территории — обратный расчёт ТЭП. "
     "Все права защищены. Использование, копирование и распространение — "
     "только с письменного согласия автора. "
     "По вопросам сотрудничества: **misht.cad@gmail.com**."

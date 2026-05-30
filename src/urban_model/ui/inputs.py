@@ -67,9 +67,8 @@ def _tile_header(title: str, include_key: str | None = None) -> None:
     if include_key is None:
         st.markdown(f"##### {title}")
         return
-    # v0.10.18: × через колонку — простой и надёжный путь. Колонка [7, 1]
-    # = ~12% (≈ 35px в плитке ~290px); + глобальный min-width:0 на кнопках
-    # позволит ей влезть. use_container_width=True растягивает на колонку.
+    # v0.10.18: × через type="tertiary" — минимал-тип кнопки в Streamlit
+    # 1.34+ без рамки и фона. Идеально для иконки-крестика в углу.
     col_t, col_x = st.columns([7, 1], vertical_alignment="top")
     with col_t:
         st.markdown(f"##### {title}")
@@ -77,8 +76,8 @@ def _tile_header(title: str, include_key: str | None = None) -> None:
         st.button(
             "✕", key=f"close_{include_key}",
             on_click=_close_tile_cb, args=(include_key,),
-            help="Скрыть блок (равнозначно снятию галочки слева)",
-            use_container_width=True,
+            help="Скрыть блок",
+            type="tertiary",
         )
 
 
