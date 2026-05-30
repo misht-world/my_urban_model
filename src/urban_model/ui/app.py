@@ -52,15 +52,38 @@ st.markdown("""
       max-width: 1180px !important;
       margin: 0 auto !important;
   }
-  /* v0.10.18: единое шрифт-семейство как в макете «Сетка-Спецификация».
-     Streamlit по умолчанию использует Source Sans Pro — это отличается от
-     системного стека макета. Приводим к одному. */
-  html, body, [data-testid="stAppViewContainer"],
-  [data-testid="stAppViewContainer"] * {
+  /* v0.10.18: единое шрифт-семейство как в макете. Только body — иначе
+     перекроем Material Icons (expand_more, arrow_drop_down и т.п.) и
+     получим литеральный текст вместо иконок. */
+  html, body, [data-testid="stAppViewContainer"] {
       font-family: -apple-system, "Segoe UI", Roboto, Arial, sans-serif !important;
       font-variant-numeric: tabular-nums;
       -webkit-font-smoothing: antialiased;
       text-rendering: optimizeLegibility;
+  }
+  /* Текстовые элементы получают системный шрифт явно (на случай если
+     Streamlit-тема перебивает inheritance). НЕ трогаем .material-icons. */
+  [data-testid="stAppViewContainer"] h1,
+  [data-testid="stAppViewContainer"] h2,
+  [data-testid="stAppViewContainer"] h3,
+  [data-testid="stAppViewContainer"] h4,
+  [data-testid="stAppViewContainer"] h5,
+  [data-testid="stAppViewContainer"] h6,
+  [data-testid="stAppViewContainer"] p,
+  [data-testid="stAppViewContainer"] label,
+  [data-testid="stAppViewContainer"] input,
+  [data-testid="stAppViewContainer"] textarea,
+  [data-testid="stAppViewContainer"] button,
+  [data-testid="stAppViewContainer"] td,
+  [data-testid="stAppViewContainer"] th {
+      font-family: -apple-system, "Segoe UI", Roboto, Arial, sans-serif !important;
+  }
+  /* Защищаем шрифт иконок от любых перекрытий */
+  .material-icons, .material-icons-outlined,
+  [class*="material-icons"], [class*="material-symbols"],
+  span[class*="MuiIcon"], i[class*="material"] {
+      font-family: "Material Symbols Rounded", "Material Icons",
+        "Material Icons Outlined" !important;
   }
   /* Главный заголовок страницы (st.title → h1) — тонкий и крупный,
      с выраженным отрицательным трекингом. Изящнее жирного дефолта. */
@@ -271,6 +294,19 @@ st.markdown("""
   [data-testid="stAlert"][kind="error"], div[data-testid="stAlertContentError"] {
       border-left-color: #c0392b !important;
   }
+  /* v0.10.18: убираем ВНУТРЕННЮЮ рамку алерта (Streamlit рисует свою
+     обёртку с border внутри stAlert — отсюда двойная рамка). */
+  [data-testid="stAlert"] > div,
+  [data-testid="stAlert"] [data-testid^="stAlertContent"],
+  [data-testid="stAlert"] [data-testid$="ContentSuccess"],
+  [data-testid="stAlert"] [data-testid$="ContentInfo"],
+  [data-testid="stAlert"] [data-testid$="ContentWarning"],
+  [data-testid="stAlert"] [data-testid$="ContentError"] {
+      border: none !important;
+      background: transparent !important;
+      box-shadow: none !important;
+      padding: 0 !important;
+  }
   /* Жирный отказ от Streamlit-палитры в h1 (на случай если глобальный
      primaryColor подкрашивал заголовок). */
   h1 {
@@ -294,7 +330,8 @@ st.markdown("""
 # Заголовок и краткая подпись
 col_title, col_meta = st.columns([3, 1])
 with col_title:
-    st.title("Модель застройки территории")
+    # v0.10.18: жирное слово «территории» — стиль макета (h1 + <b>).
+    st.title("Модель застройки **территории**")
     # v0.10.18: амбер-полоса под заголовком убрана — макет «Сетка-Спецификация»
     # обходится без неё; акцент остался на активной вкладке.
     st.caption(

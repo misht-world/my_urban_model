@@ -993,11 +993,10 @@ def _render_scan_card(scan: ScanResult) -> None:
     if scan.factor in ("kindergarten_objects", "school_objects"):
         _render_social_count_card(scan)
         return
-    col_chart, col_text = st.columns([3, 2])
-    with col_chart:
-        _render_scan_chart(scan)
-    with col_text:
-        _render_scan_summary(scan)
+    # v0.10.18: график на всю ширину карточки (раньше его сжимала колонка
+    # text-резюме справа). Резюме теперь — компактной строкой ПОД графиком.
+    _render_scan_chart(scan)
+    _render_scan_summary(scan)
 
 
 def _render_what_to_improve_section(
@@ -1106,19 +1105,14 @@ def _render_sensitivity_section(
         )
         .properties(height=max(120, 42 * len(impacts)))
     )
-    col_chart, col_text = st.columns([3, 2])
-    with col_chart:
-        st.altair_chart(chart, use_container_width=True)
-    with col_text:
-        top = impacts[0]
-        st.markdown(
-            f"🥇 **Сильнее всего:** {top.label}  \n"
-            f"±{top.apt_swing:,.0f} м² ({top.apt_swing_pct:.0f}% от базы)".replace(",", " ")
-        )
-        st.caption(
-            "Это локальный анализ при прочих равных. Для комбинированного "
-            "эффекта смотрите «Топ-3 рекомендации» сверху."
-        )
+    # v0.10.18: tornado на всю ширину карточки + компактный итог строкой ниже.
+    st.altair_chart(chart, use_container_width=True)
+    top = impacts[0]
+    st.caption(
+        f"🥇 Сильнее всего: **{top.label}** · "
+        f"±{top.apt_swing:,.0f} м² ({top.apt_swing_pct:.0f}% от базы). "
+        f"Это локальный анализ при прочих равных.".replace(",", " ")
+    )
 
 
 # ---------------------------------------------------------------------------
