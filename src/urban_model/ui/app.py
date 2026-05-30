@@ -292,13 +292,9 @@ st.markdown("""
   [data-testid="stMetricDelta"] svg {
       width: 10px !important; height: 10px !important; color: #bbb !important;
   }
-  /* Скрываем ТОЛЬКО SVG-иконку «?» у метрик и виджетов. Раньше правило
-     было слишком широким (могло скрывать контейнеры вокруг кнопок). */
-  svg[data-testid="stTooltipIcon"],
-  svg[data-testid="stHelpIcon"],
-  [data-testid="stTooltipHoverTarget"] > svg[viewBox="0 0 24 24"] {
-      display: none !important;
-  }
+  /* v0.10.18: hide-rule для (?) иконок ОТКЛЮЧЁН — в текущей версии
+     Streamlit без правильного svg иконка рендерится как чёрный квадрат.
+     Лучше оставить «?» рабочими, чем ломать их внешний вид. */
   /* Уведомления (st.success / st.info / st.warning / st.error) — минимал:
      белый фон, тонкая рамка, цветной кант слева, без ярких заливок. */
   [data-testid="stAlert"], div[role="alert"] {
@@ -380,25 +376,28 @@ st.markdown("""
       border-radius: 3px !important;
       position: relative !important;
   }
-  /* v0.10.18: ✕-кнопка в плитке — просто компактнее (узкая колонка)
-     через aria-label. Без :has-абсолютного позиционирования (ломалось). */
-  button[aria-label="Скрыть блок (равнозначно снятию галочки слева)"],
-  button[title="Скрыть блок (равнозначно снятию галочки слева)"] {
+  /* v0.10.18: ✕-кнопка в плитке — БЕЗ рамки, без фона; только серый ×,
+     темнеет на hover. *=partial-match для надёжности. */
+  button[aria-label*="Скрыть блок"],
+  button[title*="Скрыть блок"] {
       min-width: 0 !important;
       min-height: 0 !important;
-      padding: 2px 6px !important;
-      font-size: 13px !important;
+      padding: 0 6px !important;
+      font-size: 16px !important;
       line-height: 1 !important;
       background: transparent !important;
-      color: #999 !important;
-      border: 1px solid transparent !important;
-      border-radius: 2px !important;
+      background-color: transparent !important;
+      color: #bbb !important;
+      border: none !important;
+      box-shadow: none !important;
+      border-radius: 0 !important;
+      font-weight: 400 !important;
   }
-  button[aria-label="Скрыть блок (равнозначно снятию галочки слева)"]:hover,
-  button[title="Скрыть блок (равнозначно снятию галочки слева)"]:hover {
+  button[aria-label*="Скрыть блок"]:hover,
+  button[title*="Скрыть блок"]:hover {
       color: #111 !important;
-      background: #F5F5F5 !important;
-      border-color: #ddd !important;
+      background: transparent !important;
+      background-color: transparent !important;
   }
   /* v0.10.18: повышаем специфичность шрифтового правила для md-заголовков —
      раньше Streamlit-тема (Source Sans Pro) могла перебивать. */
@@ -556,14 +555,33 @@ st.markdown("""
       padding-bottom: 0 !important;
       margin-top: 1rem !important;
   }
-  /* Input/Select: лёгкая рамка вместо синего фокуса */
-  input[type="text"], input[type="number"], textarea,
-  [data-baseweb="select"] [data-baseweb="select"] > div {
+  /* Input/Select: лёгкая рамка + нормальный padding (раньше текст влипал
+     в границы — особенно в number_input). */
+  input[type="text"], input[type="number"], textarea {
       border-radius: 2px !important;
+      padding: 6px 12px !important;
+  }
+  [data-baseweb="input"] input,
+  [data-baseweb="base-input"] input {
+      padding: 6px 12px !important;
   }
   input[type="text"]:focus, input[type="number"]:focus, textarea:focus {
       border-color: #1A1A1A !important;
       box-shadow: 0 0 0 1px #1A1A1A !important;
+  }
+  /* h5-подзаголовок ВНУТРИ плитки (Параметры → Настройки компонентов):
+     поджимаем margin-top, чтобы заголовок не «висел» далеко от верха карточки. */
+  [data-testid="stColumn"]:has(.params-col-settings) [data-testid="stMarkdownContainer"] h5,
+  [data-testid="column"]:has(.params-col-settings) [data-testid="stMarkdownContainer"] h5,
+  [data-testid="stColumn"]:has(.params-col-input) [data-testid="stMarkdownContainer"] h5,
+  [data-testid="column"]:has(.params-col-input) [data-testid="stMarkdownContainer"] h5 {
+      margin-top: 0 !important;
+  }
+  /* Прогресс-бар (st.progress): графит вместо синего — единая палитра */
+  [data-testid="stProgressBar"] > div > div,
+  [data-baseweb="progress-bar"] > div > div {
+      background-color: #1A1A1A !important;
+      background-image: none !important;
   }
   /* Вертикальные волосяные линии между KPI-колонками (сетка-спецификация).
      Колонки, содержащие st.metric, получают разделитель слева; у первой — нет. */

@@ -1091,7 +1091,7 @@ def _render_sensitivity_section(
 
     chart = (
         alt.Chart(df)
-        .mark_bar(color="#1565C0")
+        .mark_bar(color="#1A1A1A")
         .encode(
             x=alt.X("Размах, %:Q", title="Размах площади квартир, % от базы"),
             y=alt.Y("Фактор:N", sort="-x", title=None),

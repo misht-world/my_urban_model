@@ -3,7 +3,7 @@
 
 [theme]
 base = "light"
-primaryColor = "#1565C0"               # тёмно-синий — акценты (кнопки, ссылки)
+primaryColor = "#1A1A1A"               # графит — акценты (кнопки, прогресс, ссылки)
 backgroundColor = "#FFFFFF"            # белый — основной фон
 secondaryBackgroundColor = "#F4F6F8"   # светло-серый — карточки, expanders
 textColor = "#1F2937"                  # графитовый — основной текст
