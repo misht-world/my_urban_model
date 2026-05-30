@@ -121,13 +121,22 @@ st.markdown("""
       color: #FFFFFF;
       border-color: #1A1A1A;
   }
-  /* primary-кнопки — сразу залиты графитом */
-  div[data-testid="stButton"] > button[kind="primary"] {
-      background: #1A1A1A;
-      color: #FFFFFF;
+  /* primary-кнопки — сразу залиты графитом. Максимально широкие селекторы,
+     чтобы перебить тему Streamlit (kind / data-testid / aria). */
+  div[data-testid="stButton"] > button[kind="primary"],
+  div[data-testid="stButton"] > button[data-testid="stBaseButton-primary"],
+  div[data-testid="stButton"] button[kind="primary"],
+  button[kind="primary"] {
+      background: #1A1A1A !important;
+      color: #FFFFFF !important;
+      border: 1px solid #1A1A1A !important;
+      visibility: visible !important;
+      opacity: 1 !important;
   }
-  div[data-testid="stButton"] > button[kind="primary"]:hover {
-      background: #333333;
+  div[data-testid="stButton"] > button[kind="primary"]:hover,
+  button[kind="primary"]:hover {
+      background: #333333 !important;
+      color: #FFFFFF !important;
   }
   /* Плотнее интервалы между виджетами */
   div[data-testid="stVerticalBlock"] {gap: 0.5rem;}
@@ -444,6 +453,80 @@ st.markdown("""
   [data-testid="stSlider"] [data-baseweb="slider"] ~ div {
       color: #999 !important;
       font-size: 11px !important;
+  }
+  /* ======================================================================
+     v0.10.18 АУДИТ — приведение остальных виджетов к стилю «Спецификация»
+     ====================================================================== */
+  /* Checkbox / Toggle / Radio: акцент-цвет из синего → графит (#1A1A1A).
+     Это перебивает Streamlit primaryColor (=#1565C0 в config.toml). */
+  [data-baseweb="checkbox"] [data-checked="true"],
+  [data-baseweb="checkbox"] svg[data-checked="true"],
+  [data-baseweb="checkbox"] div[role="checkbox"][aria-checked="true"] > div {
+      background-color: #1A1A1A !important;
+      border-color: #1A1A1A !important;
+  }
+  /* Radio — графитовая точка вместо синей */
+  [data-baseweb="radio"] [data-checked="true"],
+  [data-baseweb="radio"] div[role="radio"][aria-checked="true"] > div {
+      background-color: #1A1A1A !important;
+      border-color: #1A1A1A !important;
+  }
+  /* Toggle (st.toggle): track становится графитовым в активном состоянии */
+  [data-baseweb="checkbox"] div[role="switch"][aria-checked="true"] {
+      background-color: #1A1A1A !important;
+  }
+  /* Expander (st.expander) — плоский, тонкая рамка, без скруглений и теней */
+  [data-testid="stExpander"] {
+      border: 1px solid #EDEDED !important;
+      border-radius: 2px !important;
+      background: #FFFFFF !important;
+      box-shadow: none !important;
+      margin-bottom: 8px !important;
+  }
+  [data-testid="stExpander"] details > summary {
+      font-weight: 600 !important;
+      color: #222 !important;
+      padding: 10px 14px !important;
+  }
+  [data-testid="stExpander"] details > summary:hover {
+      background: #FAFAFA !important;
+  }
+  /* DataFrame: тонкие хайрлайны, шапка с UPPERCASE и черной чертой */
+  [data-testid="stDataFrame"] {
+      border: 1px solid #EDEDED !important;
+      border-radius: 2px;
+  }
+  [data-testid="stDataFrame"] thead th {
+      font-size: 11px !important;
+      text-transform: uppercase !important;
+      letter-spacing: 0.6px !important;
+      font-weight: 700 !important;
+      color: #999 !important;
+      border-bottom: 2px solid #1A1A1A !important;
+      background: #FFFFFF !important;
+  }
+  /* st.subheader (h3 в выводе) — НЕ должен превращаться в мелкий UPPERCASE
+     по правилу секций; это «оглавление» секции, оставляем нормальным.
+     Применяем только если у h3 есть data-testid="stHeader" обёртка. */
+  [data-testid="stHeader"] h3,
+  [data-testid="stSubheader"] h3 {
+      font-size: 1.25rem !important;
+      font-weight: 600 !important;
+      text-transform: none !important;
+      letter-spacing: -0.2px !important;
+      color: #111 !important;
+      border-bottom: none !important;
+      padding-bottom: 0 !important;
+      margin-top: 1rem !important;
+  }
+  /* Input/Select: лёгкая рамка вместо синего фокуса */
+  input[type="text"], input[type="number"], textarea,
+  [data-baseweb="select"] [data-baseweb="select"] > div {
+      border-radius: 2px !important;
+  }
+  input[type="text"]:focus, input[type="number"]:focus, textarea:focus {
+      border-color: #1A1A1A !important;
+      box-shadow: 0 0 0 1px #1A1A1A !important;
   }
   /* Вертикальные волосяные линии между KPI-колонками (сетка-спецификация).
      Колонки, содержащие st.metric, получают разделитель слева; у первой — нет. */
