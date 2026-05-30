@@ -150,23 +150,21 @@ def render_params_tab() -> UserInputs:
 
     # ─── ЛЕВАЯ КОЛОНКА: общие сведения + чекбоксы ──────────────────
     with col_left:
-        # v0.9.15: невидимые CSS-маркеры. Стилизация ВСЕЙ колонки выполняется
-        # через CSS-селектор `:has(.params-col-input)` в app.py — окрашивает
-        # колонку в бледный фон без зависимости от testid-структуры Streamlit.
+        # v0.9.15: невидимый CSS-маркер — по нему `:has(.params-col-input)`
+        # в app.py стилизует бордер-контейнеры этой колонки.
         st.markdown(
             '<div class="params-col-input" style="display:none"></div>',
             unsafe_allow_html=True,
         )
-        st.markdown(
-            '<div style="color:#475569;font-size:0.85rem;font-weight:600;'
-            'margin-bottom:6px;letter-spacing:0.02em;text-transform:uppercase;">'
-            'Ввод данных</div>',
-            unsafe_allow_html=True,
-        )
-        (
-            site, floors, planning_doc, lot_override,
-            enforce_greening_norm, enforce_density_norm, floor_clusters,
-        ) = _render_essentials()
+        # v0.10.19: «Ввод данных» теперь в собственном st.container(border=True)
+        # — получает padding/рамку автоматически (как «Учитывать в расчёте»),
+        # текст больше не лепится к краю.
+        with st.container(border=True):
+            st.markdown("##### Ввод данных")
+            (
+                site, floors, planning_doc, lot_override,
+                enforce_greening_norm, enforce_density_norm, floor_clusters,
+            ) = _render_essentials()
 
         with st.container(border=True):
             st.markdown("##### Учитывать в расчёте")

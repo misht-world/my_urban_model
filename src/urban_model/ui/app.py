@@ -220,32 +220,17 @@ st.markdown("""
      рамка карточки). padding убираем — он сужал саму карточку.
      Padding идёт на внутренний stVerticalBlock (см. правило ниже),
      чтобы content отступал от border, а border не сдвигался. */
+  /* v0.10.19: КОЛОНКА больше НЕ карточка — фон/рамка убраны. Каждый
+     логический блок внутри (Ввод данных, Учитывать в расчёте, плитки)
+     обёрнут в st.container(border=True) и сам является карточкой с
+     padding. Так нет «карточки в карточке» и текст всегда отступает. */
   [data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:has(.params-col-input),
-  [data-testid="stHorizontalBlock"] > [data-testid="column"]:has(.params-col-input) {
-      background-color: #FFFFFF !important;
-      border: 1px solid #EDEDED !important;
-      border-left: 2px solid #1A1A1A !important;
-      border-radius: 3px;
-  }
+  [data-testid="stHorizontalBlock"] > [data-testid="column"]:has(.params-col-input),
   [data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:has(.params-col-settings),
   [data-testid="stHorizontalBlock"] > [data-testid="column"]:has(.params-col-settings) {
-      background-color: #FFFFFF !important;
-      border: 1px solid #EDEDED !important;
-      border-left: 2px solid #F5A623 !important;
-      border-radius: 3px;
-  }
-  /* Fallback (legacy): различаем по nth-position если :has не поддерживается */
-  @supports not (selector(:has(*))) {
-      [data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:nth-of-type(1) {
-          background-color: #FFFFFF !important;
-          border-left: 2px solid #1A1A1A !important;
-          border-radius: 3px;
-      }
-      [data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:nth-of-type(2) {
-          background-color: #FFFFFF !important;
-          border-left: 2px solid #F5A623 !important;
-          border-radius: 3px;
-      }
+      background-color: transparent !important;
+      border: none !important;
+      padding: 0 !important;
   }
   /* Слайдеры внутри border-блоков — ограничение ширины до ~65%.
      Перечисляем разные селекторы для надёжности. */
@@ -381,14 +366,23 @@ st.markdown("""
       padding: 0 !important;
       border-radius: 0 !important;
   }
-  /* Плитки внутри params-col-settings / params-col-input — возвращаем рамку */
-  [data-testid="stColumn"]:has(.params-col-settings) [data-testid="stVerticalBlockBorderWrapper"],
+  /* Карточки-контейнеры внутри колонок Параметров — рамка + padding.
+     Левый акцент: графит для «Ввод данных», амбер для «Настроек». */
   [data-testid="stColumn"]:has(.params-col-input) [data-testid="stVerticalBlockBorderWrapper"],
-  [data-testid="column"]:has(.params-col-settings) [data-testid="stVerticalBlockBorderWrapper"],
   [data-testid="column"]:has(.params-col-input) [data-testid="stVerticalBlockBorderWrapper"] {
       border: 1px solid #EDEDED !important;
+      border-left: 2px solid #1A1A1A !important;
       background: #FFFFFF !important;
-      padding: 16px 18px !important;
+      padding: 18px 22px !important;
+      border-radius: 3px !important;
+      position: relative !important;
+  }
+  [data-testid="stColumn"]:has(.params-col-settings) [data-testid="stVerticalBlockBorderWrapper"],
+  [data-testid="column"]:has(.params-col-settings) [data-testid="stVerticalBlockBorderWrapper"] {
+      border: 1px solid #EDEDED !important;
+      border-left: 2px solid #F5A623 !important;
+      background: #FFFFFF !important;
+      padding: 18px 22px !important;
       border-radius: 3px !important;
       position: relative !important;
   }
@@ -583,19 +577,8 @@ st.markdown("""
       background-color: #1A1A1A !important;
       background-image: none !important;
   }
-  /* v0.10.19: padding теперь прямо на КОЛОНКЕ (там же, где border).
-     box-sizing:border-box → padding insets content внутрь рамки и НЕ
-     меняет внешнюю ширину колонки (flex-basis сохраняется). Это
-     классический card-padding; предыдущая попытка вешать padding на
-     `> div` не срабатывала (div не матчился). См. правило колонок выше —
-     дублируем padding с высокой специфичностью (html body) для надёжности. */
-  html body [data-testid="stColumn"]:has(.params-col-input),
-  html body [data-testid="column"]:has(.params-col-input),
-  html body [data-testid="stColumn"]:has(.params-col-settings),
-  html body [data-testid="column"]:has(.params-col-settings) {
-      padding: 24px 28px !important;
-      box-sizing: border-box !important;
-  }
+  /* v0.10.19: padding на колонке убран — теперь padding даёт внутренний
+     st.container(border=True) каждого блока (см. правило карточек выше). */
   /* Выравнивание карточек сканов в ряду «Пофакторный анализ»: грид с
      одинаковой высотой + flex-1 на содержимое чтобы низ был выровнен. */
   [data-testid="stHorizontalBlock"] {
