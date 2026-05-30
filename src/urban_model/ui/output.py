@@ -1073,6 +1073,8 @@ def render_actions(result: TEPResult, default_name: str) -> None:
 # ---------------------------------------------------------------------------
 
 def render_comparison_tab() -> None:
+    # v0.10.18: h1-заголовок вкладки в стиле макета.
+    st.markdown("# Сравнение **вариантов**")
     pairs = st.session_state.get("scenarios", [])
     if not pairs:
         st.info("Сценариев пока нет. Перейдите на вкладку «Расчёт», "

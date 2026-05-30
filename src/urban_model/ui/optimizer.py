@@ -1429,7 +1429,8 @@ def _report_to_dataframe(report: OptimizationReport) -> pd.DataFrame:
 def render_optimizer_tab(
     site: Site, base_options: CalculationOptions, norms: Normatives,
 ) -> None:
-    st.markdown("## 🧬 Оптимизация")
+    # v0.10.18: h1-заголовок вкладки в стиле макета.
+    st.markdown("# Подбор **сценариев**")
     st.caption(
         "Сверху — рекомендации Optuna по площади/прибыли/балансу. "
         "Ниже — пофакторный анализ (что даст изменение ОДНОГО параметра). "

@@ -67,18 +67,17 @@ def _tile_header(title: str, include_key: str | None = None) -> None:
     if include_key is None:
         st.markdown(f"##### {title}")
         return
-    # v0.10.18: ratio [10, 2] + use_container_width=True + глобальный
-    # min-width:0 на кнопках — теперь × надёжно влезает в шапку плитки.
-    col_t, col_x = st.columns([10, 2], vertical_alignment="top")
-    with col_t:
-        st.markdown(f"##### {title}")
-    with col_x:
-        st.button(
-            "✕", key=f"close_{include_key}",
-            on_click=_close_tile_cb, args=(include_key,),
-            help="Скрыть блок (равнозначно снятию галочки слева)",
-            use_container_width=True,
-        )
+    # v0.10.18: ✕ позиционируется ABS-CSS-ом в правом верхнем углу плитки
+    # (раньше BaseWeb min-width 64px + узкая колонка не давали отрисовать).
+    # Маркер `.tile-x-mark` ставится перед кнопкой — CSS вытягивает кнопку
+    # из потока и кладёт в угол; маркерный контейнер при этом скрывается.
+    st.markdown('<span class="tile-x-mark"></span>', unsafe_allow_html=True)
+    st.button(
+        "✕", key=f"close_{include_key}",
+        on_click=_close_tile_cb, args=(include_key,),
+        help="Скрыть блок (равнозначно снятию галочки слева)",
+    )
+    st.markdown(f"##### {title}")
 
 
 def _only_demand_toggle(label: str, key: str, help_text: str) -> bool:
@@ -97,7 +96,8 @@ def render_params_tab() -> UserInputs:
     Левая колонка (1/3): общие сведения о территории + чекбоксы «учитывать в расчёте».
     Правая колонка (2/3): плитки с настройками для включённых компонентов.
     """
-    st.markdown("### Параметры расчёта")
+    # v0.10.18: h1-заголовок вкладки в стиле макета (тонкий + жирное слово).
+    st.markdown("# Параметры **расчёта**")
     st.caption(
         "Выберите слева компоненты — справа появятся плитки с их настройками. "
         "Изменения применяются автоматически — результат на вкладке «Расчёт»."

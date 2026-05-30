@@ -334,6 +334,82 @@ st.markdown("""
       letter-spacing: -1px !important;
       color: #111111 !important;
   }
+  /* v0.10.18: УБИРАЕМ внешнюю рамку у «карточек» (st.container border=True)
+     на больших секциях (Расчёт / Сравнение / Оптимизация) — макет
+     «Спецификация» структурирует чёрной чертой под заголовком, а не
+     боксом. Tile-плитки в правой колонке Параметров — оставляем с рамкой. */
+  [data-testid="stAppViewContainer"] [data-testid="stVerticalBlockBorderWrapper"] {
+      border: none !important;
+      background: transparent !important;
+      padding: 0 !important;
+      border-radius: 0 !important;
+  }
+  /* Плитки внутри params-col-settings / params-col-input — возвращаем рамку */
+  [data-testid="stColumn"]:has(.params-col-settings) [data-testid="stVerticalBlockBorderWrapper"],
+  [data-testid="stColumn"]:has(.params-col-input) [data-testid="stVerticalBlockBorderWrapper"],
+  [data-testid="column"]:has(.params-col-settings) [data-testid="stVerticalBlockBorderWrapper"],
+  [data-testid="column"]:has(.params-col-input) [data-testid="stVerticalBlockBorderWrapper"] {
+      border: 1px solid #EDEDED !important;
+      background: #FFFFFF !important;
+      padding: 16px 18px !important;
+      border-radius: 3px !important;
+      position: relative !important;
+  }
+  /* ✕-кнопка плитки: маркер скрываем, следующий за ним element-container
+     с кнопкой — вытягиваем в правый верхний угол плитки (абсолютно). */
+  [data-testid="element-container"]:has(.tile-x-mark) {
+      display: none !important;
+  }
+  [data-testid="element-container"]:has(.tile-x-mark) + [data-testid="element-container"] {
+      position: absolute !important;
+      top: 6px !important;
+      right: 6px !important;
+      z-index: 10;
+      width: auto !important;
+      margin: 0 !important;
+  }
+  [data-testid="element-container"]:has(.tile-x-mark) + [data-testid="element-container"]
+      [data-testid="stButton"] > button {
+      min-width: 0 !important;
+      min-height: 0 !important;
+      padding: 1px 7px !important;
+      font-size: 14px !important;
+      line-height: 1 !important;
+      background: transparent !important;
+      color: #999 !important;
+      border: 1px solid transparent !important;
+      border-radius: 2px !important;
+  }
+  [data-testid="element-container"]:has(.tile-x-mark) + [data-testid="element-container"]
+      [data-testid="stButton"] > button:hover {
+      color: #111 !important;
+      background: #F5F5F5 !important;
+      border-color: #ddd !important;
+  }
+  /* v0.10.18: повышаем специфичность шрифтового правила для md-заголовков —
+     раньше Streamlit-тема (Source Sans Pro) могла перебивать. */
+  [data-testid="stAppViewContainer"] [data-testid="stMarkdownContainer"] h1,
+  [data-testid="stAppViewContainer"] [data-testid="stMarkdownContainer"] h2,
+  [data-testid="stAppViewContainer"] [data-testid="stMarkdownContainer"] h3,
+  [data-testid="stAppViewContainer"] [data-testid="stMarkdownContainer"] h4,
+  [data-testid="stAppViewContainer"] [data-testid="stMarkdownContainer"] h5,
+  [data-testid="stAppViewContainer"] [data-testid="stMarkdownContainer"] h6,
+  [data-testid="stAppViewContainer"] [data-testid="stMarkdownContainer"] p {
+      font-family: -apple-system, "Segoe UI", Roboto, Arial, sans-serif !important;
+  }
+  /* h5-секции теперь со ВСЕГДА видимой чёрной чертой снизу — даже без
+     карточки-обёртки. (Раньше правило было привязано к stVerticalBlockBorderWrapper.) */
+  [data-testid="stMarkdownContainer"] h5 {
+      color: #8a8a8a !important;
+      font-size: 0.78rem !important;
+      font-weight: 700 !important;
+      text-transform: uppercase !important;
+      letter-spacing: 1.5px !important;
+      padding-bottom: 0.55rem !important;
+      margin-bottom: 1rem !important;
+      margin-top: 1.4rem !important;
+      border-bottom: 2px solid #1A1A1A !important;
+  }
   /* v0.10.18: слайдеры в стиле спецификации — графитовая ручка/трек,
      амбер-«пузырёк» значения. */
   [data-testid="stSlider"] [data-baseweb="slider"] [role="slider"] {
@@ -439,6 +515,8 @@ with tab_params:
 
 # --- Расчёт (только результаты) ---
 with tab_calc:
+    # v0.10.18: h1-заголовок вкладки в стиле макета.
+    st.markdown("# Расчёт **варианта**")
     # v0.9.30: «Применить к Расчёту» из Оптимизации — расчёт по применённому
     # сценарию (override), а не по форме «Параметры». Баннер + кнопка возврата.
     _applied = st.session_state.get("applied_options")
