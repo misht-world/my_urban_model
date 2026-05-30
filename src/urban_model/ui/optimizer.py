@@ -221,11 +221,11 @@ def _render_pareto_constraints(base_options: CalculationOptions) -> ParetoConstr
         with c2:
             st.markdown("**Разрешённые типы парковок**")
             allow_open = st.checkbox(
-                "🅿 Открытые наземные", value=True, key="pareto_allow_open",
+                ":material/local_parking: Открытые наземные", value=True, key="pareto_allow_open",
                 help="Самые дешёвые, но требуют пятна на квартале (≥12.5% по нормативу).",
             )
             allow_multilevel = st.checkbox(
-                "🏗 Многоуровневые наземные", value=True, key="pareto_allow_ml",
+                ":material/apartment: Многоуровневые наземные", value=True, key="pareto_allow_ml",
                 help="Компактнее открытых, средняя себестоимость.",
             )
             allow_underground = st.checkbox(
@@ -668,7 +668,7 @@ def _render_recommendation_card(
 
         # Что отличается от базы (текстом, как было)
         if d.key_changes:
-            with st.expander("📝 Что изменено vs база", expanded=False):
+            with st.expander(":material/edit_note: Что изменено vs база", expanded=False):
                 for c in d.key_changes:
                     st.markdown(f"• {c}")
 
@@ -973,7 +973,7 @@ def _render_social_count_card(scan: ScanResult) -> None:
     if valid_counts:
         rec_n = min(valid_counts)
         st.markdown(
-            f"🟢 **Рекомендуется:** {rec_n} {obj_word} "
+            f":material/check_circle: **Рекомендуется:** {rec_n} {obj_word} "
             f"(минимум объектов с допустимой вместимостью)."
         )
     # Вывод под таблицей (#1): пояснение, что число объектов не влияет на площадь.
@@ -1109,7 +1109,7 @@ def _render_sensitivity_section(
     st.altair_chart(chart, use_container_width=True)
     top = impacts[0]
     st.caption(
-        f"🥇 Сильнее всего: **{top.label}** · "
+        f":material/trophy: Сильнее всего: **{top.label}** · "
         f"±{top.apt_swing:,.0f} м² ({top.apt_swing_pct:.0f}% от базы). "
         f"Это локальный анализ при прочих равных.".replace(",", " ")
     )
@@ -1239,17 +1239,17 @@ def _render_search_space_form(base_options: CalculationOptions) -> SearchSpace:
         with st.container(border=True):
             st.markdown("##### Варьируемые параметры")
             vary_floors = st.checkbox("🏠 Этажность", value=True, key="opt_vary_floors")
-            vary_parking = st.checkbox("🅿️ Парковки", value=True, key="opt_vary_parking_mode")
+            vary_parking = st.checkbox(":material/local_parking: Парковки", value=True, key="opt_vary_parking_mode")
             vary_kg = st.checkbox(
-                "🎒 Кол-во ДОО", value=True, key="opt_vary_kg",
+                ":material/child_care: Кол-во ДОО", value=True, key="opt_vary_kg",
                 disabled=not base_options.include_kindergarten,
             )
             vary_school = st.checkbox(
-                "🏫 Кол-во СОШ", value=True, key="opt_vary_school",
+                ":material/school: Кол-во СОШ", value=True, key="opt_vary_school",
                 disabled=not base_options.include_school,
             )
             try_built_in = st.checkbox("🏪 ВПП (с/без)", value=True, key="opt_try_vpp")
-            vary_znop = st.checkbox("🌳 ЗНОП", value=True, key="opt_vary_znop")
+            vary_znop = st.checkbox(":material/park: ЗНОП", value=True, key="opt_vary_znop")
 
     floors_range = None
     parking_modes = None
@@ -1275,7 +1275,7 @@ def _render_search_space_form(base_options: CalculationOptions) -> SearchSpace:
 
         if vary_parking:
             with st.container(border=True):
-                st.markdown("##### 🅿️ Парковки")
+                st.markdown("##### :material/local_parking: Парковки")
                 use_min_open = st.checkbox("Минимум открытых, остальное подземные", value=True, key="opt_park_min_open")
                 use_all_open = st.checkbox("Все открытые наземные", value=True, key="opt_park_all_open")
                 use_custom = st.checkbox("Вручную (custom)", value=False, key="opt_park_custom")
@@ -1298,13 +1298,13 @@ def _render_search_space_form(base_options: CalculationOptions) -> SearchSpace:
 
         if vary_kg and base_options.include_kindergarten:
             with st.container(border=True):
-                st.markdown("##### 🎒 Кол-во ДОО")
+                st.markdown("##### :material/child_care: Кол-во ДОО")
                 lo, hi = st.slider("Диапазон", 1, 10, (1, 4), key="opt_kg_range")
                 kg_range = (int(lo), int(hi))
 
         if vary_school and base_options.include_school:
             with st.container(border=True):
-                st.markdown("##### 🏫 Кол-во СОШ")
+                st.markdown("##### :material/school: Кол-во СОШ")
                 lo, hi = st.slider("Диапазон", 1, 5, (1, 2), key="opt_school_range")
                 school_range = (int(lo), int(hi))
 
@@ -1326,7 +1326,7 @@ def _render_search_space_form(base_options: CalculationOptions) -> SearchSpace:
 
         if vary_znop:
             with st.container(border=True):
-                st.markdown("##### 🌳 ЗНОП")
+                st.markdown("##### :material/park: ЗНОП")
                 cc1, cc2, cc3, cc4 = st.columns(4)
                 use_z0 = cc1.checkbox("0", value=True, key="opt_znop_0")
                 use_z3 = cc2.checkbox("3", value=True, key="opt_znop_3")

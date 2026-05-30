@@ -27,6 +27,35 @@ from urban_model.ui.formatting import (
 # Заголовок-индикатор
 # ---------------------------------------------------------------------------
 
+def _spec_alert(kind: str, icon: str, md_text: str) -> None:
+    """Кастомный алерт в стиле «Спецификация» с Material Symbols-иконкой.
+
+    Зачем не st.success/warning: их тело НЕ парсит `:material/...:`
+    (на Streamlit Cloud показывалось литеральное «info»/«check_circle»).
+    Здесь иконка — это ligature-текст в span.material-symbols-sharp,
+    который рендерит уже загруженный шрифт (как в плитках/кнопках).
+    """
+    import html as _html
+    accent = {
+        "success": "#15803d", "warning": "#F5A623",
+        "error": "#c0392b", "info": "#1A1A1A",
+    }.get(kind, "#888")
+    # Экранируем HTML (в тексте бывает «<», напр. «[175] < 550») и только
+    # потом разворачиваем **bold** → <b>.
+    safe = _html.escape(md_text)
+    safe = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", safe)
+    st.markdown(
+        f'<div style="display:flex;gap:10px;align-items:flex-start;'
+        f'background:#fcfcfc;border:1px solid #ededed;border-left:3px solid {accent};'
+        f'border-radius:2px;padding:10px 14px;margin:6px 0;color:#1a1a1a;'
+        f'font-size:0.9rem;line-height:1.5;">'
+        f'<span class="material-symbols-sharp" '
+        f'style="font-size:20px;color:#1a1a1a;flex:none;line-height:1.4;">{icon}</span>'
+        f'<span>{safe}</span></div>',
+        unsafe_allow_html=True,
+    )
+
+
 def render_header(result: TEPResult) -> None:
     kit_v = result.kit.value or 0
     kit_max = result.kit_normative_max.value or 0
@@ -35,14 +64,16 @@ def render_header(result: TEPResult) -> None:
     feasible_all = balance_feasible and kit_ok
 
     if feasible_all:
-        st.success(
-            f":material/check_circle: **Все нормативы выполняются.** "
+        _spec_alert(
+            "success", "check_circle",
+            f"**Все нормативы выполняются.** "
             f"КИТ = {kit_v:.3f} (≤ {kit_max})"
             f"  ·  Резерв территории: {fmt_int(result.balance.surplus)} м²"
         )
     elif not kit_ok:
         # КИТ ПЗЗ превышает потолок — основная причина (часто из-за выключенного ДПТ)
-        st.error(
+        _spec_alert(
+            "error", "error",
             f"**КИТ ПЗЗ ({kit_v:.3f}) превышает нормативный потолок ({kit_max}).** "
             f"Жилой дом при выбранных параметрах не «помещается» в норматив. "
             f"См. рекомендации ниже."
@@ -53,7 +84,8 @@ def render_header(result: TEPResult) -> None:
         bal = result.balance
         if bal.surplus >= 0 and bal.greening_actual < bal.greening_required - 1e-3:
             deficit = bal.greening_required - bal.greening_actual
-            st.error(
+            _spec_alert(
+                "error", "error",
                 f"**Норматив озеленения квартала не выполняется.** "
                 f"Требуется ≥ {fmt_int(bal.greening_required)} м² "
                 f"(25% от квартала), факт {fmt_int(bal.greening_actual)} м² — "
@@ -61,7 +93,8 @@ def render_header(result: TEPResult) -> None:
                 f"Резерв территории есть ({fmt_int(bal.surplus)} м²), но "
                 f"норматив не пускает увеличивать жильё."
             )
-            st.info(
+            _spec_alert(
+                "info", "lightbulb",
                 "Возможные действия: (1) включите **ЗНОП** в левой колонке "
                 "— добавит озеленение по нормативу; "
                 "(2) увеличьте площадь квартала; "
@@ -69,7 +102,8 @@ def render_header(result: TEPResult) -> None:
                 "если зелень компенсируется вне границ территории."
             )
         else:
-            st.error(
+            _spec_alert(
+                "error", "error",
                 f"**Дефицит баланса территории.** КИТ = {kit_v:.3f}"
                 f"  ·  Не хватает: {fmt_int(-bal.surplus)} м²"
             )
@@ -80,7 +114,7 @@ def render_header(result: TEPResult) -> None:
     # они служат для машинной фильтрации (Optuna feasibility, тесты).
     from urban_model.calculations.warning_codes import strip_code
     for w in result.warnings:
-        st.warning(f":material/info: {strip_code(w)}")
+        _spec_alert("warning", "info", strip_code(w))
 
     # v0.10.9 (#1): когда ограничивает норматив плотности 450 чел/га и при этом
     # есть заметный резерв территории — объясняем, что земля высвобождена
@@ -94,7 +128,8 @@ def render_header(result: TEPResult) -> None:
         and surplus > site_a * 0.02
     )
     if density_limited:
-        st.info(
+        _spec_alert(
+            "info", "lightbulb",
             f"**Резерв обусловлен нормативом плотности.** Население достигло "
             f"потолка {dens.normative:.0f} чел/га — больше жилья разместить нельзя "
             f"без превышения плотности. Резерв {fmt_int(surplus)} м² уходит в "
