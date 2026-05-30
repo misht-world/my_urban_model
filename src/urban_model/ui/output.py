@@ -961,7 +961,7 @@ def _render_balance_bar(result: TEPResult) -> None:
         )
     )
     chart = (rect + labels).properties(height=340).configure_view(strokeWidth=0)
-    st.markdown("**⚖️ Распределение территории**")
+    st.markdown("##### ⚖️ Распределение территории")
     st.altair_chart(chart, use_container_width=True)
 
 

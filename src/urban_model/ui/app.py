@@ -397,8 +397,13 @@ st.markdown("""
   [data-testid="stAppViewContainer"] [data-testid="stMarkdownContainer"] p {
       font-family: -apple-system, "Segoe UI", Roboto, Arial, sans-serif !important;
   }
-  /* h5-секции теперь со ВСЕГДА видимой чёрной чертой снизу — даже без
-     карточки-обёртки. (Раньше правило было привязано к stVerticalBlockBorderWrapper.) */
+  /* v0.10.18: «секционные» подзаголовки — все уровни md (h2..h5) выглядят
+     одинаково: мелкий UPPERCASE + 2px чёрная черта снизу. В разных
+     местах кода используется ### / ## / **bold** — пользователь не должен
+     это замечать, все выглядят как разделы спецификации. */
+  [data-testid="stMarkdownContainer"] h2,
+  [data-testid="stMarkdownContainer"] h3,
+  [data-testid="stMarkdownContainer"] h4,
   [data-testid="stMarkdownContainer"] h5 {
       color: #8a8a8a !important;
       font-size: 0.78rem !important;
@@ -409,7 +414,10 @@ st.markdown("""
       margin-bottom: 1rem !important;
       margin-top: 1.4rem !important;
       border-bottom: 2px solid #1A1A1A !important;
+      line-height: 1.4 !important;
   }
+  /* h1 остаётся «крупный тонкий заголовок страницы» — НЕ затрагиваем
+     уже определённое правило выше. */
   /* v0.10.18: слайдеры в стиле спецификации — графитовая ручка/трек,
      амбер-«пузырёк» значения. */
   [data-testid="stSlider"] [data-baseweb="slider"] [role="slider"] {
