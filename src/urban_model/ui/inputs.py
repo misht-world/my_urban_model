@@ -171,33 +171,33 @@ def render_params_tab() -> UserInputs:
         with st.container(border=True):
             st.markdown("##### Учитывать в расчёте")
             st.caption("Включите компоненты — справа появятся их настройки.")
-            include_kg = st.checkbox("🎒 ДОО — детские сады", value=True, key="include_kg")
-            include_school = st.checkbox("🏫 СОШ — школы", value=True, key="include_school")
+            include_kg = st.checkbox(":material/child_care: ДОО — детские сады", value=True, key="include_kg")
+            include_school = st.checkbox(":material/school: СОШ — школы", value=True, key="include_school")
             include_sport = st.checkbox(
-                "🏃 Плоскостные спортивные сооружения",
+                ":material/directions_run: Плоскостные спортивные сооружения",
                 value=True, key="include_sport",
                 help=(
                     "Норматив: 1000 м²/1000 чел + 40% озеленения по ПЗЗ (ВРИ 5.1.3). "
                     "До 49% озеленения замещается самой спортплощадкой (п. 1.9.4 ПЗЗ)."
                 ),
             )
-            include_parking = st.checkbox("🅿️ Парковки", value=True, key="include_parking")
+            include_parking = st.checkbox(":material/local_parking: Парковки", value=True, key="include_parking")
             include_znop = st.checkbox(
-                "🌳 ЗНОП — зелёные насаждения общего пользования",
+                ":material/park: ЗНОП — зелёные насаждения общего пользования",
                 value=True, key="include_znop",
             )
             include_vpp = st.checkbox(
-                "🏪 ВПП — встроенно-пристроенные помещения",
+                ":material/storefront: ВПП — встроенно-пристроенные помещения",
                 value=True, key="include_vpp",
             )
             include_intra = st.checkbox(
-                "🛣 Внутриквартальные проезды", value=True, key="include_intra_driveways",
+                ":material/route: Внутриквартальные проезды", value=True, key="include_intra_driveways",
             )
             include_custom = st.checkbox(
-                "📦 Дополнительные объекты", value=False, key="include_custom_objects",
+                ":material/inventory_2: Дополнительные объекты", value=False, key="include_custom_objects",
             )
             include_economy = st.checkbox(
-                "💰 Экономика (баллы выгодности)",
+                ":material/payments: Экономика (баллы выгодности)",
                 value=True, key="include_economy",
                 help=(
                     "Расчёт стоимости / выручки / прибыли в условных единицах. "
@@ -452,7 +452,7 @@ def _render_essentials() -> tuple[Site, int, bool, "float | None", bool, bool, l
         # v0.8.8: нормативы-ограничения встроены в этот же блок.
         st.markdown("**Нормативы-ограничения**")
         enforce_greening = st.checkbox(
-            "🌿 Соблюдать норматив 25% озеленения квартала",
+            ":material/grass: Соблюдать норматив 25% озеленения квартала",
             value=True, key="enforce_quarter_greening_norm",
             help=(
                 "СП 42.13330: минимум 25% площади квартала под озеленение. "
@@ -461,7 +461,7 @@ def _render_essentials() -> tuple[Site, int, bool, "float | None", bool, bool, l
             ),
         )
         enforce_density = st.checkbox(
-            "👥 Соблюдать норматив 450 чел/га",
+            ":material/groups: Соблюдать норматив 450 чел/га",
             value=True, key="enforce_density_norm",
             help=(
                 "СП 42.13330: предельная плотность населения для многоэтажной "
@@ -504,7 +504,7 @@ def _render_clusters_editor(area_m2: float, floors: int) -> list[FloorCluster]:
     """
     _MAX_CLUSTERS = 3
     use_clusters = st.checkbox(
-        "🏗 Разная этажность по зонам",
+        ":material/apartment: Разная этажность по зонам",
         value=False, key="use_floor_clusters",
         help=(
             "Делит квартал на подучастки с собственной этажностью. "

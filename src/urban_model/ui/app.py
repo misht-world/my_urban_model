@@ -582,19 +582,26 @@ st.markdown("""
       background-color: #1A1A1A !important;
       background-image: none !important;
   }
-  /* v0.10.18: внутренний padding ВНЕ + ВНУТРИ колонок Параметров — чтобы
-     текст и виджеты не лепились к границе с обеих сторон. */
-  [data-testid="stColumn"]:has(.params-col-input),
-  [data-testid="column"]:has(.params-col-input),
-  [data-testid="stColumn"]:has(.params-col-settings),
-  [data-testid="column"]:has(.params-col-settings) {
-      padding: 18px 22px !important;
+  /* v0.10.19: padding на ПРЯМОМ дочернем stVerticalBlock колонки Параметров.
+     Streamlit DOM: [stColumn] → div[stVerticalBlock] → виджеты.
+     Не трогаем nested-vertical-blocks (внутри плиток и expanders),
+     иначе зануляется padding tiles. */
+  [data-testid="stColumn"]:has(.params-col-input) > div[data-testid="stVerticalBlock"],
+  [data-testid="column"]:has(.params-col-input) > div[data-testid="stVerticalBlock"],
+  [data-testid="stColumn"]:has(.params-col-settings) > div[data-testid="stVerticalBlock"],
+  [data-testid="column"]:has(.params-col-settings) > div[data-testid="stVerticalBlock"] {
+      padding: 22px 26px !important;
+      box-sizing: border-box !important;
+      gap: 0.65rem !important;
   }
-  /* Внутренние вертикальные блоки тоже получают padding, иначе элементы
-     внутри (expander, чекбоксы) могут касаться правого края. */
-  [data-testid="stColumn"]:has(.params-col-input) > [data-testid="stVerticalBlock"],
-  [data-testid="stColumn"]:has(.params-col-settings) > [data-testid="stVerticalBlock"] {
-      padding: 0 4px !important;
+  /* Также fallback — padding на простом > div селекторе (если Streamlit
+     перерендерит структуру). */
+  [data-testid="stColumn"]:has(.params-col-input) > div:first-child,
+  [data-testid="column"]:has(.params-col-input) > div:first-child,
+  [data-testid="stColumn"]:has(.params-col-settings) > div:first-child,
+  [data-testid="column"]:has(.params-col-settings) > div:first-child {
+      padding: 22px 26px !important;
+      box-sizing: border-box !important;
   }
   /* Выравнивание карточек сканов в ряду «Пофакторный анализ»: грид с
      одинаковой высотой + flex-1 на содержимое чтобы низ был выровнен. */
