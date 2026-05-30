@@ -110,6 +110,10 @@ st.markdown("""
       color: #1A1A1A;
       white-space: nowrap;
       transition: background .12s, color .12s;
+      /* v0.10.18: убираем BaseWeb-овский min-width ≈ 64px, из-за которого
+         мелкие кнопки (например «✕» в шапках плиток) скрывались, если
+         родительская колонка была уже 64px. */
+      min-width: 0 !important;
   }
   div[data-testid="stButton"] > button:hover,
   div[data-testid="stDownloadButton"] > button:hover {

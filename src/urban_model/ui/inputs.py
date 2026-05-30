@@ -67,9 +67,9 @@ def _tile_header(title: str, include_key: str | None = None) -> None:
     if include_key is None:
         st.markdown(f"##### {title}")
         return
-    # v0.10.18: расширил × колонку (раньше [10,1] = ~27px было мало под
-    # новый padded стиль кнопок). Теперь [11, 2] = ≈ 50px — хватает.
-    col_t, col_x = st.columns([11, 2])
+    # v0.10.18: ratio [10, 2] + use_container_width=True + глобальный
+    # min-width:0 на кнопках — теперь × надёжно влезает в шапку плитки.
+    col_t, col_x = st.columns([10, 2], vertical_alignment="top")
     with col_t:
         st.markdown(f"##### {title}")
     with col_x:
@@ -77,6 +77,7 @@ def _tile_header(title: str, include_key: str | None = None) -> None:
             "✕", key=f"close_{include_key}",
             on_click=_close_tile_cb, args=(include_key,),
             help="Скрыть блок (равнозначно снятию галочки слева)",
+            use_container_width=True,
         )
 
 
