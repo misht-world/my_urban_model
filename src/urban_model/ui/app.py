@@ -583,26 +583,29 @@ st.markdown("""
       background-color: #1A1A1A !important;
       background-image: none !important;
   }
-  /* v0.10.19: padding на ПРЯМОМ дочернем stVerticalBlock колонки Параметров.
-     Streamlit DOM: [stColumn] → div[stVerticalBlock] → виджеты.
-     Не трогаем nested-vertical-blocks (внутри плиток и expanders),
-     иначе зануляется padding tiles. */
-  [data-testid="stColumn"]:has(.params-col-input) > div[data-testid="stVerticalBlock"],
-  [data-testid="column"]:has(.params-col-input) > div[data-testid="stVerticalBlock"],
-  [data-testid="stColumn"]:has(.params-col-settings) > div[data-testid="stVerticalBlock"],
-  [data-testid="column"]:has(.params-col-settings) > div[data-testid="stVerticalBlock"] {
-      padding: 22px 26px !important;
-      box-sizing: border-box !important;
-      gap: 0.65rem !important;
+  /* v0.10.19: МАКСИМАЛЬНО агрессивный набор селекторов для padding'а
+     внутри колонок Параметров. Перебираем все возможные уровни DOM,
+     по которым Streamlit может рендерить контент. html body — повышение
+     специфичности на случай если темовые правила Streamlit перебивают. */
+  html body [data-testid="stColumn"]:has(.params-col-input),
+  html body [data-testid="column"]:has(.params-col-input),
+  html body [data-testid="stColumn"]:has(.params-col-settings),
+  html body [data-testid="column"]:has(.params-col-settings) {
+      padding-left: 0 !important;
+      padding-right: 0 !important;
   }
-  /* Также fallback — padding на простом > div селекторе (если Streamlit
-     перерендерит структуру). */
-  [data-testid="stColumn"]:has(.params-col-input) > div:first-child,
-  [data-testid="column"]:has(.params-col-input) > div:first-child,
-  [data-testid="stColumn"]:has(.params-col-settings) > div:first-child,
-  [data-testid="column"]:has(.params-col-settings) > div:first-child {
+  html body [data-testid="stColumn"]:has(.params-col-input) > div,
+  html body [data-testid="column"]:has(.params-col-input) > div,
+  html body [data-testid="stColumn"]:has(.params-col-settings) > div,
+  html body [data-testid="column"]:has(.params-col-settings) > div {
       padding: 22px 26px !important;
       box-sizing: border-box !important;
+  }
+  html body [data-testid="stColumn"]:has(.params-col-input) > div > [data-testid="stVerticalBlock"],
+  html body [data-testid="column"]:has(.params-col-input) > div > [data-testid="stVerticalBlock"],
+  html body [data-testid="stColumn"]:has(.params-col-settings) > div > [data-testid="stVerticalBlock"],
+  html body [data-testid="column"]:has(.params-col-settings) > div > [data-testid="stVerticalBlock"] {
+      gap: 0.65rem !important;
   }
   /* Выравнивание карточек сканов в ряду «Пофакторный анализ»: грид с
      одинаковой высотой + flex-1 на содержимое чтобы низ был выровнен. */
