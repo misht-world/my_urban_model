@@ -856,28 +856,30 @@ def _render_balance_bar(result: TEPResult) -> None:
     if site_area <= 0:
         return
 
+    # v0.10.18: подписи сокращены — мелкие плитки треемапа не вмещали
+    # длинные тексты, обрезались или не показывались. Короче → читаемее.
     pretty = {
-        "housing_lot": "ЗУ жилой застройки",
+        "housing_lot": "ЗУ жилья",
         "kindergarten_plot": "ДОО",
         "school_plot": "СОШ",
-        "sport_facilities": "Спорт. сооружения",
-        "social_parking_plot": "Парковки соцобъектов",
+        "sport_facilities": "Спорт. пл.",
+        "social_parking_plot": "Р. соц.",
         "znop": "ЗНОП",
-        "intra_quarter_driveways": "Внутрикв. проезды",
-        "parking_multilevel": "Многоуровн. паркинги",
-        "custom_objects": "Доп. объекты",
+        "intra_quarter_driveways": "Проезды",
+        "parking_multilevel": "МУ парк.",
+        "custom_objects": "Доп. об.",
     }
     # Цвета по типам — деловая палитра
     colors = {
-        "ЗУ жилой застройки":      "#4A90E2",
+        "ЗУ жилья":                "#4A90E2",
         "ДОО":                     "#F5A623",
         "СОШ":                     "#E94B3C",
-        "Спорт. сооружения":       "#7ED321",
-        "Парковки соцобъектов":    "#9B9B9B",
+        "Спорт. пл.":              "#7ED321",
+        "Р. соц.":                 "#9B9B9B",
         "ЗНОП":                    "#417505",
-        "Внутрикв. проезды":       "#B8B8B8",
-        "Многоуровн. паркинги":    "#50E3C2",
-        "Доп. объекты":            "#BD10E0",
+        "Проезды":                 "#B8B8B8",
+        "МУ парк.":                "#50E3C2",
+        "Доп. об.":                "#BD10E0",
         "Резерв":                  "#D5E8D4",
     }
     rows = []
@@ -961,7 +963,8 @@ def _render_balance_bar(result: TEPResult) -> None:
         )
     )
     chart = (rect + labels).properties(height=340).configure_view(strokeWidth=0)
-    st.markdown("##### ⚖️ Распределение территории")
+    # v0.10.18: внутренний заголовок убран — секционный «Баланс территории»
+    # уже стоит выше (см. render_kpi). Не дублируем.
     st.altair_chart(chart, use_container_width=True)
 
 

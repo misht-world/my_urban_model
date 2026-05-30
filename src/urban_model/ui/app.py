@@ -364,33 +364,22 @@ st.markdown("""
       border-radius: 3px !important;
       position: relative !important;
   }
-  /* ✕-кнопка плитки: маркер скрываем, следующий за ним element-container
-     с кнопкой — вытягиваем в правый верхний угол плитки (абсолютно). */
-  [data-testid="element-container"]:has(.tile-x-mark) {
-      display: none !important;
-  }
-  [data-testid="element-container"]:has(.tile-x-mark) + [data-testid="element-container"] {
-      position: absolute !important;
-      top: 6px !important;
-      right: 6px !important;
-      z-index: 10;
-      width: auto !important;
-      margin: 0 !important;
-  }
-  [data-testid="element-container"]:has(.tile-x-mark) + [data-testid="element-container"]
-      [data-testid="stButton"] > button {
+  /* v0.10.18: ✕-кнопка в плитке — просто компактнее (узкая колонка)
+     через aria-label. Без :has-абсолютного позиционирования (ломалось). */
+  button[aria-label="Скрыть блок (равнозначно снятию галочки слева)"],
+  button[title="Скрыть блок (равнозначно снятию галочки слева)"] {
       min-width: 0 !important;
       min-height: 0 !important;
-      padding: 1px 7px !important;
-      font-size: 14px !important;
+      padding: 2px 6px !important;
+      font-size: 13px !important;
       line-height: 1 !important;
       background: transparent !important;
       color: #999 !important;
       border: 1px solid transparent !important;
       border-radius: 2px !important;
   }
-  [data-testid="element-container"]:has(.tile-x-mark) + [data-testid="element-container"]
-      [data-testid="stButton"] > button:hover {
+  button[aria-label="Скрыть блок (равнозначно снятию галочки слева)"]:hover,
+  button[title="Скрыть блок (равнозначно снятию галочки слева)"]:hover {
       color: #111 !important;
       background: #F5F5F5 !important;
       border-color: #ddd !important;
@@ -457,22 +446,33 @@ st.markdown("""
   /* ======================================================================
      v0.10.18 АУДИТ — приведение остальных виджетов к стилю «Спецификация»
      ====================================================================== */
-  /* Checkbox / Toggle / Radio: акцент-цвет из синего → графит (#1A1A1A).
-     Это перебивает Streamlit primaryColor (=#1565C0 в config.toml). */
-  [data-baseweb="checkbox"] [data-checked="true"],
-  [data-baseweb="checkbox"] svg[data-checked="true"],
-  [data-baseweb="checkbox"] div[role="checkbox"][aria-checked="true"] > div {
+  /* Checkbox: Streamlit BaseWeb рисует чекбокс как input[type=checkbox]
+     внутри label с data-baseweb="checkbox". В checked-состоянии меняется
+     background-color на span-обёртке. Несколько селекторов для надёжности. */
+  label[data-baseweb="checkbox"] span:first-child,
+  [data-testid="stCheckbox"] span:first-child {
+      border-color: #1A1A1A !important;
+  }
+  /* Когда внутренний input checked — родительский span получает фон */
+  label[data-baseweb="checkbox"]:has(input:checked) span:first-child,
+  [data-testid="stCheckbox"]:has(input:checked) span:first-child,
+  label[data-baseweb="checkbox"] input:checked + span,
+  label[data-baseweb="checkbox"] input:checked ~ span:first-of-type {
       background-color: #1A1A1A !important;
       border-color: #1A1A1A !important;
   }
-  /* Radio — графитовая точка вместо синей */
-  [data-baseweb="radio"] [data-checked="true"],
-  [data-baseweb="radio"] div[role="radio"][aria-checked="true"] > div {
+  /* Radio: круглый индикатор и его внутренняя точка */
+  label[data-baseweb="radio"]:has(input:checked) > div:first-child,
+  [data-testid="stRadio"] label:has(input:checked) > div:first-child {
       background-color: #1A1A1A !important;
       border-color: #1A1A1A !important;
   }
-  /* Toggle (st.toggle): track становится графитовым в активном состоянии */
-  [data-baseweb="checkbox"] div[role="switch"][aria-checked="true"] {
+  label[data-baseweb="radio"]:has(input:checked) > div:first-child > div {
+      background-color: #FFFFFF !important;
+  }
+  /* Toggle (st.toggle) — track в активном состоянии графитовый */
+  [role="switch"][aria-checked="true"],
+  label:has(input[role="switch"]:checked) > div:first-child {
       background-color: #1A1A1A !important;
   }
   /* Expander (st.expander) — плоский, тонкая рамка, без скруглений и теней */
@@ -486,10 +486,19 @@ st.markdown("""
   [data-testid="stExpander"] details > summary {
       font-weight: 600 !important;
       color: #222 !important;
-      padding: 10px 14px !important;
+      padding: 6px 12px !important;
+      font-size: 13px !important;
+      min-height: 0 !important;
+  }
+  [data-testid="stExpander"] details > summary p {
+      margin: 0 !important;
+      line-height: 1.3 !important;
   }
   [data-testid="stExpander"] details > summary:hover {
       background: #FAFAFA !important;
+  }
+  [data-testid="stExpander"] details > div {
+      padding: 8px 14px !important;
   }
   /* DataFrame: тонкие хайрлайны, шапка с UPPERCASE и черной чертой */
   [data-testid="stDataFrame"] {

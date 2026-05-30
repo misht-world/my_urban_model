@@ -67,17 +67,19 @@ def _tile_header(title: str, include_key: str | None = None) -> None:
     if include_key is None:
         st.markdown(f"##### {title}")
         return
-    # v0.10.18: ✕ позиционируется ABS-CSS-ом в правом верхнем углу плитки
-    # (раньше BaseWeb min-width 64px + узкая колонка не давали отрисовать).
-    # Маркер `.tile-x-mark` ставится перед кнопкой — CSS вытягивает кнопку
-    # из потока и кладёт в угол; маркерный контейнер при этом скрывается.
-    st.markdown('<span class="tile-x-mark"></span>', unsafe_allow_html=True)
-    st.button(
-        "✕", key=f"close_{include_key}",
-        on_click=_close_tile_cb, args=(include_key,),
-        help="Скрыть блок (равнозначно снятию галочки слева)",
-    )
-    st.markdown(f"##### {title}")
+    # v0.10.18: × через колонку — простой и надёжный путь. Колонка [7, 1]
+    # = ~12% (≈ 35px в плитке ~290px); + глобальный min-width:0 на кнопках
+    # позволит ей влезть. use_container_width=True растягивает на колонку.
+    col_t, col_x = st.columns([7, 1], vertical_alignment="top")
+    with col_t:
+        st.markdown(f"##### {title}")
+    with col_x:
+        st.button(
+            "✕", key=f"close_{include_key}",
+            on_click=_close_tile_cb, args=(include_key,),
+            help="Скрыть блок (равнозначно снятию галочки слева)",
+            use_container_width=True,
+        )
 
 
 def _only_demand_toggle(label: str, key: str, help_text: str) -> bool:
