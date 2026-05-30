@@ -121,21 +121,36 @@ st.markdown("""
       color: #FFFFFF;
       border-color: #1A1A1A;
   }
-  /* primary-кнопки — сразу залиты графитом. Максимально широкие селекторы,
-     чтобы перебить тему Streamlit (kind / data-testid / aria). */
-  div[data-testid="stButton"] > button[kind="primary"],
-  div[data-testid="stButton"] > button[data-testid="stBaseButton-primary"],
+  /* primary-кнопки — МАКСИМАЛЬНО агрессивно. Несколько вариантов селекторов
+     под разные версии Streamlit (kind, data-testid, css-class). */
+  button[kind="primary"],
+  button[data-testid="stBaseButton-primary"],
+  button[data-testid="baseButton-primary"],
   div[data-testid="stButton"] button[kind="primary"],
-  button[kind="primary"] {
+  div[data-testid="stButton"] button[data-testid="stBaseButton-primary"],
+  div[data-testid="stButton"] > button[kind="primary"] {
       background: #1A1A1A !important;
+      background-color: #1A1A1A !important;
       color: #FFFFFF !important;
       border: 1px solid #1A1A1A !important;
       visibility: visible !important;
       opacity: 1 !important;
+      display: inline-flex !important;
+      min-width: auto !important;
+      padding: 0.4rem 1.15rem !important;
+      font-weight: 600 !important;
+      border-radius: 2px !important;
   }
-  div[data-testid="stButton"] > button[kind="primary"]:hover,
-  button[kind="primary"]:hover {
+  button[kind="primary"]:hover,
+  button[data-testid="stBaseButton-primary"]:hover {
       background: #333333 !important;
+      background-color: #333333 !important;
+      color: #FFFFFF !important;
+  }
+  /* Текст внутри primary-кнопки (Streamlit оборачивает в p) — белый */
+  button[kind="primary"] p,
+  button[data-testid="stBaseButton-primary"] p,
+  button[kind="primary"] [data-testid="stMarkdownContainer"] p {
       color: #FFFFFF !important;
   }
   /* Плотнее интервалы между виджетами */
@@ -277,10 +292,11 @@ st.markdown("""
   [data-testid="stMetricDelta"] svg {
       width: 10px !important; height: 10px !important; color: #bbb !important;
   }
-  /* Скрываем иконку-вопросик у метрик и виджетов — в макете её нет.
-     Подсказки доступны через caption под показателем. */
-  [data-testid="stTooltipIcon"], [data-testid="stHelpIcon"],
-  [data-testid="stTooltipHoverTarget"] svg[viewBox="0 0 24 24"] {
+  /* Скрываем ТОЛЬКО SVG-иконку «?» у метрик и виджетов. Раньше правило
+     было слишком широким (могло скрывать контейнеры вокруг кнопок). */
+  svg[data-testid="stTooltipIcon"],
+  svg[data-testid="stHelpIcon"],
+  [data-testid="stTooltipHoverTarget"] > svg[viewBox="0 0 24 24"] {
       display: none !important;
   }
   /* Уведомления (st.success / st.info / st.warning / st.error) — минимал:
@@ -475,30 +491,42 @@ st.markdown("""
   label:has(input[role="switch"]:checked) > div:first-child {
       background-color: #1A1A1A !important;
   }
-  /* Expander (st.expander) — плоский, тонкая рамка, без скруглений и теней */
+  /* Expander (st.expander) — БЕЗ внешней рамки, шапка как секционный
+     подзаголовок «Основные показатели»: мелкий UPPERCASE с 2px-чёрной
+     чертой снизу. Стрелка-маркер остаётся слева (Material Icon). */
   [data-testid="stExpander"] {
-      border: 1px solid #EDEDED !important;
-      border-radius: 2px !important;
-      background: #FFFFFF !important;
+      border: none !important;
+      border-radius: 0 !important;
+      background: transparent !important;
       box-shadow: none !important;
-      margin-bottom: 8px !important;
+      margin: 0 0 6px 0 !important;
   }
   [data-testid="stExpander"] details > summary {
-      font-weight: 600 !important;
-      color: #222 !important;
-      padding: 6px 12px !important;
-      font-size: 13px !important;
+      font-size: 0.78rem !important;
+      font-weight: 700 !important;
+      text-transform: uppercase !important;
+      letter-spacing: 1.5px !important;
+      color: #8a8a8a !important;
+      padding: 8px 0 8px 24px !important;
+      border-bottom: 2px solid #1A1A1A !important;
+      background: transparent !important;
       min-height: 0 !important;
   }
   [data-testid="stExpander"] details > summary p {
       margin: 0 !important;
       line-height: 1.3 !important;
+      color: inherit !important;
+      font-size: inherit !important;
+      font-weight: inherit !important;
+      text-transform: inherit !important;
+      letter-spacing: inherit !important;
   }
   [data-testid="stExpander"] details > summary:hover {
-      background: #FAFAFA !important;
+      background: transparent !important;
+      color: #1A1A1A !important;
   }
   [data-testid="stExpander"] details > div {
-      padding: 8px 14px !important;
+      padding: 12px 0 18px 0 !important;
   }
   /* DataFrame: тонкие хайрлайны, шапка с UPPERCASE и черной чертой */
   [data-testid="stDataFrame"] {
