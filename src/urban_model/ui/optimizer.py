@@ -101,10 +101,10 @@ def _render_base_snapshot(
 
     with st.container(border=True):
         if synced:
-            st.markdown("##### 📋 База")
+            st.markdown("##### :material/dashboard: База")
             st.caption("С вкладки «Расчёт».")
         else:
-            st.markdown("##### 📋 База (рассчитана здесь)")
+            st.markdown("##### :material/dashboard: База (рассчитана здесь)")
             st.caption(
                 "Параметры на вкладке «Параметры» не совпадают с последним "
                 "результатом на «Расчёте». Откройте «Расчёт» для синхронизации."
@@ -175,7 +175,7 @@ def _render_pareto_constraints(base_options: CalculationOptions) -> ParetoConstr
     (опционально; если выключено — этажность зон берётся из базы).
     """
     has_clusters = bool(base_options.floor_clusters)
-    with st.expander("⚙ Настройки подбора", expanded=False):
+    with st.expander(":material/tune: Настройки подбора", expanded=False):
         st.caption(
             "Здесь можно ограничить пространство перебора — например, задать "
             "узкий диапазон этажности или запретить подземные парковки."
@@ -261,7 +261,7 @@ def _render_pareto_constraints(base_options: CalculationOptions) -> ParetoConstr
 def _render_recommendations_section(
     site: Site, base_options: CalculationOptions, norms: Normatives, base_tep: TEPResult,
 ) -> None:
-    st.markdown("### 🎯 Топ-3 рекомендации")
+    st.markdown("### :material/track_changes: Топ-3 рекомендации")
     st.caption(
         "Optuna в широком диапазоне параметров находит 3 лучших сценария по "
         "разным критериям. Дельты — относительно базы выше."
@@ -286,7 +286,7 @@ def _render_recommendations_section(
     col_btn, col_msg = st.columns([1, 2])
     with col_btn:
         clicked = st.button(
-            "🎯 Подобрать сценарии",
+            ":material/track_changes: Подобрать сценарии",
             type="primary",
             help="Optuna 400 испытаний. Длительность зависит от размера квартала и параметров (типично 1-2 мин).",
         )
@@ -497,7 +497,7 @@ def _render_comparison_table(
     styler = df.style.apply(_highlight, axis=1)
 
     with st.container(border=True):
-        st.markdown("##### 📊 Сравнительная таблица")
+        st.markdown("##### :material/table_chart: Сравнительная таблица")
         st.caption(
             "Все варианты рядом. Зелёным выделено лучшее значение в строке "
             "(где это применимо: max для площади/прибыли, min для подземки). "
@@ -675,14 +675,14 @@ def _render_recommendation_card(
         # v0.10.15: кнопки одинаковой ширины (use_container_width в равных
         # колонках), стоят вплотную — единый стиль с вкладкой «Расчёт».
         bcol1, bcol2 = st.columns(2)
-        if bcol1.button("➕ В сравнение", key=f"add_rec_{idx}",
+        if bcol1.button(":material/add: В сравнение", key=f"add_rec_{idx}",
                         use_container_width=True):
             st.session_state.scenarios.append((f"opt:{rec.label}", rec.tep))
             st.toast(f"Добавлено: {rec.label}", icon="✅")
         # v0.9.30: «Применить к Расчёту» — переносит параметры сценария на
         # вкладку Расчёт через override (надёжнее патча виджетов: переносит
         # этажность/зоны/парковки целиком). Расчёт покажет баннер + «вернуть форму».
-        if bcol2.button("📥 В расчёт", key=f"apply_rec_{idx}",
+        if bcol2.button(":material/move_to_inbox: В расчёт", key=f"apply_rec_{idx}",
                         use_container_width=True):
             st.session_state["applied_options"] = rec_options
             st.session_state["applied_label"] = rec.label
@@ -897,7 +897,7 @@ def _render_scan_summary(scan: ScanResult) -> None:
     rec_for_btn = best_apt
     if rec_for_btn is not None and not rec_for_btn.is_base:
         if st.button(
-            "➕ Лучший по площади в сравнение",
+            ":material/add: Лучший по площади в сравнение",
             key=f"add_scan_{scan.factor}",
         ):
             st.session_state.scenarios.append(
@@ -1003,7 +1003,7 @@ def _render_what_to_improve_section(
     site: Site, base_options: CalculationOptions, norms: Normatives,
 ) -> None:
     """3 expander'а с one-factor сканами."""
-    st.markdown("### 🔬 Что улучшить — пофакторный анализ")
+    st.markdown("### :material/lightbulb: Что улучшить — пофакторный анализ")
     st.caption(
         "Каждая карточка варьирует **ОДИН параметр**, остальные — как в базе. "
         "Это **локальный** анализ; Парето-рекомендации сверху могут давать другие "
@@ -1023,12 +1023,12 @@ def _render_what_to_improve_section(
     # умолчанию. Раньше были последовательные expander'ы, графики видны
     # только при клике. Теперь визуально всё доступно сразу.
     scan_configs = [
-        ("🅿 Р — доля подземных", _cached_scan_parking),
-        ("🏗 Р — доля многоуровневых", _cached_scan_parking_ml),
-        ("🌳 ЗНОП: норматив м²/чел", _cached_scan_znop),
+        (":material/local_parking: Р — доля подземных", _cached_scan_parking),
+        (":material/apartment: Р — доля многоуровневых", _cached_scan_parking_ml),
+        (":material/park: ЗНОП: норматив м²/чел", _cached_scan_znop),
         ("🏢 Этажность", _cached_scan_floors),
-        ("🎒 ДОО: число объектов", _cached_scan_kg),
-        ("🏫 СОШ: число объектов", _cached_scan_sch),
+        (":material/child_care: ДОО: число объектов", _cached_scan_kg),
+        (":material/school: СОШ: число объектов", _cached_scan_sch),
     ]
     for row_start in range(0, len(scan_configs), 2):
         cols = st.columns(2, gap="medium")
@@ -1061,7 +1061,7 @@ def _render_sensitivity_section(
     """Tornado: факторы, ранжированные по размаху площади квартир."""
     import altair as alt
 
-    st.markdown("### 📊 Чувствительность — что сильнее влияет")
+    st.markdown("### :material/bar_chart: Чувствительность — что сильнее влияет")
     st.caption(
         "Размах площади квартир при изменении ОДНОГО фактора во всём его "
         "диапазоне (прочие — как в базе). Длиннее полоса = сильнее влияние."
@@ -1205,7 +1205,7 @@ def _render_advanced_optuna_mode(
     from urban_model.ui.output import render_details
     render_details(preview.tep)
 
-    if st.button(f"➕ Добавить #{preview.rank} в сравнение"):
+    if st.button(f":material/add: Добавить #{preview.rank} в сравнение"):
         params_summary = ", ".join(f"{k}={v}" for k, v in preview.params.items())
         name = f"opt#{preview.rank} ({params_summary})"
         st.session_state.scenarios.append((name, preview.tep))

@@ -43,7 +43,22 @@ st.set_page_config(
 # страницу. Hard refresh (Ctrl+F5) сбрасывает кэш.
 st.markdown("""
 <style>
-  /* v0.10.18 stylesheet marker — стиль «Минимал · Спецификация». bump кэша. */
+  /* v0.10.19 stylesheet marker — Material Symbols Sharp. bump кэша. */
+  /* Подгружаем Material Symbols Sharp с Google Fonts (вариант «sharp» —
+     прямоугольные иконки без скруглений, идеально под стиль спецификации). */
+  @import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Sharp:opsz,wght,FILL,GRAD@20..48,300..700,0..1,-50..200');
+  /* Streamlit рендерит :material/...: через свой класс. Заставляем все
+     material-иконки использовать Sharp-вариант. */
+  span.material-symbols-rounded,
+  span.material-symbols-outlined,
+  span.material-symbols-sharp,
+  [class*="material-symbols"],
+  [class*="material-icons"] {
+      font-family: 'Material Symbols Sharp' !important;
+      font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24 !important;
+      font-feature-settings: 'liga';
+      vertical-align: middle !important;
+  }
   /* v0.10.18: ограничение ширины контента — макет рассчитан на ~1180px,
      не на весь экран. Контейнер центрируется. */
   div.block-container {

@@ -321,7 +321,7 @@ def render_params_tab() -> UserInputs:
 def _render_sport_tile() -> SportFacilitiesSpec:
     """Плитка настроек плоскостных спортивных сооружений (без чекбокса 'Учитывать')."""
     with st.container(border=True):
-        _tile_header("🏃 Плоскостные спортивные сооружения", "include_sport")
+        _tile_header(":material/directions_run: Плоскостные спортивные сооружения", "include_sport")
         only_demand = _only_demand_toggle(
             "Только рассчитать потребность",
             key="sport_only_demand",
@@ -368,7 +368,7 @@ def _render_sport_tile() -> SportFacilitiesSpec:
 def _render_intra_driveways_tile() -> float | None:
     """Плитка настроек внутриквартальных проездов. Override на долю."""
     with st.container(border=True):
-        _tile_header("🛣 Внутриквартальные проезды", "include_intra_driveways")
+        _tile_header(":material/route: Внутриквартальные проезды", "include_intra_driveways")
         use_override = st.checkbox(
             "Задать долю вручную (вместо норматива)",
             value=False, key="drive_intra_override",
@@ -578,7 +578,7 @@ def _render_vpp_tile() -> VppRequest:
     через двухпроходный расчёт (нужны footprint и population).
     """
     with st.container(border=True):
-        _tile_header("🏪 Встроенно-пристроенные помещения (ВПП)", "include_vpp")
+        _tile_header(":material/storefront: Встроенно-пристроенные помещения (ВПП)", "include_vpp")
         st.caption(
             "Обязательные ВПП по НГП СПб: 4.4 торговля, 4.6 общепит, "
             "3.3 быт.обсл., 3.4.1 поликлиника, 3.5.1 школа искусств. "
@@ -658,7 +658,7 @@ def _render_znop_tile() -> tuple[float | None, float | None, bool]:
     Возвращает (znop_per_person_override, znop_total_area_override, only_demand).
     """
     with st.container(border=True):
-        _tile_header("🌳 ЗНОП — зелёные насаждения общего пользования", "include_znop")
+        _tile_header(":material/park: ЗНОП — зелёные насаждения общего пользования", "include_znop")
         only_demand = _only_demand_toggle(
             "Только рассчитать потребность",
             key="znop_only_demand",
@@ -719,7 +719,7 @@ def _render_kg_tile() -> KindergartenSpec:
     Управляется снаружи: вызывается только если include_kg=True.
     """
     with st.container(border=True):
-        _tile_header("🎒 Дошкольные образовательные организации (ДОО)", "include_kg")
+        _tile_header(":material/child_care: Дошкольные образовательные организации (ДОО)", "include_kg")
         kg_only_demand = _only_demand_toggle(
             "Только рассчитать потребность",
             key="kg_only_demand",
@@ -772,7 +772,7 @@ def _render_kg_tile() -> KindergartenSpec:
 def _render_school_tile() -> SchoolSpec:
     """Плитка настроек СОШ (без внешнего чекбокса «Учитывать»)."""
     with st.container(border=True):
-        _tile_header("🏫 Средние общеобразовательные школы (СОШ)", "include_school")
+        _tile_header(":material/school: Средние общеобразовательные школы (СОШ)", "include_school")
         sch_only_demand = _only_demand_toggle(
             "Только рассчитать потребность",
             key="sch_only_demand",
@@ -819,7 +819,7 @@ def _render_school_tile() -> SchoolSpec:
 def _render_parking_tile() -> ParkingConfig:
     """Парковки — пресеты + расширенный custom с типами и count×capacity."""
     with st.container(border=True):
-        _tile_header("🅿️ Парковки", "include_parking")
+        _tile_header(":material/local_parking: Парковки", "include_parking")
         PARK_MODE_LABELS = {
             "Минимум открытых, остальное подземные (по умолчанию)": "min_open",
             "Все парковки открытые наземные": "all_open",
@@ -1222,7 +1222,7 @@ def _render_parking_custom() -> ParkingConfig:
 def _render_economy_tile() -> str:
     """Плитка экономических параметров (v0.8.0). Возвращает residential_class."""
     with st.container(border=True):
-        _tile_header("💰 Экономика (условные единицы)", "include_economy")
+        _tile_header(":material/payments: Экономика (условные единицы)", "include_economy")
         st.caption(
             "Конструктив и отделка — дефолты `monolith` / `standard` из норматива. "
             "Баллы — безразмерный индикатор для сравнения вариантов проекта."
@@ -1243,7 +1243,7 @@ def _render_economy_tile() -> str:
 def _render_custom_objects_tile() -> list[CustomObject]:
     """Табличный редактор для дополнительных объектов на территории."""
     with st.container(border=True):
-        _tile_header("📦 Дополнительные объекты на территории квартала", "include_custom_objects")
+        _tile_header(":material/inventory_2: Дополнительные объекты на территории квартала", "include_custom_objects")
         st.caption(
             "Объекты вне базовых классов (офис, ФОК, поликлиника, "
             "торговля). Каждый занимает свой ЗУ и считается по ВРИ-коду. "

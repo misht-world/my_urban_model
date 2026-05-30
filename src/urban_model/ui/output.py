@@ -122,7 +122,7 @@ def render_kpi(result: TEPResult, *, scenario_default_name: str | None = None) -
         # открывается прямо под кнопкой — кнопка копирования рядом.
         header_col, copy_col = st.columns([10, 2])
         with header_col:
-            st.markdown("##### 📊 Основные показатели")
+            st.markdown("##### :material/bar_chart: Основные показатели")
 
         # Развёрнутая сводка (с разбивкой парковок/ДОО/СОШ по типам/объектам)
         import re as _re
@@ -220,7 +220,7 @@ def render_kpi(result: TEPResult, *, scenario_default_name: str | None = None) -
             )
 
         with copy_col:
-            with st.popover("📋 Сводка", use_container_width=True):
+            with st.popover(":material/description: Сводка", use_container_width=True):
                 # st.code рисует блок со ВСТРОЕННОЙ кнопкой копирования
                 # в правом верхнем углу. Streamlit-нативный механизм.
                 st.code(summary_text, language=None)
@@ -249,7 +249,7 @@ def render_kpi(result: TEPResult, *, scenario_default_name: str | None = None) -
                 f"**{d['label']}**: {d['kit']:.3f}"
                 for d in result.floor_clusters_detail
             )
-            c1.caption(f"🏗 КИТ зон: {_zk}")
+            c1.caption(f":material/apartment: КИТ зон: {_zk}")
         c2.metric(
             "Население", f"{fmt_int(result.population.value)} чел.",
             help="Жилищная обеспеченность: 28 м²/чел (НГП СПб).",
@@ -342,7 +342,7 @@ def render_kpi(result: TEPResult, *, scenario_default_name: str | None = None) -
         # v0.10.18: donut/treemap — теперь отдельной секцией под KPI,
         # с собственным заголовком в стиле «Спецификация».
         with donut_col:
-            st.markdown("##### 🧮 Баланс территории")
+            st.markdown("##### :material/balance: Баланс территории")
             _render_balance_bar(result)
 
         # === Ряд 3: экономика — ВНУТРИ kpi_col, под метриками ===
@@ -365,7 +365,7 @@ def render_kpi(result: TEPResult, *, scenario_default_name: str | None = None) -
                 _has_social = _social_cost > 0.5 or e.revenue.social_compensation > 0.5
                 ec1, ec2, ec3, ec4 = st.columns(4)
                 ec1.metric(
-                    "💰 Оценка выгодности",
+                    ":material/payments: Оценка выгодности",
                     f"{e.profit:+,.0f}".replace(",", " "),
                     delta=("плюс" if e.profit >= 0 else "минус"),
                     delta_color=("normal" if e.profit >= 0 else "inverse"),
@@ -453,7 +453,7 @@ def _show_rows(rows: list[dict]) -> None:
 
 def render_details(result: TEPResult) -> None:
     # 🏠 Жильё
-    with st.expander("🏠 Жильё", expanded=False):
+    with st.expander(":material/home: Жильё", expanded=False):
         rows = [
             _row("КИТ ПЗЗ (площадь квартир / ЗУ жилой застройки)", result.kit, fmt_float),
             _row("Плотность квартала (внутренняя, GFA / площадь квартала)",
@@ -479,7 +479,7 @@ def render_details(result: TEPResult) -> None:
         _show_rows(rows)
 
     # 🎒 ДОО
-    with st.expander("🎒 ДОО (детские сады)", expanded=False):
+    with st.expander(":material/child_care: ДОО (детские сады)", expanded=False):
         rows = [
             _row("Мест требуется", result.kindergarten_places_required, fmt_float),
             _row("Мест принято (округлено)", result.kindergarten_places_accepted, fmt_int),
@@ -489,7 +489,7 @@ def render_details(result: TEPResult) -> None:
         _show_rows(rows)
 
     # 🏫 СОШ
-    with st.expander("🏫 СОШ (школы)", expanded=False):
+    with st.expander(":material/school: СОШ (школы)", expanded=False):
         rows = [
             _row("Мест требуется", result.school_places_required, fmt_float),
             _row("Мест принято (округлено)", result.school_places_accepted, fmt_int),
@@ -513,7 +513,7 @@ def render_details(result: TEPResult) -> None:
             _show_rows(rows)
 
     # 🌳 ЗНОП и озеленение
-    with st.expander("🌳 ЗНОП и озеленение", expanded=False):
+    with st.expander(":material/park: ЗНОП и озеленение", expanded=False):
         rows = [
             _row("ЗНОП на человека", result.znop_per_person, fmt_float, " м²/чел"),
             _row("Площадь ЗНОП", result.znop_area, fmt_m2),
@@ -524,7 +524,7 @@ def render_details(result: TEPResult) -> None:
         _show_rows(rows)
 
     # 🅿️ Парковки
-    with st.expander("🅿️ Парковки", expanded=False):
+    with st.expander(":material/local_parking: Парковки", expanded=False):
         rows = [
             _row("Всего м/м требуется", result.parking_required_places, fmt_int),
             _row("Открытые м/м", result.parking_open_places, fmt_int),
@@ -553,7 +553,7 @@ def render_details(result: TEPResult) -> None:
         _show_rows(rows)
 
     # 🛣️ Проезды
-    with st.expander("🛣️ Проезды", expanded=False):
+    with st.expander(":material/route: Проезды", expanded=False):
         rows = [
             _row("Внутриквартальные", result.driveways_intra_quarter_area, fmt_m2),
             _row("На ЗУ жилой застройки", result.driveways_housing_lot_area, fmt_m2),
@@ -562,7 +562,7 @@ def render_details(result: TEPResult) -> None:
 
     # ⚖️ Баланс территории (детализация). v0.9.17: диаграмма теперь в
     # KPI-блоке, здесь — табличная детализация на случай нужды.
-    with st.expander("⚖️ Баланс территории (таблица)", expanded=False):
+    with st.expander(":material/balance: Баланс территории (таблица)", expanded=False):
         b = result.balance
         comp_rows = []
         site_area = b.site_area
@@ -643,7 +643,7 @@ def render_details(result: TEPResult) -> None:
 
     # 🏗 Кластеры этажности (v0.9.28)
     if result.floor_clusters_detail:
-        with st.expander("🏗 Кластеры этажности (по зонам)", expanded=False):
+        with st.expander(":material/apartment: Кластеры этажности (по зонам)", expanded=False):
             st.caption(
                 f"Норматив проверяется по **общему КИТ {result.kit.value:.3f}** "
                 f"(средневзвешенная этажность **{result.effective_floors:.1f}**). "
@@ -673,7 +673,7 @@ def render_details(result: TEPResult) -> None:
 
     # 💰 Экономика
     if result.economy is not None:
-        with st.expander("💰 Экономика (детализация)", expanded=False):
+        with st.expander(":material/payments: Экономика (детализация)", expanded=False):
             st.caption(
                 "Все значения — в условных **баллах выгодности проекта** "
                 "(безразмерный индикатор для сравнения вариантов). "
@@ -790,7 +790,7 @@ def render_details(result: TEPResult) -> None:
             )
 
     # 📋 Полный аудит
-    with st.expander("📋 Полный аудит (все TEP-поля + источники)", expanded=False):
+    with st.expander(":material/fact_check: Полный аудит (все TEP-поля + источники)", expanded=False):
         df = results_to_audit_dataframe([("Текущий", result)])
         st.dataframe(df, hide_index=True, use_container_width=True)
 
@@ -1032,7 +1032,7 @@ def _render_actions_inline(result: TEPResult, default_name: str) -> None:
 
     b_add, b_xlsx, b_doc, _btn_sp = st.columns([3, 3, 3, 3])
     with b_add:
-        if st.button("➕ В сравнение", use_container_width=True):
+        if st.button(":material/add: В сравнение", use_container_width=True):
             st.session_state.scenarios.append((scenario_name, result))
             st.toast(f"Сценарий «{scenario_name}» добавлен", icon="✅")
             st.rerun()
@@ -1049,7 +1049,7 @@ def _render_actions_inline(result: TEPResult, default_name: str) -> None:
             except OSError:
                 pass
         st.download_button(
-            "💾 Скачать xlsx",
+            ":material/download: Скачать xlsx",
             xlsx_bytes,
             file_name=f"{scenario_name}.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -1057,7 +1057,7 @@ def _render_actions_inline(result: TEPResult, default_name: str) -> None:
         )
     with b_doc:
         st.download_button(
-            "📄 Отчёт (DOCX)",
+            ":material/description: Отчёт (DOCX)",
             _variant_report_bytes(default_name, result),
             file_name=f"Отчёт — {default_name}.docx",
             mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -1119,7 +1119,7 @@ def render_comparison_tab() -> None:
         # v0.10.15: две кнопки одинаковой ширины вплотную + хвостовой спейсер.
         dl1, dl2, _ = st.columns([3, 3, 6])
         dl1.download_button(
-            "💾 Скачать xlsx",
+            ":material/download: Скачать xlsx",
             xlsx_bytes,
             file_name="comparison.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -1144,7 +1144,7 @@ def render_comparison_tab() -> None:
                     pass
             st.session_state["_cmp_docx_sig"] = cmp_sig
         dl2.download_button(
-            "📄 Отчёт (DOCX)",
+            ":material/description: Отчёт (DOCX)",
             st.session_state["_cmp_docx_bytes"],
             file_name="urban_report.docx",
             mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
