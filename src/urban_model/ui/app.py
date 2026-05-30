@@ -215,13 +215,16 @@ st.markdown("""
   /* v0.10.18: колонки «Параметры» в стиле спецификации — белый фон,
      волосяная рамка, почти прямые углы; различие ввод/настройки — тонкий
      2px-акцент слева (графит = данные, амбер = настройки), без серой заливки. */
+  /* v0.10.19: КОЛОНКА получает ТОЛЬКО border и background (визуальная
+     рамка карточки). padding убираем — он сужал саму карточку.
+     Padding идёт на внутренний stVerticalBlock (см. правило ниже),
+     чтобы content отступал от border, а border не сдвигался. */
   [data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:has(.params-col-input),
   [data-testid="stHorizontalBlock"] > [data-testid="column"]:has(.params-col-input) {
       background-color: #FFFFFF !important;
       border: 1px solid #EDEDED !important;
       border-left: 2px solid #1A1A1A !important;
       border-radius: 3px;
-      padding: 16px 18px !important;
   }
   [data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:has(.params-col-settings),
   [data-testid="stHorizontalBlock"] > [data-testid="column"]:has(.params-col-settings) {
@@ -229,7 +232,6 @@ st.markdown("""
       border: 1px solid #EDEDED !important;
       border-left: 2px solid #F5A623 !important;
       border-radius: 3px;
-      padding: 16px 18px !important;
   }
   /* Fallback (legacy): различаем по nth-position если :has не поддерживается */
   @supports not (selector(:has(*))) {
@@ -237,13 +239,11 @@ st.markdown("""
           background-color: #FFFFFF !important;
           border-left: 2px solid #1A1A1A !important;
           border-radius: 3px;
-          padding: 16px 18px !important;
       }
       [data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:nth-of-type(2) {
           background-color: #FFFFFF !important;
           border-left: 2px solid #F5A623 !important;
           border-radius: 3px;
-          padding: 16px 18px !important;
       }
   }
   /* Слайдеры внутри border-блоков — ограничение ширины до ~65%.
