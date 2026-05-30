@@ -59,12 +59,13 @@ st.markdown("""
       font-feature-settings: 'liga';
       vertical-align: middle !important;
   }
-  /* v0.10.18: ограничение ширины контента — макет рассчитан на ~1180px,
-     не на весь экран. Контейнер центрируется. */
+  /* v0.10.19: расширил max-width до 1340px (раньше 1180px было тесно для
+     2-колоночных Параметров). Карточки получают больше горизонтального
+     места, проще читать вложенный контент. */
   div.block-container {
       padding-top: 1.5rem;
       padding-bottom: 1rem;
-      max-width: 1180px !important;
+      max-width: 1340px !important;
       margin: 0 auto !important;
   }
   /* v0.10.18: единое шрифт-семейство как в макете. Только body — иначе
