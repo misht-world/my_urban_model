@@ -476,7 +476,7 @@ def _render_essentials() -> tuple[Site, int, bool, "float | None", bool, bool, l
 
 def _render_lot_share_expander() -> float | None:
     """Свёрнутый ползунок: переопределение доли проездов на ЗУ жилой застройки."""
-    with st.expander("⚙ Проезды на ЗУ жилой застройки", expanded=False):
+    with st.expander(":material/settings: Проезды на ЗУ", expanded=False):
         st.caption(
             "По нормативу доля зависит от этажности застройки. "
             "Слайдер позволяет переопределить вручную."

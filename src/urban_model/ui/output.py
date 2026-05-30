@@ -36,7 +36,8 @@ def render_header(result: TEPResult) -> None:
 
     if feasible_all:
         st.success(
-            f"**Все нормативы выполняются.** КИТ = {kit_v:.3f} (≤ {kit_max})"
+            f":material/check_circle: **Все нормативы выполняются.** "
+            f"КИТ = {kit_v:.3f} (≤ {kit_max})"
             f"  ·  Резерв территории: {fmt_int(result.balance.surplus)} м²"
         )
     elif not kit_ok:
@@ -79,7 +80,7 @@ def render_header(result: TEPResult) -> None:
     # они служат для машинной фильтрации (Optuna feasibility, тесты).
     from urban_model.calculations.warning_codes import strip_code
     for w in result.warnings:
-        st.warning(strip_code(w), icon=":material/info:")
+        st.warning(f":material/info: {strip_code(w)}")
 
     # v0.10.9 (#1): когда ограничивает норматив плотности 450 чел/га и при этом
     # есть заметный резерв территории — объясняем, что земля высвобождена

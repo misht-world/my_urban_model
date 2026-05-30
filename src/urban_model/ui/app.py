@@ -448,9 +448,9 @@ st.markdown("""
       font-weight: 700 !important;
       text-transform: uppercase !important;
       letter-spacing: 1.5px !important;
-      padding-bottom: 0.55rem !important;
-      margin-bottom: 1rem !important;
-      margin-top: 1.4rem !important;
+      padding-bottom: 0.45rem !important;
+      margin-bottom: 0.7rem !important;
+      margin-top: 0.2rem !important;
       border-bottom: 2px solid #1A1A1A !important;
       line-height: 1.4 !important;
   }
@@ -528,7 +528,7 @@ st.markdown("""
       letter-spacing: inherit !important;
   }
   [data-testid="stExpander"] details > summary:hover {
-      background: transparent !important;
+      background: #F5F5F5 !important;
       color: #1A1A1A !important;
   }
   [data-testid="stExpander"] details > div {
