@@ -36,13 +36,13 @@ def render_header(result: TEPResult) -> None:
 
     if feasible_all:
         st.success(
-            f"✅ **Все нормативы выполняются.** КИТ = {kit_v:.3f} (≤ {kit_max})"
+            f"**Все нормативы выполняются.** КИТ = {kit_v:.3f} (≤ {kit_max})"
             f"  ·  Резерв территории: {fmt_int(result.balance.surplus)} м²"
         )
     elif not kit_ok:
         # КИТ ПЗЗ превышает потолок — основная причина (часто из-за выключенного ДПТ)
         st.error(
-            f"❌ **КИТ ПЗЗ ({kit_v:.3f}) превышает нормативный потолок ({kit_max}).** "
+            f"**КИТ ПЗЗ ({kit_v:.3f}) превышает нормативный потолок ({kit_max}).** "
             f"Жилой дом при выбранных параметрах не «помещается» в норматив. "
             f"См. рекомендации ниже."
         )
@@ -53,7 +53,7 @@ def render_header(result: TEPResult) -> None:
         if bal.surplus >= 0 and bal.greening_actual < bal.greening_required - 1e-3:
             deficit = bal.greening_required - bal.greening_actual
             st.error(
-                f"❌ **Норматив озеленения квартала не выполняется.** "
+                f"**Норматив озеленения квартала не выполняется.** "
                 f"Требуется ≥ {fmt_int(bal.greening_required)} м² "
                 f"(25% от квартала), факт {fmt_int(bal.greening_actual)} м² — "
                 f"дефицит {fmt_int(deficit)} м². "
@@ -61,7 +61,7 @@ def render_header(result: TEPResult) -> None:
                 f"норматив не пускает увеличивать жильё."
             )
             st.info(
-                "💡 Возможные действия: (1) включите **ЗНОП** в левой колонке "
+                "Возможные действия: (1) включите **ЗНОП** в левой колонке "
                 "— добавит озеленение по нормативу; "
                 "(2) увеличьте площадь квартала; "
                 "(3) отключите **«Соблюдать норматив 25% озеленения»** — "
@@ -69,17 +69,17 @@ def render_header(result: TEPResult) -> None:
             )
         else:
             st.error(
-                f"❌ **Дефицит баланса территории.** КИТ = {kit_v:.3f}"
+                f"**Дефицит баланса территории.** КИТ = {kit_v:.3f}"
                 f"  ·  Не хватает: {fmt_int(-bal.surplus)} м²"
             )
 
     if result.limiting_factor:
-        st.caption(f"🔻 **Ограничивающий фактор:** {result.limiting_factor}")
+        st.caption(f"**Ограничивающий фактор:** {result.limiting_factor}")
     # v0.8.6: префиксы [CODE] из warning_codes.WC прячем от пользователя —
     # они служат для машинной фильтрации (Optuna feasibility, тесты).
     from urban_model.calculations.warning_codes import strip_code
     for w in result.warnings:
-        st.warning(f"⚠️ {strip_code(w)}")
+        st.warning(strip_code(w))
 
     # v0.10.9 (#1): когда ограничивает норматив плотности 450 чел/га и при этом
     # есть заметный резерв территории — объясняем, что земля высвобождена
@@ -94,7 +94,7 @@ def render_header(result: TEPResult) -> None:
     )
     if density_limited:
         st.info(
-            f"💡 **Резерв обусловлен нормативом плотности.** Население достигло "
+            f"**Резерв обусловлен нормативом плотности.** Население достигло "
             f"потолка {dens.normative:.0f} чел/га — больше жилья разместить нельзя "
             f"без превышения плотности. Резерв {fmt_int(surplus)} м² уходит в "
             f"озеленение/двор. Чтобы задействовать его под застройку: разместите "
@@ -498,9 +498,9 @@ def render_details(result: TEPResult) -> None:
         ]
         _show_rows(rows)
 
-    # 🏃 Плоскостные спортивные сооружения
+    # Плоскостные спортивные сооружения
     if (result.sport_facilities_plot_area.value or 0) > 0:
-        with st.expander("🏃 Плоскостные спортивные сооружения", expanded=False):
+        with st.expander(":material/directions_run: Плоскостные спортивные сооружения", expanded=False):
             rows = [
                 _row("Площадь сооружений", result.sport_facilities_area, fmt_m2),
                 _row("Озеленение требуется (40%)",

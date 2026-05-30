@@ -293,11 +293,11 @@ def _render_recommendations_section(
     with col_msg:
         if cached_bundle is not None and not is_stale:
             st.caption(
-                f"✅ Рекомендации актуальны "
+                f"Рекомендации актуальны "
                 f"({cached_bundle.n_trials_feasible}/{cached_bundle.n_trials_total} feasible)."
             )
         elif cached_bundle is not None and is_stale:
-            st.caption("⚠️ Параметры/ограничения изменились — пересчитайте рекомендации.")
+            st.caption("Параметры/ограничения изменились — пересчитайте рекомендации.")
         # else: лишний caption «Нажмите кнопку…» убран — кнопка говорит сама за себя.
 
     if clicked:
@@ -333,11 +333,11 @@ def _render_recommendations_section(
     if not cached_bundle.recommendations:
         if cached_bundle.no_feasible_reason:
             st.error(
-                "❌ Нет рекомендаций.\n\n" + cached_bundle.no_feasible_reason
+                "Нет рекомендаций.\n\n" + cached_bundle.no_feasible_reason
             )
         else:
             st.warning(
-                f"⚠ Парето не вернул рекомендаций "
+                f"Подбор не вернул рекомендаций "
                 f"({cached_bundle.n_trials_feasible}/{cached_bundle.n_trials_total} "
                 f"feasible). Попробуйте изменить настройки подбора."
             )
@@ -377,7 +377,7 @@ def _render_recommendations_section(
     apts = [int(r.tep.apartments_area.value or 0) for r in cached_bundle.recommendations]
     if len(apts) >= 2 and len(set(apts)) < len(apts):
         st.caption(
-            "ℹ️ У нескольких рекомендаций одинаковая площадь квартир — это "
+            "У нескольких рекомендаций одинаковая площадь квартир — это "
             "значит, что КИТ упёрт в нормативный потолок ПЗЗ (с ДПТ = 2.5). "
             "Площадь не увеличивается, варианты различаются ТОЛЬКО парковкой "
             "и прибылью."
@@ -1160,7 +1160,7 @@ def _render_advanced_optuna_mode(
 
     st.markdown("---")
     for w in report.warnings:
-        st.warning(f"⚠️ {w}")
+        st.warning(w)
 
     c1, c2, c3 = st.columns(3)
     if report.best:
@@ -1177,7 +1177,7 @@ def _render_advanced_optuna_mode(
     c3.metric("Допустимых испытаний", f"{report.n_trials_feasible} / {report.n_trials_total}")
 
     if not report.top_n:
-        st.error("❌ Ни одно испытание не дало feasible-результата.")
+        st.error("Ни одно испытание не дало feasible-результата.")
         return
 
     st.markdown("### Топ сценариев")

@@ -583,29 +583,18 @@ st.markdown("""
       background-color: #1A1A1A !important;
       background-image: none !important;
   }
-  /* v0.10.19: МАКСИМАЛЬНО агрессивный набор селекторов для padding'а
-     внутри колонок Параметров. Перебираем все возможные уровни DOM,
-     по которым Streamlit может рендерить контент. html body — повышение
-     специфичности на случай если темовые правила Streamlit перебивают. */
+  /* v0.10.19: padding теперь прямо на КОЛОНКЕ (там же, где border).
+     box-sizing:border-box → padding insets content внутрь рамки и НЕ
+     меняет внешнюю ширину колонки (flex-basis сохраняется). Это
+     классический card-padding; предыдущая попытка вешать padding на
+     `> div` не срабатывала (div не матчился). См. правило колонок выше —
+     дублируем padding с высокой специфичностью (html body) для надёжности. */
   html body [data-testid="stColumn"]:has(.params-col-input),
   html body [data-testid="column"]:has(.params-col-input),
   html body [data-testid="stColumn"]:has(.params-col-settings),
   html body [data-testid="column"]:has(.params-col-settings) {
-      padding-left: 0 !important;
-      padding-right: 0 !important;
-  }
-  html body [data-testid="stColumn"]:has(.params-col-input) > div,
-  html body [data-testid="column"]:has(.params-col-input) > div,
-  html body [data-testid="stColumn"]:has(.params-col-settings) > div,
-  html body [data-testid="column"]:has(.params-col-settings) > div {
-      padding: 22px 26px !important;
+      padding: 24px 28px !important;
       box-sizing: border-box !important;
-  }
-  html body [data-testid="stColumn"]:has(.params-col-input) > div > [data-testid="stVerticalBlock"],
-  html body [data-testid="column"]:has(.params-col-input) > div > [data-testid="stVerticalBlock"],
-  html body [data-testid="stColumn"]:has(.params-col-settings) > div > [data-testid="stVerticalBlock"],
-  html body [data-testid="column"]:has(.params-col-settings) > div > [data-testid="stVerticalBlock"] {
-      gap: 0.65rem !important;
   }
   /* Выравнивание карточек сканов в ряду «Пофакторный анализ»: грид с
      одинаковой высотой + flex-1 на содержимое чтобы низ был выровнен. */
