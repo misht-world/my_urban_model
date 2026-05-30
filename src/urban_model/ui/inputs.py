@@ -67,7 +67,9 @@ def _tile_header(title: str, include_key: str | None = None) -> None:
     if include_key is None:
         st.markdown(f"##### {title}")
         return
-    col_t, col_x = st.columns([10, 1])
+    # v0.10.18: расширил × колонку (раньше [10,1] = ~27px было мало под
+    # новый padded стиль кнопок). Теперь [11, 2] = ≈ 50px — хватает.
+    col_t, col_x = st.columns([11, 2])
     with col_t:
         st.markdown(f"##### {title}")
     with col_x:
@@ -247,11 +249,19 @@ def render_params_tab() -> UserInputs:
                 "чтобы увидеть его настройки здесь."
             )
         else:
+            # v0.10.18: «широкие» плитки (parking + custom_objects) рендерятся
+            # на ВСЮ ширину правой колонки — там много контролов, в 2-кол
+            # сетке они сжимаются. Остальные — стандартная 2-кол сетка.
+            WIDE_KEYS = {"parking", "custom"}
+            narrow = [(k, fn) for k, fn in active_tiles if k not in WIDE_KEYS]
+            wide = [(k, fn) for k, fn in active_tiles if k in WIDE_KEYS]
             results: dict[str, object] = {}
             sub_cols = st.columns(2, gap="small")
-            for i, (key, fn) in enumerate(active_tiles):
+            for i, (key, fn) in enumerate(narrow):
                 with sub_cols[i % 2]:
                     results[key] = fn()
+            for key, fn in wide:
+                results[key] = fn()
 
             kg_spec = results.get("kg", kg_spec)
             school_spec = results.get("school", school_spec)

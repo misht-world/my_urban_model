@@ -294,6 +294,22 @@ st.markdown("""
   [data-testid="stAlert"][kind="error"], div[data-testid="stAlertContentError"] {
       border-left-color: #c0392b !important;
   }
+  /* v0.10.18: шрифт алертов — тот же системный (Streamlit задаёт свой
+     внутри, отсюда визуальный «разнобой»). */
+  [data-testid="stAlert"], [data-testid="stAlert"] p,
+  [data-testid="stAlert"] span, [data-testid="stAlert"] div {
+      font-family: -apple-system, "Segoe UI", Roboto, Arial, sans-serif !important;
+  }
+  /* Крестики «✕» в шапках плиток — компактные, чтобы влезали в узкую колонку.
+     Targeted by aria-label, который Streamlit ставит из параметра help=. */
+  button[aria-label*="Скрыть блок"], button[title*="Скрыть блок"] {
+      padding: 2px 8px !important;
+      min-width: 0 !important;
+      min-height: 0 !important;
+      font-size: 13px !important;
+      line-height: 1 !important;
+      border-radius: 2px !important;
+  }
   /* v0.10.18: убираем ВНУТРЕННЮЮ рамку алерта (Streamlit рисует свою
      обёртку с border внутри stAlert — отсюда двойная рамка). */
   [data-testid="stAlert"] > div,
