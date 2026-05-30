@@ -314,6 +314,33 @@ st.markdown("""
       letter-spacing: -1px !important;
       color: #111111 !important;
   }
+  /* v0.10.18: слайдеры в стиле спецификации — графитовая ручка/трек,
+     амбер-«пузырёк» значения. */
+  [data-testid="stSlider"] [data-baseweb="slider"] [role="slider"] {
+      background-color: #1A1A1A !important;
+      border-color: #1A1A1A !important;
+      box-shadow: 0 0 0 1px #1A1A1A !important;
+  }
+  /* Заполненная часть трека — графит, незаполненная — светло-серая */
+  [data-testid="stSlider"] [data-baseweb="slider"] > div > div > div {
+      background-color: #1A1A1A !important;
+  }
+  [data-testid="stSlider"] [data-baseweb="slider"] > div > div {
+      background-color: #EDEDED !important;
+  }
+  /* «Пузырёк» текущего значения над ручкой — амбер, чёрный текст */
+  [data-testid="stSlider"] [data-baseweb="slider"] [role="slider"]
+      > div:first-of-type {
+      background-color: #F5A623 !important;
+      color: #1A1A1A !important;
+      border-radius: 2px !important;
+      font-weight: 600 !important;
+  }
+  /* Подпись min/max под треком — мелкая серая */
+  [data-testid="stSlider"] [data-baseweb="slider"] ~ div {
+      color: #999 !important;
+      font-size: 11px !important;
+  }
   /* Вертикальные волосяные линии между KPI-колонками (сетка-спецификация).
      Колонки, содержащие st.metric, получают разделитель слева; у первой — нет. */
   [data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:has([data-testid="stMetric"]) {

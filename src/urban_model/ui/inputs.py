@@ -1012,14 +1012,10 @@ def _render_share_slider(
         else "Доля, %"
     )
 
-    # Замок-чекбокс слева, слайдер справа.
-    # CSS: компенсируем вертикальный отступ slider-лейбла, чтобы
-    # чекбокс визуально стоял на уровне слайдера, а не над ним.
-    c_lock, c_slider = st.columns([1, 12], vertical_alignment="bottom")
-    with c_lock:
-        # Текст-подсказка чекбокса = его эмодзи (без help-«?», который
-        # налезал на слайдер). Поведение объясняется в caption выше.
-        st.checkbox("🔒", key=lock_key, label_visibility="visible")
+    # v0.10.18: замок-чекбокс ПОД слайдером (раньше был сбоку, нагромождал
+    # узкую колонку). Слайдер теперь на всю ширину карточки.
+    c_slider = st.container()
+    c_lock = st.container()
 
     with c_slider:
         if not interactive:
@@ -1042,6 +1038,10 @@ def _render_share_slider(
                 on_change=(_on_share_change if not is_locked else None),
                 args=((type_key,) if not is_locked else None),
             )
+
+    # v0.10.18: чекбокс-замок под слайдером (компактнее, на всю ширину).
+    with c_lock:
+        st.checkbox("🔒 Зафиксировать долю", key=lock_key)
 
     if show_norm_warning and st.session_state[pct_key] < NORM_MIN_OPEN:
         st.markdown(
@@ -1070,13 +1070,11 @@ def _render_parking_custom() -> ParkingConfig:
         "Сумма всех активных = 100%."
     )
 
-    c1, c2, c3 = st.columns(3)
-    with c1:
-        use_open = st.checkbox("Открытые наземные", value=True, key=_USE_KEY["open"])
-    with c2:
-        use_ml = st.checkbox("Многоуровневые наземные", value=False, key=_USE_KEY["ml"])
-    with c3:
-        use_ug = st.checkbox("Подземные", value=True, key=_USE_KEY["ug"])
+    # v0.10.18: чекбоксы списком (раньше в 3 колонках текст переносился
+    # и обрезался — «Открыт ые назем ные»).
+    use_open = st.checkbox("Открытые наземные", value=True, key=_USE_KEY["open"])
+    use_ml = st.checkbox("Многоуровневые наземные", value=False, key=_USE_KEY["ml"])
+    use_ug = st.checkbox("Подземные", value=True, key=_USE_KEY["ug"])
 
     if not (use_open or use_ml or use_ug):
         st.error("Выберите хотя бы один тип парковок.")
