@@ -219,6 +219,56 @@ st.markdown("""
       letter-spacing: 0.6px;
       color: #999999 !important;
   }
+  /* v0.10.18: дельта st.metric — плоский серый sub-текст (мокап-стиль),
+     без цветных «пилюль». Стрелки делает Streamlit сам — оставляем мелкие. */
+  [data-testid="stMetricDelta"] {
+      background: none !important;
+      color: #888 !important;
+      font-size: 11px !important;
+      padding: 0 !important;
+      font-weight: 400 !important;
+      margin-top: 4px !important;
+  }
+  [data-testid="stMetricDelta"] svg {
+      width: 10px !important; height: 10px !important; color: #bbb !important;
+  }
+  /* Скрываем иконку-вопросик у метрик и виджетов — в макете её нет.
+     Подсказки доступны через caption под показателем. */
+  [data-testid="stTooltipIcon"], [data-testid="stHelpIcon"],
+  [data-testid="stTooltipHoverTarget"] svg[viewBox="0 0 24 24"] {
+      display: none !important;
+  }
+  /* Уведомления (st.success / st.info / st.warning / st.error) — минимал:
+     белый фон, тонкая рамка, цветной кант слева, без ярких заливок. */
+  [data-testid="stAlert"], div[role="alert"] {
+      background-color: #fcfcfc !important;
+      border: 1px solid #EDEDED !important;
+      border-left: 3px solid #888 !important;
+      border-radius: 2px !important;
+      padding: 10px 14px !important;
+      color: #333 !important;
+      box-shadow: none !important;
+  }
+  [data-testid="stAlert"][kind="success"], div[role="alert"][data-baseweb~="success"],
+  div[data-testid="stAlertContentSuccess"] {
+      border-left-color: #15803d !important;
+  }
+  [data-testid="stAlert"][kind="info"], div[data-testid="stAlertContentInfo"] {
+      border-left-color: #1A1A1A !important;
+  }
+  [data-testid="stAlert"][kind="warning"], div[data-testid="stAlertContentWarning"] {
+      border-left-color: #F5A623 !important;
+  }
+  [data-testid="stAlert"][kind="error"], div[data-testid="stAlertContentError"] {
+      border-left-color: #c0392b !important;
+  }
+  /* Жирный отказ от Streamlit-палитры в h1 (на случай если глобальный
+     primaryColor подкрашивал заголовок). */
+  h1 {
+      font-weight: 300 !important;
+      letter-spacing: -1px !important;
+      color: #111111 !important;
+  }
   /* Вертикальные волосяные линии между KPI-колонками (сетка-спецификация).
      Колонки, содержащие st.metric, получают разделитель слева; у первой — нет. */
   [data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:has([data-testid="stMetric"]) {
@@ -236,12 +286,8 @@ st.markdown("""
 col_title, col_meta = st.columns([3, 1])
 with col_title:
     st.title("Модель застройки территории")
-    # v0.10.13: амбер-акцент под заголовком — фирменный стиль (как в лендинге).
-    st.markdown(
-        "<div style='height:4px;width:150px;background:#F5A623;"
-        "border-radius:2px;margin:-8px 0 6px;'></div>",
-        unsafe_allow_html=True,
-    )
+    # v0.10.18: амбер-полоса под заголовком убрана — макет «Сетка-Спецификация»
+    # обходится без неё; акцент остался на активной вкладке.
     st.caption(
         "Обратный расчёт КИТ по площади квартала. "
         "Профиль нормативов — Санкт-Петербург."
