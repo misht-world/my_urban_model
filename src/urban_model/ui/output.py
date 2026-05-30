@@ -47,7 +47,7 @@ def _spec_alert(kind: str, icon: str, md_text: str) -> None:
     st.markdown(
         f'<div style="display:flex;gap:10px;align-items:flex-start;'
         f'background:#fcfcfc;border:1px solid #ededed;border-left:3px solid {accent};'
-        f'border-radius:2px;padding:10px 14px;margin:6px 0;color:#1a1a1a;'
+        f'border-radius:2px;padding:10px 14px;margin:6px 0 12px;color:#1a1a1a;'
         f'font-size:0.9rem;line-height:1.5;">'
         f'<span class="material-symbols-sharp" '
         f'style="font-size:20px;color:#1a1a1a;flex:none;line-height:1.4;">{icon}</span>'
@@ -902,7 +902,7 @@ def _render_balance_bar(result: TEPResult) -> None:
         "social_parking_plot": "Р. соц.",
         "znop": "ЗНОП",
         "intra_quarter_driveways": "Проезды",
-        "parking_multilevel": "МУ парк.",
+        "parking_multilevel": "Р. многоур.",
         "custom_objects": "Доп. об.",
     }
     # Цвета по типам — деловая палитра
@@ -914,7 +914,7 @@ def _render_balance_bar(result: TEPResult) -> None:
         "Р. соц.":                 "#9B9B9B",
         "ЗНОП":                    "#417505",
         "Проезды":                 "#B8B8B8",
-        "МУ парк.":                "#50E3C2",
+        "Р. многоур.":             "#50E3C2",
         "Доп. об.":                "#BD10E0",
         "Резерв":                  "#D5E8D4",
     }
@@ -950,9 +950,12 @@ def _render_balance_bar(result: TEPResult) -> None:
     rects = _squarify(values, 0.0, 0.0, 100.0, 60.0)
     tree_rows = []
     for r, (x, y, w, h) in zip(sorted_rows, rects):
-        # Подпись внутри плитки только если плитка большая (≥6%)
-        if r["Pct"] >= 6:
+        # Подпись внутри плитки: название+% для крупных (≥4%),
+        # только % для средних (2–4%), пусто для совсем мелких.
+        if r["Pct"] >= 4:
             label = f"{r['Компонент']}\n{r['Pct']:.0f}%"
+        elif r["Pct"] >= 2:
+            label = f"{r['Pct']:.0f}%"
         else:
             label = ""
         tree_rows.append({
