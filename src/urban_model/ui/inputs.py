@@ -255,7 +255,7 @@ def render_params_tab() -> UserInputs:
             # v0.10.18: «широкие» плитки (parking + custom_objects) рендерятся
             # на ВСЮ ширину правой колонки — там много контролов, в 2-кол
             # сетке они сжимаются. Остальные — стандартная 2-кол сетка.
-            WIDE_KEYS = {"parking", "custom"}
+            WIDE_KEYS = {"parking", "custom", "vpp"}
             narrow = [(k, fn) for k, fn in active_tiles if k not in WIDE_KEYS]
             wide = [(k, fn) for k, fn in active_tiles if k in WIDE_KEYS]
             results: dict[str, object] = {}
@@ -478,7 +478,7 @@ def _render_essentials() -> tuple[Site, int, bool, "float | None", bool, bool, l
 
 def _render_lot_share_expander() -> float | None:
     """Свёрнутый ползунок: переопределение доли проездов на ЗУ жилой застройки."""
-    with st.expander("⚙ Проезды на ЗУ жилой застройки (override)", expanded=False):
+    with st.expander("⚙ Проезды на ЗУ жилой застройки", expanded=False):
         st.caption(
             "По нормативу доля зависит от этажности застройки. "
             "Слайдер позволяет переопределить вручную."

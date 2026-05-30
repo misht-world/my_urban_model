@@ -376,28 +376,35 @@ st.markdown("""
       border-radius: 3px !important;
       position: relative !important;
   }
-  /* v0.10.18: ✕-кнопка в плитке — БЕЗ рамки, без фона; только серый ×,
-     темнеет на hover. *=partial-match для надёжности. */
+  /* v0.10.18: ✕-кнопка в плитке. Безрамочная, серая, темнеет на hover.
+     Перекрываю ВСЁ от общего .stButton-правила. Несколько вариантов
+     селектора под разные версии Streamlit (title/aria-label/data-testid). */
   button[aria-label*="Скрыть блок"],
-  button[title*="Скрыть блок"] {
+  button[title*="Скрыть блок"],
+  [data-testid="stTooltipHoverTarget"]:has(button[aria-label*="Скрыть блок"]) button,
+  div[data-testid="stButton"]:has(button[title*="Скрыть блок"]) > button {
       min-width: 0 !important;
       min-height: 0 !important;
-      padding: 0 6px !important;
+      padding: 0 4px !important;
+      width: auto !important;
+      height: auto !important;
       font-size: 16px !important;
       line-height: 1 !important;
       background: transparent !important;
       background-color: transparent !important;
       color: #bbb !important;
-      border: none !important;
+      border: 0 none transparent !important;
       box-shadow: none !important;
       border-radius: 0 !important;
       font-weight: 400 !important;
   }
   button[aria-label*="Скрыть блок"]:hover,
-  button[title*="Скрыть блок"]:hover {
+  button[title*="Скрыть блок"]:hover,
+  div[data-testid="stButton"]:has(button[title*="Скрыть блок"]) > button:hover {
       color: #111 !important;
       background: transparent !important;
       background-color: transparent !important;
+      border: 0 none transparent !important;
   }
   /* v0.10.18: повышаем специфичность шрифтового правила для md-заголовков —
      раньше Streamlit-тема (Source Sans Pro) могла перебивать. */
@@ -461,35 +468,9 @@ st.markdown("""
   /* ======================================================================
      v0.10.18 АУДИТ — приведение остальных виджетов к стилю «Спецификация»
      ====================================================================== */
-  /* Checkbox: Streamlit BaseWeb рисует чекбокс как input[type=checkbox]
-     внутри label с data-baseweb="checkbox". В checked-состоянии меняется
-     background-color на span-обёртке. Несколько селекторов для надёжности. */
-  label[data-baseweb="checkbox"] span:first-child,
-  [data-testid="stCheckbox"] span:first-child {
-      border-color: #1A1A1A !important;
-  }
-  /* Когда внутренний input checked — родительский span получает фон */
-  label[data-baseweb="checkbox"]:has(input:checked) span:first-child,
-  [data-testid="stCheckbox"]:has(input:checked) span:first-child,
-  label[data-baseweb="checkbox"] input:checked + span,
-  label[data-baseweb="checkbox"] input:checked ~ span:first-of-type {
-      background-color: #1A1A1A !important;
-      border-color: #1A1A1A !important;
-  }
-  /* Radio: круглый индикатор и его внутренняя точка */
-  label[data-baseweb="radio"]:has(input:checked) > div:first-child,
-  [data-testid="stRadio"] label:has(input:checked) > div:first-child {
-      background-color: #1A1A1A !important;
-      border-color: #1A1A1A !important;
-  }
-  label[data-baseweb="radio"]:has(input:checked) > div:first-child > div {
-      background-color: #FFFFFF !important;
-  }
-  /* Toggle (st.toggle) — track в активном состоянии графитовый */
-  [role="switch"][aria-checked="true"],
-  label:has(input[role="switch"]:checked) > div:first-child {
-      background-color: #1A1A1A !important;
-  }
+  /* Checkbox/Radio/Toggle: цвет берётся из темы primaryColor=#1A1A1A
+     (см. .streamlit/config.toml). Кастомный CSS НЕ нужен — раньше его
+     :has(input:checked) селекторы случайно ломали (?) help-иконки. */
   /* Expander (st.expander) — БЕЗ внешней рамки, шапка как секционный
      подзаголовок «Основные показатели»: мелкий UPPERCASE с 2px-чёрной
      чертой снизу. Стрелка-маркер остаётся слева (Material Icon). */
@@ -582,6 +563,24 @@ st.markdown("""
   [data-baseweb="progress-bar"] > div > div {
       background-color: #1A1A1A !important;
       background-image: none !important;
+  }
+  /* v0.10.18: внутренний padding в колонках Параметров — чтобы текст
+     не лип к границе. Раньше padding был только на самой колонке,
+     а виджеты упирались в края. */
+  [data-testid="stColumn"]:has(.params-col-input),
+  [data-testid="column"]:has(.params-col-input),
+  [data-testid="stColumn"]:has(.params-col-settings),
+  [data-testid="column"]:has(.params-col-settings) {
+      padding: 18px 22px !important;
+  }
+  /* Выравнивание карточек сканов в ряду «Пофакторный анализ»: грид с
+     одинаковой высотой ячеек (низ ровно по соседу). */
+  [data-testid="stHorizontalBlock"]:has([data-testid="stVerticalBlockBorderWrapper"]) {
+      align-items: stretch !important;
+  }
+  /* Размер шрифта expander summary = размер h5 секций (единообразие). */
+  [data-testid="stExpander"] details > summary {
+      font-size: 0.78rem !important;
   }
   /* Вертикальные волосяные линии между KPI-колонками (сетка-спецификация).
      Колонки, содержащие st.metric, получают разделитель слева; у первой — нет. */
@@ -740,7 +739,8 @@ with tab_compare:
 
 st.markdown("---")
 st.caption(
-    "Источник истины: `info/ТЗ_обратный_расчет_ТЭП.docx`. "
-    "Нормативы: `configs/spb.yaml` (parent: `russia.yaml`). "
-    "Все цифры — в YAML, никаких magic numbers в коде."
+    "© 2026 Михаил. Модель застройки территории — обратный расчёт ТЭП. "
+    "Все права защищены. Использование, копирование и распространение — "
+    "только с письменного согласия автора. "
+    "По вопросам сотрудничества: **misht.cad@gmail.com**."
 )

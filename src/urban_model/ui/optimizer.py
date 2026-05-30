@@ -101,7 +101,8 @@ def _render_base_snapshot(
 
     with st.container(border=True):
         if synced:
-            st.markdown("##### 📋 База (с вкладки «Расчёт»)")
+            st.markdown("##### 📋 База")
+            st.caption("С вкладки «Расчёт».")
         else:
             st.markdown("##### 📋 База (рассчитана здесь)")
             st.caption(
@@ -297,8 +298,7 @@ def _render_recommendations_section(
             )
         elif cached_bundle is not None and is_stale:
             st.caption("⚠️ Параметры/ограничения изменились — пересчитайте рекомендации.")
-        else:
-            st.caption("Нажмите кнопку, чтобы запустить подбор.")
+        # else: лишний caption «Нажмите кнопку…» убран — кнопка говорит сама за себя.
 
     if clicked:
         # v0.9.15: реальный прогресс-бар вместо «спиннера на 12 сек».
@@ -682,7 +682,7 @@ def _render_recommendation_card(
         # v0.9.30: «Применить к Расчёту» — переносит параметры сценария на
         # вкладку Расчёт через override (надёжнее патча виджетов: переносит
         # этажность/зоны/парковки целиком). Расчёт покажет баннер + «вернуть форму».
-        if bcol2.button("📥 Применить к Расчёту", key=f"apply_rec_{idx}",
+        if bcol2.button("📥 В расчёт", key=f"apply_rec_{idx}",
                         use_container_width=True):
             st.session_state["applied_options"] = rec_options
             st.session_state["applied_label"] = rec.label
@@ -1023,8 +1023,8 @@ def _render_what_to_improve_section(
     # умолчанию. Раньше были последовательные expander'ы, графики видны
     # только при клике. Теперь визуально всё доступно сразу.
     scan_configs = [
-        ("🅿 Парковки: доля подземных", _cached_scan_parking),
-        ("🏗 Парковки: доля многоуровневых", _cached_scan_parking_ml),
+        ("🅿 Р — доля подземных", _cached_scan_parking),
+        ("🏗 Р — доля многоуровневых", _cached_scan_parking_ml),
         ("🌳 ЗНОП: норматив м²/чел", _cached_scan_znop),
         ("🏢 Этажность", _cached_scan_floors),
         ("🎒 ДОО: число объектов", _cached_scan_kg),
@@ -1432,9 +1432,8 @@ def render_optimizer_tab(
     # v0.10.18: h1-заголовок вкладки в стиле макета.
     st.markdown("# Подбор **сценариев**")
     st.caption(
-        "Сверху — рекомендации Optuna по площади/прибыли/балансу. "
-        "Ниже — пофакторный анализ (что даст изменение ОДНОГО параметра). "
-        "Полный перебор — в свёрнутом блоке внизу."
+        "Сверху — три готовые рекомендации по площади, прибыли и балансу. "
+        "Ниже — пофакторный анализ: что изменится, если поправить один параметр."
     )
 
     # 1. База
