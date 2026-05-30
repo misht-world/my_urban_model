@@ -191,7 +191,7 @@ def _render_pareto_constraints(base_options: CalculationOptions) -> ParetoConstr
                     "Подбирать этажность зон",
                     value=False, key="pareto_vary_zones",
                     help="Если выключено — этажность зон берётся из базового "
-                         "варианта (вкладка «Параметры»). Включите, чтобы Optuna "
+                         "варианта (вкладка «Параметры»). Включите, чтобы подбор "
                          "перебирал высотность КАЖДОЙ зоны в своём диапазоне.",
                 )
                 if vary_zones:
@@ -214,7 +214,7 @@ def _render_pareto_constraints(base_options: CalculationOptions) -> ParetoConstr
                 lo, hi = st.slider(
                     "Диапазон", 3, 30, (5, 25),
                     key="pareto_floors_range",
-                    help="Optuna будет рассматривать только этажность в этом диапазоне.",
+                    help="Подбор будет рассматривать только этажность в этом диапазоне.",
                 )
                 floors_range = (int(lo), int(hi))
 
@@ -229,14 +229,14 @@ def _render_pareto_constraints(base_options: CalculationOptions) -> ParetoConstr
                 help="Компактнее открытых, средняя себестоимость.",
             )
             allow_underground = st.checkbox(
-                "🚇 Подземные", value=True, key="pareto_allow_ug",
+                ":material/vertical_align_bottom: Подземные", value=True, key="pareto_allow_ug",
                 help=(
                     "Не занимают пятно квартала, но дороже всех. Можно исключить, "
                     "если по проекту или нормативам не разрешены."
                 ),
             )
             restrict_combos = st.checkbox(
-                "Реалистичные сочетания парковок",
+                ":material/filter_alt: Реалистичные сочетания парковок",
                 value=True, key="pareto_restrict_combos",
                 help=(
                     "Включает два типологических фильтра: "
@@ -263,7 +263,7 @@ def _render_recommendations_section(
 ) -> None:
     st.markdown("### :material/track_changes: Топ-3 рекомендации")
     st.caption(
-        "Optuna в широком диапазоне параметров находит 3 лучших сценария по "
+        "Подбор в широком диапазоне параметров находит 3 лучших сценария по "
         "разным критериям. Дельты — относительно базы выше."
     )
 
@@ -288,7 +288,7 @@ def _render_recommendations_section(
         clicked = st.button(
             ":material/track_changes: Подобрать сценарии",
             type="primary",
-            help="Optuna 400 испытаний. Длительность зависит от размера квартала и параметров (типично 1-2 мин).",
+            help="400 испытаний. Длительность зависит от размера квартала и параметров (типично 1-2 мин).",
         )
     with col_msg:
         if cached_bundle is not None and not is_stale:
@@ -311,7 +311,7 @@ def _render_recommendations_section(
             best_str = f"{best:,.0f} м²".replace(",", " ") if best > 0 else "—"
             progress.progress(
                 pct,
-                text=f"Trial {current}/{total} · лучшая площадь: {best_str}",
+                text=f"Вариант {current}/{total} · лучшая площадь: {best_str}",
             )
 
         bundle = generate_pareto_recommendations(
@@ -1128,24 +1128,24 @@ def _render_advanced_optuna_mode(
     Не вырезаем — нужна для нестандартных диапазонов и экспериментов.
     """
     st.caption(
-        "Полный перебор Optuna с произвольными диапазонами. Используйте для "
+        "Полный перебор с произвольными диапазонами. Используйте для "
         "экспериментов; для типовых задач достаточно «Топ-3 рекомендации»."
     )
     space = _render_search_space_form(base_options)
     if space.is_empty():
-        st.info("⬅ Отметьте хотя бы один параметр для перебора.")
+        st.info("Отметьте хотя бы один параметр для перебора.")
         return
 
-    if st.button("🚀 Запустить полный перебор", type="primary"):
-        progress = st.progress(0.0, text="Запускаем оптимизацию...")
+    if st.button(":material/rocket_launch: Запустить полный перебор", type="primary"):
+        progress = st.progress(0.0, text="Запускаем подбор...")
 
         def cb(current: int, total: int, best: float) -> None:
             progress.progress(
                 current / total,
-                text=f"Trial {current}/{total} · лучшая площадь: {best:,.0f} м²".replace(",", " "),
+                text=f"Вариант {current}/{total} · лучшая площадь: {best:,.0f} м²".replace(",", " "),
             )
 
-        with st.spinner(f"Optuna перебирает варианты (до {_DEFAULT_TRIALS} испытаний)..."):
+        with st.spinner(f"Перебор вариантов (до {_DEFAULT_TRIALS} испытаний)..."):
             report = optimize_max_apartments(
                 site=site, base_options=base_options, norms=norms, space=space,
                 n_trials=_DEFAULT_TRIALS, top_n=_DEFAULT_TOP_N,
@@ -1165,7 +1165,7 @@ def _render_advanced_optuna_mode(
     c1, c2, c3 = st.columns(3)
     if report.best:
         c1.metric("Лучшая площадь квартир", fmt_m2(report.best.apartments_area))
-        c1.caption(f"Trial #{report.best.rank}")
+        c1.caption(f"Вариант #{report.best.rank}")
     base_apt = report.base_apartments_area
     if base_apt:
         delta_abs = (report.best.apartments_area - base_apt) if report.best else 0
