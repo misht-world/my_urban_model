@@ -156,11 +156,9 @@ def render_params_tab() -> UserInputs:
             '<div class="params-col-input" style="display:none"></div>',
             unsafe_allow_html=True,
         )
-        # v0.10.19: «Ввод данных» теперь в собственном st.container(border=True)
-        # — получает padding/рамку автоматически (как «Учитывать в расчёте»),
-        # текст больше не лепится к краю.
+        # v0.10.19: один блок «Общие сведения о территории» (не expander) —
+        # в собственном st.container(border=True) с padding/рамкой.
         with st.container(border=True):
-            st.markdown("##### Ввод данных")
             (
                 site, floors, planning_doc, lot_override,
                 enforce_greening_norm, enforce_density_norm, floor_clusters,
@@ -394,7 +392,10 @@ def _render_essentials() -> tuple[Site, int, bool, "float | None", bool, bool, l
     # зонами. Поля выше блокируем (disabled), чтобы не вводить в заблуждение.
     _clusters_on = bool(st.session_state.get("use_floor_clusters", False))
 
-    with st.expander("Общие сведения о территории", expanded=True):
+    # v0.10.19: не expander, а обычный блок-заголовок (по просьбе —
+    # «Общие сведения о территории» как единый раздел, всегда раскрыт).
+    st.markdown("##### Общие сведения о территории")
+    if True:
         # Площадь квартала
         unit = st.radio(
             "Единицы площади", ["м²", "га"],
