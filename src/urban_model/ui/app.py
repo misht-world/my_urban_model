@@ -304,8 +304,13 @@ st.markdown("""
       border-left: 3px solid #888 !important;
       border-radius: 2px !important;
       padding: 10px 14px !important;
-      color: #333 !important;
+      color: #1A1A1A !important;
       box-shadow: none !important;
+  }
+  /* v0.10.19: текст ВСЕХ алертов — графит (раньше success рендерился
+     зелёным текстом и выбивался из оформления). Только кант слева цветной. */
+  [data-testid="stAlert"] *, div[role="alert"] * {
+      color: #1A1A1A !important;
   }
   [data-testid="stAlert"][kind="success"], div[role="alert"][data-baseweb~="success"],
   div[data-testid="stAlertContentSuccess"] {
@@ -493,6 +498,14 @@ st.markdown("""
       background: transparent !important;
       box-shadow: none !important;
       margin: 0 0 6px 0 !important;
+  }
+  /* Streamlit рисует рамку и скругление на самом <details> (и на summary).
+     Прибиваем border-radius:0 на всех уровнях, чтобы углы были прямые. */
+  [data-testid="stExpander"] details,
+  [data-testid="stExpander"] details summary,
+  [data-testid="stExpander"] > details,
+  [data-testid="stExpander"] [data-testid="stExpanderDetails"] {
+      border-radius: 0 !important;
   }
   [data-testid="stExpander"] details > summary {
       font-size: 0.78rem !important;

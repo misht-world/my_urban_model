@@ -79,7 +79,7 @@ def render_header(result: TEPResult) -> None:
     # они служат для машинной фильтрации (Optuna feasibility, тесты).
     from urban_model.calculations.warning_codes import strip_code
     for w in result.warnings:
-        st.warning(strip_code(w))
+        st.warning(strip_code(w), icon=":material/info:")
 
     # v0.10.9 (#1): когда ограничивает норматив плотности 450 чел/га и при этом
     # есть заметный резерв территории — объясняем, что земля высвобождена
