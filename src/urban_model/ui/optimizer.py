@@ -199,9 +199,12 @@ def _render_pareto_constraints(base_options: CalculationOptions) -> ParetoConstr
                     rngs = []
                     for i, c in enumerate(base_options.floor_clusters):
                         label = c.label or f"Зона {i + 1}"
+                        # v0.10.19: верхняя граница по умолчанию = этажность
+                        # зоны в Базе. Пользователь может расширить вручную.
+                        _zhi = max(3, min(30, int(c.floors)))
                         lo, hi = st.slider(
                             f"{label} (текущая {c.floors} эт.)",
-                            3, 30, (3, 25),
+                            3, 30, (3, _zhi),
                             key=f"pareto_zone_range_{i}",
                         )
                         rngs.append((int(lo), int(hi)))
@@ -211,8 +214,11 @@ def _render_pareto_constraints(base_options: CalculationOptions) -> ParetoConstr
                     st.caption("Этажность зон фиксирована (как в базе).")
             else:
                 st.markdown("**Этажность**")
+                # v0.10.19: верхняя граница по умолчанию = этажность Базы
+                # (с вкладки «Расчёт»). Пользователь может расширить вручную.
+                _bhi = max(3, min(30, int(base_options.floors)))
                 lo, hi = st.slider(
-                    "Диапазон", 3, 30, (5, 25),
+                    "Диапазон", 3, 30, (3, _bhi),
                     key="pareto_floors_range",
                     help="Подбор будет рассматривать только этажность в этом диапазоне.",
                 )

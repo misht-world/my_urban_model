@@ -187,7 +187,7 @@ def render_params_tab() -> UserInputs:
                 value=True, key="include_vpp",
             )
             include_intra = st.checkbox(
-                ":material/route: Внутриквартальные проезды", value=True, key="include_intra_driveways",
+                ":material/route: Внутриквартальные проезды и инженерия", value=True, key="include_intra_driveways",
             )
             include_custom = st.checkbox(
                 ":material/inventory_2: Дополнительные объекты", value=False, key="include_custom_objects",
@@ -226,7 +226,9 @@ def render_params_tab() -> UserInputs:
     if include_parking:  active_tiles.append(("parking", _render_parking_tile))
     if include_znop:     active_tiles.append(("znop", _render_znop_tile))
     if include_vpp:      active_tiles.append(("vpp", _render_vpp_tile))
-    if include_intra:    active_tiles.append(("intra", _render_intra_driveways_tile))
+    # v0.10.19: плитка настроек проездов СКРЫТА (на время тестирования —
+    # детали расчёта проездов пользователю знать не нужно). Флаг include_intra
+    # продолжает учитываться в расчёте, доля — по нормативу (override=None).
     if include_custom:   active_tiles.append(("custom", _render_custom_objects_tile))
     if include_economy:  active_tiles.append(("economy", _render_economy_tile))
 
@@ -237,7 +239,7 @@ def render_params_tab() -> UserInputs:
         )
         st.markdown(
             '<div style="color:#475569;font-size:0.85rem;font-weight:600;'
-            'margin-bottom:6px;letter-spacing:0.02em;text-transform:uppercase;">'
+            'margin-bottom:18px;letter-spacing:0.02em;text-transform:uppercase;">'
             'Настройки компонентов</div>',
             unsafe_allow_html=True,
         )
@@ -445,8 +447,9 @@ def _render_essentials() -> tuple[Site, int, bool, "float | None", bool, bool, l
         if floor_clusters:
             area_m2 = sum(c.area_m2 for c in floor_clusters)
 
-        # Проезды на ЗУ — свёрнутый expander
-        lot_override = _render_lot_share_expander()
+        # v0.10.19: expander «Проезды на ЗУ» СКРЫТ (на время тестирования).
+        # Доля проездов считается по нормативу (override=None).
+        lot_override = None
 
         # v0.8.8: нормативы-ограничения встроены в этот же блок.
         st.markdown("**Нормативы-ограничения**")
@@ -828,7 +831,7 @@ def _render_parking_tile() -> ParkingConfig:
         park_label = st.radio(
             "Размещение машино-мест",
             list(PARK_MODE_LABELS.keys()),
-            index=0,
+            index=2,  # v0.10.19: по умолчанию «50/50: открытые + многоуровневые»
             key="park_mode_label",
         )
         park_mode = PARK_MODE_LABELS[park_label]
@@ -841,7 +844,7 @@ def _render_parking_tile() -> ParkingConfig:
         if park_mode == "preset_50_50":
             ml_levels = st.number_input(
                 "Этажность многоуровневого паркинга",
-                min_value=1, max_value=10, value=3, step=1,
+                min_value=1, max_value=10, value=5, step=1,
                 key="park_preset_ml_levels",
                 help=(
                     "Многоуровневый паркинг компактнее открытого: его пятно "
@@ -932,10 +935,12 @@ def _on_share_change(moved_type: str) -> None:
 
 def _init_parking_state() -> None:
     """Дефолты session_state при первом рендере."""
+    # v0.10.19: дефолт custom — 50% открытые + 50% многоуровневые
+    # (подземные выключены), как и пресет «50/50».
     defaults = {
-        "park_open_pct": 12.5,
-        "park_ml_pct": 0.0,
-        "park_ug_pct": 87.5,
+        "park_open_pct": 50.0,
+        "park_ml_pct": 50.0,
+        "park_ug_pct": 0.0,
         "park_open_locked": False,
         "park_ml_locked": False,
         "park_ug_locked": False,
@@ -1084,8 +1089,8 @@ def _render_parking_custom() -> ParkingConfig:
     # v0.10.18: чекбоксы списком (раньше в 3 колонках текст переносился
     # и обрезался — «Открыт ые назем ные»).
     use_open = st.checkbox("Открытые наземные", value=True, key=_USE_KEY["open"])
-    use_ml = st.checkbox("Многоуровневые наземные", value=False, key=_USE_KEY["ml"])
-    use_ug = st.checkbox("Подземные", value=True, key=_USE_KEY["ug"])
+    use_ml = st.checkbox("Многоуровневые наземные", value=True, key=_USE_KEY["ml"])
+    use_ug = st.checkbox("Подземные", value=False, key=_USE_KEY["ug"])
 
     if not (use_open or use_ml or use_ug):
         st.error("Выберите хотя бы один тип парковок.")
@@ -1108,7 +1113,7 @@ def _render_parking_custom() -> ParkingConfig:
     can_redistribute = len(unlocked_types) >= 2
 
     ml_explicit_places: int | None = None
-    ml_levels = 3
+    ml_levels = 5
 
     # === Открытые ===
     if use_open:
@@ -1169,7 +1174,7 @@ def _render_parking_custom() -> ParkingConfig:
                     )
             ml_levels = st.number_input(
                 "Этажность многоуровневого паркинга",
-                min_value=1, max_value=10, value=3, step=1,
+                min_value=1, max_value=10, value=5, step=1,
                 key="park_ml_levels",
                 help="Чем выше — тем компактнее пятно, но дороже строительство.",
             )

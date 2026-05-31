@@ -490,10 +490,12 @@ def _show_rows(rows: list[dict]) -> None:
 def render_details(result: TEPResult) -> None:
     # 🏠 Жильё
     with st.expander(":material/home: Жильё", expanded=False):
+        # v0.10.19: «Плотность (СП 42.13330)» поднята на 2-ю строку.
         rows = [
             _row("КИТ ПЗЗ (площадь квартир / ЗУ жилой застройки)", result.kit, fmt_float),
-            _row("Плотность квартала (внутренняя, GFA / площадь квартала)",
-                 result.block_density, fmt_float),
+            _row("Плотность (по СП 42.13330, для 20 м²/чел)",
+                 result.density_chel_per_ga, lambda x: f"{x:.1f}", " чел./га"),
+            _row("Население", result.population, fmt_int, " чел."),
             _row("Общая площадь жилых зданий (GFA)", result.gfa, fmt_m2),
             _row("Площадь квартир", result.apartments_area, fmt_m2),
         ]
@@ -508,9 +510,8 @@ def render_details(result: TEPResult) -> None:
         rows += [
             _row("Площадь застройки", result.housing_footprint, fmt_m2),
             _row("ЗУ жилой застройки", result.housing_lot_area, fmt_m2),
-            _row("Население", result.population, fmt_int, " чел."),
-            _row("Плотность (по СП 42.13330, для 20 м²/чел)",
-                 result.density_chel_per_ga, lambda x: f"{x:.1f}", " чел./га"),
+            _row("Плотность квартала (внутренняя, GFA / площадь квартала)",
+                 result.block_density, fmt_float),
         ]
         _show_rows(rows)
 
@@ -588,12 +589,15 @@ def render_details(result: TEPResult) -> None:
             ]
         _show_rows(rows)
 
-    # 🛣️ Проезды
-    with st.expander(":material/route: Проезды", expanded=False):
+    # Проезды и инженерия — формулы скрыты (v0.10.19, на время тестирования).
+    with st.expander(":material/route: Проезды и инженерия", expanded=False):
         rows = [
-            _row("Внутриквартальные", result.driveways_intra_quarter_area, fmt_m2),
+            _row("Внутриквартальные и инженерия", result.driveways_intra_quarter_area, fmt_m2),
             _row("На ЗУ жилой застройки", result.driveways_housing_lot_area, fmt_m2),
         ]
+        for r in rows:
+            r["Формула"] = ""
+            r["Источник"] = ""
         _show_rows(rows)
 
     # ⚖️ Баланс территории (детализация). v0.9.17: диаграмма теперь в
