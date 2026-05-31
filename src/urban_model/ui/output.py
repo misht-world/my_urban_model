@@ -144,11 +144,13 @@ def render_header(result: TEPResult) -> None:
 # KPI-карточки
 # ---------------------------------------------------------------------------
 
-def render_kpi(result: TEPResult, *, scenario_default_name: str | None = None) -> None:
+def render_kpi(result: TEPResult, *, scenario_default_name: str | None = None,
+               options=None) -> None:
     """KPI-блок с возможностью встроить кнопки «Добавить в сравнение» и xlsx.
 
     Если scenario_default_name задан — внутри того же блока (под линией
-    разделителя) рисуются actions: text_input + добавить/скачать.
+    разделителя) рисуются actions: text_input + добавить/xlsx/альбом.
+    `options` (CalculationOptions) нужен для слайда «Исходные условия» альбома.
     """
     # === Основные показатели в едином блоке с возможностью копирования ===
     with st.container(border=True):
@@ -450,7 +452,7 @@ def render_kpi(result: TEPResult, *, scenario_default_name: str | None = None) -
         # === Inline-actions: «Добавить в сравнение» + xlsx (внутри блока) ===
         if scenario_default_name is not None:
             st.markdown("---")
-            _render_actions_inline(result, scenario_default_name)
+            _render_actions_inline(result, scenario_default_name, options=options)
 
 
 # ---------------------------------------------------------------------------
@@ -1039,29 +1041,33 @@ def _result_sig(result: TEPResult) -> tuple:
     )
 
 
-def _variant_report_bytes(name: str, result: TEPResult) -> bytes:
-    """DOCX-отчёт по варианту с мемоизацией по (имя + сигнатура расчёта).
-    Пересобирается только когда меняются параметры — поэтому download_button
-    отдаёт готовые байты в ОДИН клик, без отдельной кнопки «Сформировать»."""
-    sig = (name, _result_sig(result))
-    if st.session_state.get("_vr_sig") != sig:
-        from urban_model.export import build_variant_report
-        with tempfile.NamedTemporaryFile(suffix=".docx", delete=False) as tmp_v:
+def _variant_album_bytes(name: str, result: TEPResult, options) -> bytes:
+    """PPTX-альбом по варианту с мемоизацией по (имя + сигнатура расчёта +
+    опции). Пересобирается только при изменении расчёта — download_button
+    отдаёт готовые байты в ОДИН клик."""
+    try:
+        opt_sig = hash(options.model_dump_json()) if options is not None else 0
+    except Exception:  # noqa: BLE001
+        opt_sig = 0
+    sig = (name, _result_sig(result), opt_sig)
+    if st.session_state.get("_album_sig") != sig:
+        from urban_model.export import build_variant_album
+        with tempfile.NamedTemporaryFile(suffix=".pptx", delete=False) as tmp_v:
             vpath = tmp_v.name
         try:
-            build_variant_report(name, result, vpath)
+            build_variant_album(name, result, options, vpath)
             with open(vpath, "rb") as f:
-                st.session_state["_vr_bytes"] = f.read()
+                st.session_state["_album_bytes"] = f.read()
         finally:
             try:
                 os.unlink(vpath)
             except OSError:
                 pass
-        st.session_state["_vr_sig"] = sig
-    return st.session_state["_vr_bytes"]
+        st.session_state["_album_sig"] = sig
+    return st.session_state["_album_bytes"]
 
 
-def _render_actions_inline(result: TEPResult, default_name: str) -> None:
+def _render_actions_inline(result: TEPResult, default_name: str, options=None) -> None:
     """Inline-actions: имя + «Добавить в сравнение», ниже — выгрузки рядом."""
     # v0.10.9 (#5): всё поджато влево — имя + кнопки кластеризованы в левой
     # части, чтобы не «уезжали» вправо и не терялись из виду.
@@ -1111,13 +1117,18 @@ def _render_actions_inline(result: TEPResult, default_name: str) -> None:
             use_container_width=True,
         )
     with b_doc:
-        st.download_button(
-            ":material/description: Отчёт (DOCX)",
-            _variant_report_bytes(default_name, result),
-            file_name=f"Отчёт — {default_name}.docx",
-            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            use_container_width=True,
-        )
+        try:
+            album_bytes = _variant_album_bytes(default_name, result, options)
+            st.download_button(
+                ":material/slideshow: Сформировать альбом",
+                album_bytes,
+                file_name=f"Альбом — {default_name}.pptx",
+                mime="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+                use_container_width=True,
+            )
+        except Exception as _e:  # noqa: BLE001
+            st.button(":material/slideshow: Альбом — ошибка", disabled=True,
+                      use_container_width=True, help=str(_e))
 
 
 def render_actions(result: TEPResult, default_name: str) -> None:
