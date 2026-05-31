@@ -1182,8 +1182,9 @@ def render_comparison_tab() -> None:
                 os.unlink(tmp_path)
             except OSError:
                 pass
-        # v0.10.15: две кнопки одинаковой ширины вплотную + хвостовой спейсер.
-        dl1, dl2, _ = st.columns([3, 3, 6])
+        # v0.11: DOCX-отчёт сравнения убран (по ТЗ — только XLSX; сравнительный
+        # альбом-презентация PPTX будет в фазе 2).
+        dl1, _ = st.columns([3, 9])
         dl1.download_button(
             ":material/download: Скачать xlsx",
             xlsx_bytes,
@@ -1191,28 +1192,4 @@ def render_comparison_tab() -> None:
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             use_container_width=True,
         )
-        # v0.10.8 (#4): DOCX-отчёт сравнения — в ОДИН клик. Мемоизация по
-        # сигнатуре всех сценариев: пересобирается только при изменении набора,
-        # а не на каждый ре-рендер (matplotlib/docx не тормозят вкладку).
-        cmp_sig = tuple((nm, _result_sig(t)) for nm, t in pairs)
-        if st.session_state.get("_cmp_docx_sig") != cmp_sig:
-            from urban_model.export import build_report
-            with tempfile.NamedTemporaryFile(suffix=".docx", delete=False) as tmp_d:
-                docx_path = tmp_d.name
-            try:
-                build_report(pairs, docx_path)
-                with open(docx_path, "rb") as f:
-                    st.session_state["_cmp_docx_bytes"] = f.read()
-            finally:
-                try:
-                    os.unlink(docx_path)
-                except OSError:
-                    pass
-            st.session_state["_cmp_docx_sig"] = cmp_sig
-        dl2.download_button(
-            ":material/description: Отчёт (DOCX)",
-            st.session_state["_cmp_docx_bytes"],
-            file_name="urban_report.docx",
-            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            use_container_width=True,
-        )
+        st.caption("Сравнительный альбом-презентация (PPTX) — в разработке.")
