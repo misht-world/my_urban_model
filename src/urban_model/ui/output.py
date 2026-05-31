@@ -828,6 +828,18 @@ def render_details(result: TEPResult) -> None:
                 f"{e.sellable_ratio * 100:.0f}%" if e.sellable_ratio > 0 else "—",
                 help="Площадь квартир / общая GFA — доля продаваемого жилья от всей застройки.",
             )
+            # v0.10.20 (аудит): интерпретация sellable_ratio.
+            _sr = e.sellable_ratio
+            if _sr > 0:
+                if _sr < 0.70:
+                    _sr_txt = "слабая эффективность"
+                elif _sr < 0.75:
+                    _sr_txt = "погранично"
+                elif _sr <= 0.82:
+                    _sr_txt = "норма"
+                else:
+                    _sr_txt = "высокая"
+                mc6.caption(_sr_txt)
 
     # 📋 Полный аудит
     with st.expander(":material/fact_check: Полный аудит (все TEP-поля + источники)", expanded=False):

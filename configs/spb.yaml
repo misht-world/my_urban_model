@@ -463,7 +463,7 @@ economy:
       type: conditional
       argument: residential_class
       cases:
-        economy:  0.95
+        economy:  0.88
         comfort:  1.00
         business: 1.15
       unit: "multiplier"
@@ -559,11 +559,11 @@ economy:
       type: conditional
       argument: residential_class
       cases:
-        economy:  1.55
+        economy:  1.70
         comfort:  1.95
         business: 2.80
       unit: "unit_per_m2_apartments"
-      source: "SPEC.md (типичная маржа РФ для эконома/комфорта/бизнеса)"
+      source: "SPEC.md (типичная маржа РФ для эконома/комфорта/бизнеса); economy 1.55→1.70 по внешнему аудиту v0.10.20 (1.55 был заниженным стресс-вариантом)"
     # v0.9.1: калибровка по СПб 2024. Раньше (0.10/0.25/0.50) — кратно
     # заниженные значения из SPEC.md, давшие убыток у всех типов парковок.
     # Новые значения отражают реальные цены продажи м/м в СПб:

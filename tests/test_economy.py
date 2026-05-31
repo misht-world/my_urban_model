@@ -56,7 +56,7 @@ class TestEconomyNormatives:
         # Цены по классам
         assert spb.resolve(
             "economy.sale_prices.residential_by_class", residential_class="economy"
-        ) == 1.55
+        ) == 1.70
         assert spb.resolve(
             "economy.sale_prices.residential_by_class", residential_class="comfort"
         ) == 1.95
@@ -116,9 +116,9 @@ class TestEconomyInResult:
         )
         # Площадь та же → только цена м² различается
         assert res_biz.economy.revenue.residential > res_eco.economy.revenue.residential
-        # Отношение цен 2.80/1.55 ≈ 1.806
+        # Отношение цен 2.80/1.70 ≈ 1.647
         ratio = res_biz.economy.revenue.residential / res_eco.economy.revenue.residential
-        assert ratio == pytest.approx(2.80 / 1.55, rel=0.001)
+        assert ratio == pytest.approx(2.80 / 1.70, rel=0.001)
 
 
 # ---------------------------------------------------------------------------
