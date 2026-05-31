@@ -566,10 +566,13 @@ def _render_clusters_editor(area_m2: float, floors: int) -> list[FloorCluster]:
 
     total_a = sum(c.area_m2 for c in clusters)
     feff = sum(c.area_m2 * c.floors for c in clusters) / total_a if total_a else 0.0
-    c1, c2 = st.columns(2)
-    c1.metric("Σ площадей зон (= площадь квартала)",
-              f"{total_a:,.0f} м²".replace(",", " "))
-    c2.metric("Средневзвеш. этажность", f"{feff:.1f}")
+    # v0.10.19: компактная строка вместо крупных st.metric (выбивались
+    # из оформления формы).
+    _ta = f"{total_a:,.0f}".replace(",", " ")
+    st.caption(
+        f"Σ площадей зон (= площадь квартала): **{_ta} м²**  ·  "
+        f"средневзвеш. этажность: **{feff:.1f}**"
+    )
     return clusters
 
 
