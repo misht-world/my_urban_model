@@ -383,6 +383,15 @@ def render_kpi(result: TEPResult, *, scenario_default_name: str | None = None,
             delta_color="off",
             help="Общая площадь ЗНОП и норма на жителя.",
         )
+        # v0.11.0: ЗНОП по зонам — мелким caption под метрикой (как КИТ зон).
+        if result.floor_clusters_detail and any(
+            "znop_per_person" in d for d in result.floor_clusters_detail
+        ):
+            _zz = " · ".join(
+                f"**{d['label']}**: {d.get('znop_per_person', 0):.0f}"
+                for d in result.floor_clusters_detail
+            )
+            c8.caption(f":material/park: ЗНОП зон, м²/чел: {_zz}")
 
         # v0.10.18: donut/treemap — теперь отдельной секцией под KPI,
         # с собственным заголовком в стиле «Спецификация».

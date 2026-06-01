@@ -665,22 +665,14 @@ def compute_tep_for_kit(
     floor_clusters_detail: list[dict] = []
     if _clusters:
         _gw = clusters.gfa_weights(_clusters)
-        for c, w in zip(_clusters, _gw):
+        # KIT_i / pop_i уже посчитаны выше (_cluster_kits/_cluster_pops) — той
+        # же формулой; переиспользуем, добавляя ЗНОП каждой зоны по её КИТ.
+        for idx_c, (c, w) in enumerate(zip(_clusters, _gw)):
             gfa_i = gfa_v * w
             apt_i = apartments_area_v * w
             footprint_i = gfa_i / c.floors if c.floors > 0 else 0.0
-            if options.driveways_lot_share_override is not None:
-                lot_share_i = options.driveways_lot_share_override
-            else:
-                lot_share_i = norms.resolve(
-                    "driveways.housing_lot_share", floors=c.floors
-                )
-            drive_lot_i = footprint_i * lot_share_i
-            green_i = green_housing_v * w
-            bi_green_i = bi_greening_v * w
-            open_park_i = parking_open_in_lot * w
-            lot_i = footprint_i + drive_lot_i + green_i + bi_green_i + open_park_i
-            kit_i = (apt_i / lot_i) if lot_i > 0 else 0.0
+            kit_i = _cluster_kits[idx_c] if idx_c < len(_cluster_kits) else 0.0
+            znop_pp_i = znop.znop_per_person(min(kit_i, 2.50), norms)
             floor_clusters_detail.append({
                 "label": c.label or f"Кластер {len(floor_clusters_detail) + 1}",
                 "area_m2": c.area_m2,
@@ -689,6 +681,7 @@ def compute_tep_for_kit(
                 "apartments_area": apt_i,
                 "footprint": footprint_i,
                 "kit": kit_i,
+                "znop_per_person": znop_pp_i,
             })
         # Σ площадей кластеров vs S_квартала — мягкая проверка (математика
         # масштабно-инвариантна, но расхождение почти всегда означает опечатку).
