@@ -432,8 +432,8 @@ def _render_essentials() -> tuple[Site, int, bool, "float | None", bool, bool, l
             help="Без ДПТ нормативный потолок КИТ = 1.4; с ДПТ = 2.5.",
         )
 
-        # Этажность
-        floors = st.number_input(
+        # Этажность — слайдер (v0.11.0): удобнее, чем +/- у number_input.
+        floors = st.slider(
             "Этажность (средняя)",
             min_value=1, max_value=40, value=12, step=1,
             key="floors",
