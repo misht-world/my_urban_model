@@ -37,6 +37,42 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
+
+# ---------------------------------------------------------------------------
+# Парольный вход (v0.11.0)
+# ---------------------------------------------------------------------------
+# Пароль берётся из Streamlit Secrets (st.secrets["app_password"]) — его
+# НЕЛЬЗЯ хранить в публичном репозитории. Если secrets не заданы — дефолт
+# "123321" (для быстрого старта; смените через Secrets в Streamlit Cloud:
+#   Manage app → Settings → Secrets →  app_password = "ваш_пароль"
+# ).
+def _check_password() -> bool:
+    try:
+        expected = str(st.secrets.get("app_password", "123321"))
+    except Exception:  # noqa: BLE001 — secrets-файла нет (локальный запуск)
+        expected = "123321"
+
+    if st.session_state.get("_auth_ok"):
+        return True
+
+    # Центрированная форма входа
+    _, mid, _ = st.columns([1, 1.4, 1])
+    with mid:
+        st.markdown("### 🏙 Модель застройки территории")
+        st.caption("Доступ по паролю.")
+        pwd = st.text_input("Пароль", type="password", key="_auth_pwd")
+        if st.button("Войти", type="primary", use_container_width=True):
+            if pwd == expected:
+                st.session_state["_auth_ok"] = True
+                st.rerun()
+            else:
+                st.error("Неверный пароль.")
+    return False
+
+
+if not _check_password():
+    st.stop()
+
 # Глобальный CSS: крупнее вкладки + плотнее вертикальные интервалы.
 # Версионный маркер /* v0.8.2 */ помогает отследить обновление CSS при
 # отладке. Если ты видишь старый стиль — это значит браузер кэшировал

@@ -19,3 +19,6 @@ output/
 cloudflared.exe
 пример_отчёта.pptx
 *.docx
+
+# Streamlit secrets — НЕ коммитить (пароли/ключи)
+.streamlit/secrets.toml
