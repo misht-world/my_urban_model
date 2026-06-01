@@ -854,9 +854,9 @@ def _render_parking_tile() -> ParkingConfig:
             st.caption("100% м/м на поверхности — максимальная нагрузка на квартал.")
             return ParkingConfig(mode="all_open")
         if park_mode == "preset_50_50":
-            ml_levels = st.number_input(
+            ml_levels = st.slider(
                 "Этажность многоуровневого паркинга",
-                min_value=1, max_value=10, value=5, step=1,
+                min_value=1, max_value=9, value=5, step=1,
                 key="park_preset_ml_levels",
                 help=(
                     "Многоуровневый паркинг компактнее открытого: его пятно "
@@ -1184,9 +1184,9 @@ def _render_parking_custom() -> ParkingConfig:
                         f"«забирается» из общей потребности **в первую очередь**. "
                         f"Открытые и подземные затем делят остаток в долях ниже."
                     )
-            ml_levels = st.number_input(
+            ml_levels = st.slider(
                 "Этажность многоуровневого паркинга",
-                min_value=1, max_value=10, value=5, step=1,
+                min_value=1, max_value=9, value=5, step=1,
                 key="park_ml_levels",
                 help="Чем выше — тем компактнее пятно, но дороже строительство.",
             )

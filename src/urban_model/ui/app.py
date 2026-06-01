@@ -483,6 +483,20 @@ st.markdown("""
       color: #999 !important;
       font-size: 11px !important;
   }
+  /* v0.11.0: декоративные деления-засечки на треке слайдера.
+     repeating-linear-gradient рисует тонкие вертикальные штрихи каждые 5%
+     поверх трека. Засечки равномерные (не привязаны к шагу конкретного
+     слайдера) — служат визуальной «линейкой». */
+  [data-testid="stSlider"] [data-baseweb="slider"] > div:first-child {
+      background-image: repeating-linear-gradient(
+          to right,
+          #C9C9C9 0, #C9C9C9 1px,
+          transparent 1px, transparent 5%
+      ) !important;
+      background-repeat: no-repeat !important;
+      background-size: 100% 6px !important;
+      background-position: left center !important;
+  }
   /* ======================================================================
      v0.10.18 АУДИТ — приведение остальных виджетов к стилю «Спецификация»
      ====================================================================== */
