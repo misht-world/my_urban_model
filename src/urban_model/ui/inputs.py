@@ -754,27 +754,35 @@ def _render_kg_tile() -> KindergartenSpec:
             key="kg_btype_label",
         )
         kg_btype = "detached" if kg_btype_label == "Отдельно стоящее" else "built_in"
+        # v0.11.0: «Задать число вручную» = только КОЛИЧЕСТВО объектов;
+        # наполняемость система считает сама (потребность / число). Вложенная
+        # галочка «Задать наполняемость» — задать вместимость вручную.
         kg_override = st.checkbox(
             "Задать число ДОО вручную",
             value=False, key="kg_override",
         )
         kg_num_objects, kg_capacity = None, None
         if kg_override:
-            c1, c2 = st.columns(2)
-            kg_num_objects = c1.number_input(
+            kg_num_objects = st.number_input(
                 "Кол-во ДОО", min_value=1, max_value=20, value=2, step=1,
                 key="kg_num_objects",
+                help="Наполняемость каждого ДОО система рассчитает: "
+                     "потребность ÷ число объектов.",
             )
-            kg_capacity = c2.number_input(
-                "Мест в каждом",
-                min_value=90, max_value=350, value=160, step=5,
-                help=(
-                    "Типовые вместимости КС: 90, 100, 110, 120, 140, 150, 160, "
-                    "165, 170, 180, 190, 200, 215, 220, 230, 240, 250, 260, "
-                    "280, 310, 320, 340, 350. Иное → предупреждение."
-                ),
-                key="kg_capacity",
+            kg_set_cap = st.checkbox(
+                "Задать наполняемость вручную", value=False, key="kg_set_cap",
             )
+            if kg_set_cap:
+                kg_capacity = st.number_input(
+                    "Мест в каждом",
+                    min_value=90, max_value=350, value=160, step=5,
+                    help=(
+                        "Типовые вместимости КС: 90, 100, 110, 120, 140, 150, 160, "
+                        "165, 170, 180, 190, 200, 215, 220, 230, 240, 250, 260, "
+                        "280, 310, 320, 340, 350. Иное → предупреждение."
+                    ),
+                    key="kg_capacity",
+                )
     return KindergartenSpec(
         building_type=kg_btype,
         num_objects=int(kg_num_objects) if kg_num_objects else None,
@@ -803,25 +811,32 @@ def _render_school_tile() -> SchoolSpec:
         school_sport = st.checkbox(
             "Со спортивным ядром (+0.7 га)", value=True, key="school_sport",
         )
+        # v0.11.0: «Задать число вручную» = только КОЛИЧЕСТВО объектов;
+        # наполняемость система считает сама. Вложенная галочка — вручную.
         sch_override = st.checkbox(
             "Задать число СОШ вручную", value=False, key="sch_override",
         )
         sch_num_objects, sch_capacity = None, None
         if sch_override:
-            c1, c2 = st.columns(2)
-            sch_num_objects = c1.number_input(
+            sch_num_objects = st.number_input(
                 "Кол-во СОШ", min_value=1, max_value=10, value=1, step=1,
                 key="sch_num_objects",
+                help="Наполняемость каждой СОШ система рассчитает: "
+                     "потребность ÷ число объектов.",
             )
-            sch_capacity = c2.number_input(
-                "Мест в каждой",
-                min_value=550, max_value=2475, value=550, step=25,
-                help=(
-                    "Типовые параллели КС: 550, 825, 1100, 1375, 1650, 1925, "
-                    "2200, 2475. Иное → предупреждение."
-                ),
-                key="sch_capacity",
+            sch_set_cap = st.checkbox(
+                "Задать наполняемость вручную", value=False, key="sch_set_cap",
             )
+            if sch_set_cap:
+                sch_capacity = st.number_input(
+                    "Мест в каждой",
+                    min_value=550, max_value=2475, value=550, step=25,
+                    help=(
+                        "Типовые параллели КС: 550, 825, 1100, 1375, 1650, 1925, "
+                        "2200, 2475. Иное → предупреждение."
+                    ),
+                    key="sch_capacity",
+                )
     return SchoolSpec(
         has_pool=school_pool, has_sport_core=school_sport,
         num_objects=int(sch_num_objects) if sch_num_objects else None,

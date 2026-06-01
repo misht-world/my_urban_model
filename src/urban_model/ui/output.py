@@ -113,8 +113,15 @@ def render_header(result: TEPResult) -> None:
     # v0.8.6: префиксы [CODE] из warning_codes.WC прячем от пользователя —
     # они служат для машинной фильтрации (Optuna feasibility, тесты).
     from urban_model.calculations.warning_codes import strip_code
+    # v0.11.0 (#3): не повторять идентичные предупреждения (напр. одинаковая
+    # вместимость ДОО и СОШ даёт текстуально совпадающие сообщения).
+    _seen_warn: set[str] = set()
     for w in result.warnings:
-        _spec_alert("warning", "info", strip_code(w))
+        _txt = strip_code(w)
+        if _txt in _seen_warn:
+            continue
+        _seen_warn.add(_txt)
+        _spec_alert("warning", "info", _txt)
 
     # v0.10.9 (#1): когда ограничивает норматив плотности 450 чел/га и при этом
     # есть заметный резерв территории — объясняем, что земля высвобождена
