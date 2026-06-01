@@ -103,17 +103,23 @@ def render_params_tab() -> UserInputs:
         "Выберите слева компоненты — справа появятся плитки с их настройками. "
         "Изменения применяются автоматически — результат на вкладке «Расчёт»."
     )
-    st.markdown("---")
 
     # ==================================================================
-    # Верхняя строка: режим расчёта
+    # Верхняя строка: режим расчёта (заголовок — в стиле «Настройки компонентов»)
     # ==================================================================
+    st.markdown(
+        '<div style="color:#475569;font-size:0.85rem;font-weight:600;'
+        'margin:8px 0 4px;letter-spacing:0.02em;text-transform:uppercase;">'
+        'Режим расчёта</div>',
+        unsafe_allow_html=True,
+    )
     col_mode1, col_mode2 = st.columns([3, 2])
     with col_mode1:
         mode_label = st.radio(
             "Режим расчёта",
             ["Максимальный КИТ", "С целевым резервом", "Проверка КИТ"],
             index=0, horizontal=True, key="calc_mode_label",
+            label_visibility="collapsed",
             help=(
                 "Максимальный КИТ — найти предельный КИТ при выполнении норм. "
                 "С целевым резервом — оставить заданную свободную площадь. "
@@ -142,7 +148,11 @@ def render_params_tab() -> UserInputs:
                      "(площадь квартир / ЗУ жилой) рассчитается.",
             ))
 
-    st.markdown("---")
+    # v0.11.0: тонкий разделитель вместо st.markdown("---") — поджимаем отступ.
+    st.markdown(
+        '<hr style="margin:10px 0 14px;border:none;border-top:1px solid #EDEDED;">',
+        unsafe_allow_html=True,
+    )
 
     col_left, col_right = st.columns([1, 2], gap="medium")
 
