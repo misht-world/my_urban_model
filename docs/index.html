@@ -72,11 +72,20 @@
   .step h4{font-size:15px;font-weight:600;margin-bottom:6px}
   .step p{color:#888;font-size:13px;font-weight:300}
 
-  /* ===== SHOTS — горизонтальная лента-скролл ===== */
-  .shots{display:flex;gap:20px;overflow-x:auto;padding:4px 0 18px;
-        scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch}
-  .shots figure{flex:0 0 clamp(300px,46%,560px);border:1px solid var(--hair);
-        overflow:hidden;scroll-snap-align:start;background:#fff}
+  /* ===== SHOTS — карусель: центр ярко, края бледно ===== */
+  .carousel{position:relative}
+  .shots{display:flex;gap:24px;overflow-x:auto;padding:8px 0 22px;
+        scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch;
+        scrollbar-width:none}
+  .shots::-webkit-scrollbar{display:none}
+  /* боковые «поля» чтобы крайние карточки могли встать по центру */
+  .shots::before,.shots::after{content:"";flex:0 0 calc(50% - 290px);min-width:8px}
+  .shots figure{flex:0 0 clamp(300px,52%,580px);border:1px solid var(--hair);
+        overflow:hidden;scroll-snap-align:center;background:#fff;cursor:zoom-in;
+        opacity:.45;transform:scale(.94);
+        transition:opacity .35s ease,transform .35s ease,box-shadow .35s ease}
+  .shots figure.is-active{opacity:1;transform:scale(1);
+        box-shadow:0 14px 40px rgba(26,26,26,.14)}
   .frame{position:relative;aspect-ratio:16/10;background:#f7f7f7}
   .frame img{width:100%;height:100%;object-fit:cover;display:block}
   .ph{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;
@@ -85,12 +94,27 @@
   .ph small{color:#bbb}
   figcaption{padding:14px 18px;font-weight:600;font-size:15px;border-top:1px solid var(--hair)}
   figcaption span{display:block;font-weight:300;color:#999;font-size:13px;margin-top:2px}
-  /* Тонкий «деловой» скроллбар ленты */
-  .shots::-webkit-scrollbar{height:8px}
-  .shots::-webkit-scrollbar-track{background:var(--hair)}
-  .shots::-webkit-scrollbar-thumb{background:#cfcfcf;border-radius:4px}
-  .shots::-webkit-scrollbar-thumb:hover{background:var(--amber)}
-  .shots-hint{font-size:12px;color:var(--soft);margin-top:-6px}
+  /* стрелки навигации */
+  .car-btn{position:absolute;top:38%;z-index:5;width:44px;height:44px;border:none;
+        border-radius:50%;background:#1A1A1A;color:#fff;font-size:20px;cursor:pointer;
+        display:flex;align-items:center;justify-content:center;opacity:.85;
+        box-shadow:0 4px 14px rgba(0,0,0,.2);transition:.15s}
+  .car-btn:hover{opacity:1;background:var(--amber);color:#1A1A1A}
+  .car-prev{left:-6px} .car-next{right:-6px}
+  /* точки-индикаторы */
+  .car-dots{display:flex;gap:8px;justify-content:center;margin-top:4px}
+  .car-dots button{width:8px;height:8px;border-radius:50%;border:none;padding:0;
+        background:#d4d4d4;cursor:pointer;transition:.15s}
+  .car-dots button.on{background:var(--amber);width:22px;border-radius:4px}
+  /* ===== Лайтбокс (увеличение по клику) ===== */
+  .lightbox{position:fixed;inset:0;z-index:100;background:rgba(20,20,20,.88);
+        display:none;align-items:center;justify-content:center;padding:30px;cursor:zoom-out}
+  .lightbox.open{display:flex}
+  .lightbox img{max-width:94vw;max-height:90vh;object-fit:contain;
+        box-shadow:0 20px 60px rgba(0,0,0,.5);border-radius:4px}
+  .lightbox .lb-close{position:absolute;top:18px;right:26px;color:#fff;font-size:34px;
+        cursor:pointer;line-height:1;opacity:.8}
+  .lightbox .lb-close:hover{opacity:1}
 
   /* ===== METRICS — спец-сетка с вертикальными линиями ===== */
   .metrics{display:grid;grid-template-columns:repeat(4,1fr);border-top:1px solid var(--hair);
@@ -216,9 +240,11 @@
     <div class="sec-head">
       <span class="ey">Интерфейс</span>
       <h2>Скриншоты</h2>
-      <p class="shots-hint">← прокрутите ленту вправо →</p>
     </div>
-    <div class="shots">
+   <div class="carousel">
+    <button class="car-btn car-prev" aria-label="Назад">‹</button>
+    <button class="car-btn car-next" aria-label="Вперёд">›</button>
+    <div class="shots" id="shots">
       <figure>
         <div class="frame">
           <img src="assets/screen-calc.png" alt="Расчёт"
@@ -265,8 +291,16 @@
         <figcaption>Деловые документы<span>выгрузка в Excel и презентация-альбом</span></figcaption>
       </figure>
     </div>
+    <div class="car-dots" id="carDots"></div>
+   </div>
   </div>
 </section>
+
+<!-- Лайтбокс для увеличения скриншота -->
+<div class="lightbox" id="lightbox">
+  <span class="lb-close">×</span>
+  <img id="lbImg" src="" alt="">
+</div>
 
 <section id="about">
   <div class="wrap">
@@ -386,6 +420,80 @@
     По вопросам сотрудничества: <b>misht.cad@gmail.com</b>.
   </div>
 </footer>
+
+<script>
+(function(){
+  const shots = document.getElementById('shots');
+  if(!shots) return;
+  const figs = Array.from(shots.querySelectorAll('figure'));
+  const dotsBox = document.getElementById('carDots');
+  const prev = document.querySelector('.car-prev');
+  const next = document.querySelector('.car-next');
+  const lb = document.getElementById('lightbox');
+  const lbImg = document.getElementById('lbImg');
+  let active = 0, autoTimer = null;
+
+  // точки-индикаторы
+  figs.forEach((_, i) => {
+    const b = document.createElement('button');
+    b.addEventListener('click', () => { go(i); restart(); });
+    dotsBox.appendChild(b);
+  });
+  const dots = Array.from(dotsBox.children);
+
+  function centerOf(fig){ return fig.offsetLeft + fig.offsetWidth/2; }
+
+  function setActive(i){
+    active = Math.max(0, Math.min(figs.length-1, i));
+    figs.forEach((f,k)=>f.classList.toggle('is-active', k===active));
+    dots.forEach((d,k)=>d.classList.toggle('on', k===active));
+  }
+
+  function go(i){
+    setActive(i);
+    const fig = figs[active];
+    // скроллим так, чтобы центр карточки совпал с центром ленты
+    shots.scrollTo({ left: centerOf(fig) - shots.clientWidth/2, behavior:'smooth' });
+  }
+
+  // определяем активную карточку при ручном скролле
+  let raf=null;
+  shots.addEventListener('scroll', () => {
+    if(raf) cancelAnimationFrame(raf);
+    raf = requestAnimationFrame(() => {
+      const mid = shots.scrollLeft + shots.clientWidth/2;
+      let best=0, bestd=1e9;
+      figs.forEach((f,k)=>{ const d=Math.abs(centerOf(f)-mid); if(d<bestd){bestd=d;best=k;} });
+      setActive(best);
+    });
+  });
+
+  prev.addEventListener('click', ()=>{ go(active-1); restart(); });
+  next.addEventListener('click', ()=>{ go(active+1); restart(); });
+
+  // автопрокрутка
+  function tick(){ go((active+1) % figs.length); }
+  function start(){ autoTimer = setInterval(tick, 4000); }
+  function restart(){ clearInterval(autoTimer); start(); }
+  start();
+  shots.addEventListener('mouseenter', ()=>clearInterval(autoTimer));
+  shots.addEventListener('mouseleave', start);
+
+  // увеличение по клику (лайтбокс)
+  figs.forEach(f => f.addEventListener('click', () => {
+    const img = f.querySelector('img');
+    if(img && img.style.display !== 'none'){
+      lbImg.src = img.src; lb.classList.add('open'); clearInterval(autoTimer);
+    }
+  }));
+  function closeLb(){ lb.classList.remove('open'); start(); }
+  lb.addEventListener('click', closeLb);
+  document.addEventListener('keydown', e => { if(e.key==='Escape') closeLb(); });
+
+  // стартовая инициализация
+  setTimeout(()=>go(0), 80);
+})();
+</script>
 
 </body>
 </html>
