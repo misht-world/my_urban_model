@@ -11,6 +11,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Модель застройки территории — обратный расчёт ТЭП</title>
+<link rel="stylesheet"
+  href="https://fonts.googleapis.com/css2?family=Material+Symbols+Sharp:opsz,wght,FILL,GRAD@24,300,0,0">
 <style>
   :root{ --ink:#1A1A1A; --muted:#8a8a8a; --soft:#bbb; --hair:#ededed;
          --rule:#1A1A1A; --blue:#1565C0; --amber:#d98c00; }
@@ -58,7 +60,8 @@
   details.card summary::after{content:"+";position:absolute;right:0;top:-4px;
         color:var(--soft);font-weight:400;font-size:22px;line-height:1}
   details.card[open] summary::after{content:"–"}
-  .ico{font-size:22px;margin-bottom:12px}
+  .ico{font-family:'Material Symbols Sharp';font-size:30px;margin-bottom:12px;
+        color:var(--ink);line-height:1;font-weight:300}
   .card h3{font-size:16px;font-weight:600;margin-bottom:8px}
   .card summary p{color:#888;font-size:14px;font-weight:300;padding-right:24px}
   .card .more{margin-top:14px;padding-top:14px;border-top:1px solid var(--hair);
@@ -182,32 +185,32 @@
          источник, формулу и статус. Нажмите на карточку — раскроется пояснение.</p>
     </div>
     <div class="grid">
-      <details class="card"><summary><div class="ico">📐</div><h3>Обратный расчёт КИТ</h3>
+      <details class="card"><summary><div class="ico">architecture</div><h3>Обратный расчёт КИТ</h3>
         <p>Бисекция находит максимально допустимый КИТ при выполнении баланса
            территории и всех нормативных ограничений.</p></summary>
         <div class="more">КИТ = площадь квартир / ЗУ жилой застройки. Бисекция ищет
            максимум при балансе территории и нормативах ПЗЗ (≤1.4 без ДПТ, ≤2.5 с ДПТ).</div></details>
-      <details class="card"><summary><div class="ico">⚖️</div><h3>Баланс территории</h3>
+      <details class="card"><summary><div class="ico">balance</div><h3>Баланс территории</h3>
         <p>Жильё, ДОО/СОШ, парковки, ЗНОП, проезды, спорт — с контролем
            25%-озеленения и плотности 450 чел/га.</p></summary>
         <div class="more">Все компоненты квартала вычитаются из площади; контролируются
            норматив 25%-озеленения и предельная плотность 450 чел/га.</div></details>
-      <details class="card"><summary><div class="ico">🅿️</div><h3>Парковки и соцобъекты</h3>
+      <details class="card"><summary><div class="ico">local_parking</div><h3>Парковки и соцобъекты</h3>
         <p>Открытые / многоуровневые / подземные; ДОО и СОШ по нормативам ПЗЗ
            с разбивкой на объекты.</p></summary>
         <div class="more">Парковки трёх типов с расчётом пятна застройки; ДОО/СОШ —
            вместимость, число объектов и ЗУ по нормативам ПЗЗ СПб.</div></details>
-      <details class="card"><summary><div class="ico">🧬</div><h3>Оптимизация</h3>
+      <details class="card"><summary><div class="ico">track_changes</div><h3>Оптимизация</h3>
         <p>Optuna подбирает лучшие сценарии по площади и прибыли; пофакторный
            анализ и чувствительность.</p></summary>
         <div class="more">Топ-3 сценария (макс. площадь / прибыль / баланс),
            пофакторный анализ «что улучшить» и торнадо-чувствительность.</div></details>
-      <details class="card"><summary><div class="ico">🏗</div><h3>Разная этажность по зонам</h3>
+      <details class="card"><summary><div class="ico">apartment</div><h3>Разная этажность по зонам</h3>
         <p>Кластеры этажности: покластерный КИТ и экономика, средневзвешенная
            этажность для баланса.</p></summary>
         <div class="more">Квартал делится на зоны с разной высотностью; КИТ и экономика
            считаются покластерно, баланс — по средневзвешенной этажности.</div></details>
-      <details class="card"><summary><div class="ico">💰</div><h3>Экономика и отчёты</h3>
+      <details class="card"><summary><div class="ico">payments</div><h3>Экономика и отчёты</h3>
         <p>Себестоимость, выручка, выгодность; деловые отчёты в DOCX и
            презентации PPTX «под Заказчика».</p></summary>
         <div class="more">Себестоимость, выручка и выгодность в условных баллах;
@@ -418,10 +421,22 @@
     Все права защищены. Использование, копирование и распространение —
     только с письменного согласия автора.
     По вопросам сотрудничества: <b>misht.cad@gmail.com</b>.
+    <span style="display:block;margin-top:10px;color:#bbb;font-size:12px">
+      Версия лендинга <b id="siteVer">v0.11.0</b> · 2026-06-02</span>
   </div>
 </footer>
 
 <script>
+// Версионность: метка приписывается к URL скриншотов (?v=…) — браузер
+// всегда тянет свежие картинки, не из кэша. Поднимай SITE_VER при замене
+// картинок/стилей.
+const SITE_VER = "0.11.0";
+(function(){
+  document.querySelectorAll('.shots img').forEach(img => {
+    const src = img.getAttribute('src');
+    if(src) img.setAttribute('src', src + (src.includes('?')?'&':'?') + 'v=' + SITE_VER);
+  });
+})();
 (function(){
   const shots = document.getElementById('shots');
   if(!shots) return;
@@ -497,9 +512,10 @@
   prev.addEventListener('click', ()=>{ go(active-1); restart(); });
   next.addEventListener('click', ()=>{ go(active+1); restart(); });
 
-  // автопрокрутка по кругу
-  function start(){ autoTimer = setInterval(()=>go(active+1), 4000); }
-  function restart(){ clearInterval(autoTimer); start(); }
+  // автопрокрутка по кругу. start() ВСЕГДА сначала гасит старый таймер —
+  // иначе mouseleave плодил бы много setInterval и лента «дёргалась» часто.
+  function start(){ clearInterval(autoTimer); autoTimer = setInterval(()=>go(active+1), 5000); }
+  function restart(){ start(); }
   start();
   shots.addEventListener('mouseenter', ()=>clearInterval(autoTimer));
   shots.addEventListener('mouseleave', start);
