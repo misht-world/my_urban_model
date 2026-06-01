@@ -199,13 +199,18 @@ def _render_pareto_constraints(base_options: CalculationOptions) -> ParetoConstr
                     rngs = []
                     for i, c in enumerate(base_options.floor_clusters):
                         label = c.label or f"Зона {i + 1}"
-                        # v0.10.19: верхняя граница по умолчанию = этажность
-                        # зоны в Базе. Пользователь может расширить вручную.
+                        # v0.11.0: верхняя граница следует за этажностью зоны
+                        # в Базе (slider с key игнорирует value= — пушим в
+                        # session_state при смене этажности зоны).
                         _zhi = max(3, min(30, int(c.floors)))
+                        _zk = f"pareto_zone_range_{i}"
+                        if st.session_state.get(f"_pzbase_{i}") != _zhi:
+                            st.session_state[_zk] = (3, _zhi)
+                            st.session_state[f"_pzbase_{i}"] = _zhi
                         lo, hi = st.slider(
                             f"{label} (текущая {c.floors} эт.)",
                             3, 30, (3, _zhi),
-                            key=f"pareto_zone_range_{i}",
+                            key=_zk,
                         )
                         rngs.append((int(lo), int(hi)))
                     if len(rngs) == len(base_options.floor_clusters):
@@ -214,13 +219,20 @@ def _render_pareto_constraints(base_options: CalculationOptions) -> ParetoConstr
                     st.caption("Этажность зон фиксирована (как в базе).")
             else:
                 st.markdown("**Этажность**")
-                # v0.10.19: верхняя граница по умолчанию = этажность Базы
-                # (с вкладки «Расчёт»). Пользователь может расширить вручную.
+                # v0.11.0: верхняя граница диапазона следует за этажностью Базы.
+                # Слайдер с key= игнорирует value= после 1-го рендера, поэтому
+                # при СМЕНЕ этажности Базы пушим новый диапазон в session_state.
+                # Запоминаем, от какой базы он выставлен (_pareto_floors_base);
+                # ручные правки между сменами Базы сохраняются.
                 _bhi = max(3, min(30, int(base_options.floors)))
+                if st.session_state.get("_pareto_floors_base") != _bhi:
+                    st.session_state["pareto_floors_range"] = (3, _bhi)
+                    st.session_state["_pareto_floors_base"] = _bhi
                 lo, hi = st.slider(
                     "Диапазон", 3, 30, (3, _bhi),
                     key="pareto_floors_range",
-                    help="Подбор будет рассматривать только этажность в этом диапазоне.",
+                    help="Подбор будет рассматривать только этажность в этом диапазоне. "
+                         "Меняется автоматически вслед за этажностью на вкладке «Расчёт».",
                 )
                 floors_range = (int(lo), int(hi))
 
