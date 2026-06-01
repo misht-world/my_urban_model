@@ -433,9 +433,10 @@ def _render_essentials() -> tuple[Site, int, bool, "float | None", bool, bool, l
         )
 
         # Этажность — слайдер (v0.11.0): удобнее, чем +/- у number_input.
+        # Диапазон 3–30 эт. — как в «Оптимизации».
         floors = st.slider(
             "Этажность (средняя)",
-            min_value=1, max_value=40, value=12, step=1,
+            min_value=3, max_value=30, value=12, step=1,
             key="floors",
             help="Средняя этажность жилой застройки. Влияет на долю проездов на ЗУ (зависит от этажности).",
             disabled=_clusters_on,
