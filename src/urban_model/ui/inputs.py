@@ -112,20 +112,20 @@ def render_params_tab() -> UserInputs:
     with col_mode1:
         mode_label = st.radio(
             "Режим расчёта",
-            [
-                "Максимальный КИТ",
-                "КИТ с целевым резервом территории",
-                "Проверка конкретного КИТ",
-            ],
+            ["Максимальный КИТ", "С целевым резервом", "Проверка КИТ"],
             index=0, horizontal=True, key="calc_mode_label",
+            help=(
+                "Максимальный КИТ — найти предельный КИТ при выполнении норм. "
+                "С целевым резервом — оставить заданную свободную площадь. "
+                "Проверка КИТ — посчитать заданную плотность."
+            ),
         )
     with col_mode2:
         target_surplus_m2 = 0.0
         verify_kit_value = 1.5
         if mode_label == "Максимальный КИТ":
             mode = "max_kit"
-            st.caption("Бисекция: найти максимальный КИТ, при котором все нормативы выполняются.")
-        elif mode_label == "КИТ с целевым резервом территории":
+        elif mode_label == "С целевым резервом":
             mode = "with_reserve"
             target_surplus_m2 = float(st.number_input(
                 "Целевой резерв, м²",
@@ -135,13 +135,11 @@ def render_params_tab() -> UserInputs:
         else:
             mode = "verify"
             verify_kit_value = float(st.number_input(
-                "Внутренняя плотность (block_density) для проверки",
+                "Плотность (block_density)",
                 min_value=0.1, max_value=5.0, value=1.5, step=0.05,
                 key="verify_kit",
-                help=(
-                    "Это плотность GFA/S_квартала. Фактический КИТ "
-                    "(площадь квартир / ЗУ жилой) рассчитается."
-                ),
+                help="Плотность GFA/S_квартала. Фактический КИТ "
+                     "(площадь квартир / ЗУ жилой) рассчитается.",
             ))
 
     st.markdown("---")
