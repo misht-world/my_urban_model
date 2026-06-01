@@ -846,7 +846,11 @@ def render_details(result: TEPResult) -> None:
     # 📋 Полный аудит
     with st.expander(":material/fact_check: Полный аудит (все TEP-поля + источники)", expanded=False):
         df = results_to_audit_dataframe([("Текущий", result)])
-        st.dataframe(df, hide_index=True, use_container_width=True)
+        # v0.11.0: колонку «формула» в экранной таблице не показываем (длинная,
+        # засоряет). Полные формулы доступны в Excel-выгрузке аудита.
+        _df_ui = df.drop(columns=[c for c in df.columns if c == "формула"])
+        st.dataframe(_df_ui, hide_index=True, use_container_width=True)
+        st.caption("Полные формулы расчёта — в Excel-выгрузке (кнопка «Скачать xlsx»).")
 
 
 def _squarify(values: list[float], x: float, y: float, w: float, h: float
@@ -1117,18 +1121,12 @@ def _render_actions_inline(result: TEPResult, default_name: str, options=None) -
             use_container_width=True,
         )
     with b_doc:
-        try:
-            album_bytes = _variant_album_bytes(default_name, result, options)
-            st.download_button(
-                ":material/slideshow: Сформировать альбом",
-                album_bytes,
-                file_name=f"Альбом — {default_name}.pptx",
-                mime="application/vnd.openxmlformats-officedocument.presentationml.presentation",
-                use_container_width=True,
-            )
-        except Exception as _e:  # noqa: BLE001
-            st.button(":material/slideshow: Альбом — ошибка", disabled=True,
-                      use_container_width=True, help=str(_e))
+        # v0.11.0: альбом-презентация пока в отладке — кнопка отключена.
+        st.button(
+            ":material/slideshow: Сформировать альбом",
+            disabled=True, use_container_width=True,
+            help="Альбом-презентация (PPTX) — в разработке, скоро будет доступен.",
+        )
 
 
 def render_actions(result: TEPResult, default_name: str) -> None:
