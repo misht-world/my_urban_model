@@ -425,61 +425,86 @@
 (function(){
   const shots = document.getElementById('shots');
   if(!shots) return;
-  const figs = Array.from(shots.querySelectorAll('figure'));
   const dotsBox = document.getElementById('carDots');
   const prev = document.querySelector('.car-prev');
   const next = document.querySelector('.car-next');
   const lb = document.getElementById('lightbox');
   const lbImg = document.getElementById('lbImg');
-  let active = 0, autoTimer = null;
 
-  // точки-индикаторы
-  figs.forEach((_, i) => {
+  // ─── Бесконечная карусель: клонируем по копии оригиналов в начало и
+  //     конец. Реальный «активный» индекс — в пределах оригиналов; при
+  //     заходе на клон молча перепрыгиваем к настоящей карточке. ───
+  const originals = Array.from(shots.querySelectorAll('figure'));
+  const N = originals.length;
+  originals.forEach(f => { const c=f.cloneNode(true); c.dataset.clone='1'; shots.appendChild(c); });
+  originals.forEach(f => { const c=f.cloneNode(true); c.dataset.clone='1'; shots.insertBefore(c, shots.firstElementChild); });
+  // порядок в DOM: [клоны N] [оригиналы N] [клоны N]; оригиналы со смещением N
+  const figs = Array.from(shots.querySelectorAll('figure'));
+  let active = 0;            // логический индекс 0..N-1
+  let autoTimer = null;
+  let lock = false;          // защита от рекурсии при «прыжке»
+
+  // точки — только по оригиналам
+  originals.forEach((_, i) => {
     const b = document.createElement('button');
     b.addEventListener('click', () => { go(i); restart(); });
     dotsBox.appendChild(b);
   });
   const dots = Array.from(dotsBox.children);
 
-  function centerOf(fig){ return fig.offsetLeft + fig.offsetWidth/2; }
+  const centerOf = f => f.offsetLeft + f.offsetWidth/2;
+  const domIndex = i => N + i;   // оригинал i → позиция в figs
 
-  function setActive(i){
-    active = Math.max(0, Math.min(figs.length-1, i));
-    figs.forEach((f,k)=>f.classList.toggle('is-active', k===active));
+  function paint(){
+    figs.forEach(f => f.classList.remove('is-active'));
+    figs[domIndex(active)].classList.add('is-active');
     dots.forEach((d,k)=>d.classList.toggle('on', k===active));
   }
 
-  function go(i){
-    setActive(i);
-    const fig = figs[active];
-    // скроллим так, чтобы центр карточки совпал с центром ленты
-    shots.scrollTo({ left: centerOf(fig) - shots.clientWidth/2, behavior:'smooth' });
+  function scrollToDom(idx, smooth){
+    const f = figs[idx];
+    shots.scrollTo({ left: centerOf(f) - shots.clientWidth/2,
+                     behavior: smooth ? 'smooth' : 'auto' });
   }
 
-  // определяем активную карточку при ручном скролле
+  function go(i){
+    active = ((i % N) + N) % N;   // нормализуем в 0..N-1
+    paint();
+    scrollToDom(domIndex(active), true);
+  }
+
+  // Следим за скроллом: подсветка ближайшей + бесшовный «прыжок» с клонов.
   let raf=null;
   shots.addEventListener('scroll', () => {
+    if(lock) return;
     if(raf) cancelAnimationFrame(raf);
     raf = requestAnimationFrame(() => {
       const mid = shots.scrollLeft + shots.clientWidth/2;
       let best=0, bestd=1e9;
       figs.forEach((f,k)=>{ const d=Math.abs(centerOf(f)-mid); if(d<bestd){bestd=d;best=k;} });
-      setActive(best);
+      // best — позиция в figs (0..3N-1); логический = best - N по модулю N
+      active = ((best - N) % N + N) % N;
+      paint();
+      // если ушли на клон-зону (best<N или best>=2N) — мягко телепортируем
+      if(best < N || best >= 2*N){
+        lock = true;
+        scrollToDom(domIndex(active), false);
+        setTimeout(()=>{ lock=false; }, 60);
+      }
     });
   });
 
   prev.addEventListener('click', ()=>{ go(active-1); restart(); });
   next.addEventListener('click', ()=>{ go(active+1); restart(); });
 
-  // автопрокрутка
-  function tick(){ go((active+1) % figs.length); }
-  function start(){ autoTimer = setInterval(tick, 4000); }
+  // автопрокрутка по кругу
+  function start(){ autoTimer = setInterval(()=>go(active+1), 4000); }
   function restart(){ clearInterval(autoTimer); start(); }
   start();
   shots.addEventListener('mouseenter', ()=>clearInterval(autoTimer));
   shots.addEventListener('mouseleave', start);
 
-  // увеличение по клику (лайтбокс)
+  // увеличение по клику (лайтбокс) — на всех карточках, включая клоны
   figs.forEach(f => f.addEventListener('click', () => {
     const img = f.querySelector('img');
     if(img && img.style.display !== 'none'){
@@ -490,8 +515,8 @@
   lb.addEventListener('click', closeLb);
   document.addEventListener('keydown', e => { if(e.key==='Escape') closeLb(); });
 
-  // стартовая инициализация
-  setTimeout(()=>go(0), 80);
+  // старт: встаём на первый оригинал без анимации
+  setTimeout(()=>{ scrollToDom(domIndex(0), false); paint(); }, 80);
 })();
 </script>
 
