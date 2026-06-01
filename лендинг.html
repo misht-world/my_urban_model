@@ -72,9 +72,11 @@
   .step h4{font-size:15px;font-weight:600;margin-bottom:6px}
   .step p{color:#888;font-size:13px;font-weight:300}
 
-  /* ===== SHOTS ===== */
-  .shots{display:grid;grid-template-columns:repeat(2,1fr);gap:22px}
-  figure{border:1px solid var(--hair);overflow:hidden}
+  /* ===== SHOTS — горизонтальная лента-скролл ===== */
+  .shots{display:flex;gap:20px;overflow-x:auto;padding:4px 0 18px;
+        scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch}
+  .shots figure{flex:0 0 clamp(300px,46%,560px);border:1px solid var(--hair);
+        overflow:hidden;scroll-snap-align:start;background:#fff}
   .frame{position:relative;aspect-ratio:16/10;background:#f7f7f7}
   .frame img{width:100%;height:100%;object-fit:cover;display:block}
   .ph{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;
@@ -83,6 +85,12 @@
   .ph small{color:#bbb}
   figcaption{padding:14px 18px;font-weight:600;font-size:15px;border-top:1px solid var(--hair)}
   figcaption span{display:block;font-weight:300;color:#999;font-size:13px;margin-top:2px}
+  /* Тонкий «деловой» скроллбар ленты */
+  .shots::-webkit-scrollbar{height:8px}
+  .shots::-webkit-scrollbar-track{background:var(--hair)}
+  .shots::-webkit-scrollbar-thumb{background:#cfcfcf;border-radius:4px}
+  .shots::-webkit-scrollbar-thumb:hover{background:var(--amber)}
+  .shots-hint{font-size:12px;color:var(--soft);margin-top:-6px}
 
   /* ===== METRICS — спец-сетка с вертикальными линиями ===== */
   .metrics{display:grid;grid-template-columns:repeat(4,1fr);border-top:1px solid var(--hair);
@@ -112,7 +120,7 @@
 
   @media(max-width:900px){
     .grid,.steps,.metrics{grid-template-columns:1fr 1fr}
-    .shots{grid-template-columns:1fr}
+    .shots figure{flex:0 0 82%}
     .hero h1{font-size:36px}
   }
   @media(max-width:560px){.grid,.steps,.metrics{grid-template-columns:1fr}}
@@ -208,6 +216,7 @@
     <div class="sec-head">
       <span class="ey">Интерфейс</span>
       <h2>Скриншоты</h2>
+      <p class="shots-hint">← прокрутите ленту вправо →</p>
     </div>
     <div class="shots">
       <figure>
@@ -230,12 +239,21 @@
       </figure>
       <figure>
         <div class="frame">
-          <img src="assets/screen-optimize.png" alt="Оптимизация"
+          <img src="assets/screen-optimize.png" alt="Подбор сценариев"
                onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
-          <div class="ph" style="display:none"><div class="big">🧬</div>
-            <b>Оптимизация</b><small>assets/screen-optimize.png</small></div>
+          <div class="ph" style="display:none"><div class="big">🎯</div>
+            <b>Подбор сценариев</b><small>assets/screen-optimize.png</small></div>
         </div>
-        <figcaption>Подбор сценариев<span>рекомендации Optuna + чувствительность</span></figcaption>
+        <figcaption>Подбор сценариев<span>готовые рекомендации по площади и прибыли</span></figcaption>
+      </figure>
+      <figure>
+        <div class="frame">
+          <img src="assets/screen-graf.png" alt="Анализ сценария"
+               onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+          <div class="ph" style="display:none"><div class="big">📈</div>
+            <b>Анализ сценария</b><small>assets/screen-graf.png</small></div>
+        </div>
+        <figcaption>Пофакторный анализ<span>графики влияния параметров и чувствительность</span></figcaption>
       </figure>
       <figure>
         <div class="frame">
@@ -244,7 +262,7 @@
           <div class="ph" style="display:none"><div class="big">📄</div>
             <b>Отчёты</b><small>assets/screen-report.png</small></div>
         </div>
-        <figcaption>DOCX / PPTX<span>деловые документы для Заказчика</span></figcaption>
+        <figcaption>Деловые документы<span>выгрузка в Excel и презентация-альбом</span></figcaption>
       </figure>
     </div>
   </div>
