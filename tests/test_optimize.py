@@ -124,7 +124,13 @@ class TestZnopSearch:
         assert kit_cap_for_znop(3.0, spb) == 1.79
         assert kit_cap_for_znop(4.0, spb) == 1.99
         assert kit_cap_for_znop(6.0, spb) == 2.50
-        assert kit_cap_for_znop(5.0, spb) is None  # нет ступени со значением 5
+        # v0.11.0: промежуточные значения трактуются по ПОСЛЕДНЕЙ достигнутой
+        # ступени (раньше требовалось точное совпадение → None, что давало
+        # баг «ЗНОП ниже порога не ограничивает КИТ»).
+        assert kit_cap_for_znop(2.99, spb) == 1.59   # ещё ступень «0»
+        assert kit_cap_for_znop(3.99, spb) == 1.79   # ещё ступень «3»
+        assert kit_cap_for_znop(5.0, spb) == 1.99    # ещё ступень «4»
+        assert kit_cap_for_znop(7.0, spb) == 2.50    # покрыта последняя ступень
 
     def test_znop_override_limits_kit_in_forward(self, spb):
         """Через verify_kit при znop_override=3 КИТ должен быть ограничен 1.79."""

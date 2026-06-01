@@ -37,10 +37,18 @@ def znop_total_area_clustered(
 def kit_cap_for_znop(znop_pp: float, norms: Normatives) -> float | None:
     """Верхний предел КИТ для заданного ЗНОП (обратная piecewise ПЗЗ).
 
-    Norm.СПб: КИТ ≤ 1.59 → ЗНОП=0; ≤ 1.79 → 3; ≤ 1.99 → 4; ≤ 2.50 → 6.
-    Если зафиксировать ЗНОП=3 (например override), КИТ автоматически
-    ограничен 1.79 по нормативу. Возвращает None если значение ЗНОП
-    не соответствует ни одной ступени piecewise.
+    Прямая piecewise: КИТ ≤ 1.59 → ЗНОП=0; ≤ 1.79 → 3; ≤ 1.99 → 4; ≤ 2.50 → 6.
+    Обратная: для заданного ЗНОП берём ПОСЛЕДНЮЮ ступень, чьё нормативное
+    значение ЗНОП ≤ заданного, и возвращаем её потолок КИТ (up_to).
+
+    v0.11.0 (фикс): раньше искалось ТОЧНОЕ совпадение значения ЗНОП со
+    ступенью — поэтому промежуточные (напр. 3.99) давали None, и потолок
+    КИТ не применялся вовсе (баг: «вручную ЗНОП<порога» вело себя как
+    «без ограничения»). Теперь 3.99 трактуется как ступень «3» (ЗНОП ещё
+    не дотянул до 4) → КИТ ≤ 1.79. Это соответствует смыслу piecewise.
+
+    Возвращает потолок КИТ или None (если ступеней нет / ЗНОП покрывает
+    последнюю ступень с up_to = inf).
     """
     try:
         node = norms.get("znop_per_person")
@@ -49,7 +57,12 @@ def kit_cap_for_znop(znop_pp: float, norms: Normatives) -> float | None:
     breakpoints = getattr(node, "breakpoints", None)
     if not breakpoints:
         return None
+    # ступени отсортированы по возрастанию up_to (и value). Берём последнюю,
+    # чьё value <= znop_pp (+epsilon на дробную погрешность).
+    cap = None
     for bp in breakpoints:
-        if abs(float(bp.value) - float(znop_pp)) < 1e-6:
-            return None if math.isinf(bp.up_to) else float(bp.up_to)
-    return None
+        if float(bp.value) <= float(znop_pp) + 1e-6:
+            cap = None if math.isinf(bp.up_to) else float(bp.up_to)
+        else:
+            break
+    return cap
