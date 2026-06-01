@@ -16,6 +16,24 @@ def znop_total_area(population: float, kit: float, norms: Normatives) -> float:
     return population * per_person
 
 
+def znop_total_area_clustered(
+    cluster_pops: list[float], cluster_kits: list[float], norms: Normatives,
+) -> tuple[float, float]:
+    """ЗНОП покластерно: для каждой зоны — ступень ЗНОП по ЕЁ КИТ.
+
+    Возвращает (суммарная площадь ЗНОП, средневзвешенный ЗНОП/чел).
+    Каждая зона: население_i × znop_per_person(КИТ_i, ≤2.50). Точнее
+    единого ЗНОП от среднего КИТ — зоны разной плотности нормируются
+    раздельно (v0.11.0)."""
+    total_area = 0.0
+    total_pop = 0.0
+    for pop_i, kit_i in zip(cluster_pops, cluster_kits):
+        total_area += pop_i * znop_per_person(min(kit_i, 2.50), norms)
+        total_pop += pop_i
+    pp_avg = (total_area / total_pop) if total_pop > 0 else 0.0
+    return total_area, pp_avg
+
+
 def kit_cap_for_znop(znop_pp: float, norms: Normatives) -> float | None:
     """Верхний предел КИТ для заданного ЗНОП (обратная piecewise ПЗЗ).
 

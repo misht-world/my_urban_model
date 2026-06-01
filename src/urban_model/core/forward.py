@@ -527,6 +527,30 @@ def compute_tep_for_kit(
     # — лишь техническая переменная бисекции.
     kit_developed = (apartments_area_v / housing_lot_v) if housing_lot_v > 0 else 0.0
 
+    # === Покластерные КИТ и население (v0.11.0, для ЗНОП и detail) ===
+    # Та же формула КИТ_i, что в floor_clusters_detail ниже: чтобы ЗНОП
+    # при кластерах считался от КИТ КАЖДОЙ зоны (по запросу заказчика).
+    _cluster_kits: list[float] = []
+    _cluster_pops: list[float] = []
+    if _clusters:
+        _gw0 = clusters.gfa_weights(_clusters)
+        for c, w in zip(_clusters, _gw0):
+            gfa_i = gfa_v * w
+            apt_i = apartments_area_v * w
+            footprint_i = gfa_i / c.floors if c.floors > 0 else 0.0
+            if options.driveways_lot_share_override is not None:
+                lot_share_i = options.driveways_lot_share_override
+            else:
+                lot_share_i = norms.resolve(
+                    "driveways.housing_lot_share", floors=c.floors)
+            green_i = green_housing_v * w
+            bi_green_i = bi_greening_v * w
+            open_park_i = parking_open_in_lot * w
+            lot_i = (footprint_i + footprint_i * lot_share_i
+                     + green_i + bi_green_i + open_park_i)
+            _cluster_kits.append((apt_i / lot_i) if lot_i > 0 else 0.0)
+            _cluster_pops.append(pop_v * w)
+
     # === ЗНОП — теперь по КИТ ПЗЗ, а не по block_density ===
     # Приоритет источника: фиксированная площадь > м²/чел > норматив piecewise.
     if options.znop_total_area_override is not None:
@@ -541,6 +565,15 @@ def compute_tep_for_kit(
         znop_pp = options.znop_per_person_override
         znop_area_v = pop_v * znop_pp
         znop_source_label = f"override = {znop_pp} м²/чел (заменяет норматив)"
+    elif _clusters:
+        # v0.11.0: при кластерах ЗНОП считается ПОКЛАСТЕРНО — каждая зона
+        # берёт свою ступень ЗНОП по своему КИТ (население_i × норматив_i).
+        znop_area_v, znop_pp = znop.znop_total_area_clustered(
+            _cluster_pops, _cluster_kits, norms)
+        znop_source_label = (
+            "ПЗЗ СПб (piecewise по КИТ каждой зоны; средневзвеш. "
+            f"{znop_pp:.1f} м²/чел)"
+        )
     else:
         # Защитный clamp: piecewise ZNOP заканчивается ступенью kit ≤ 2.50.
         # Если бисекция дала kit > 2.5 (формально невалидно, kit_status станет

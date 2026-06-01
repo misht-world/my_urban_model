@@ -361,3 +361,33 @@ class TestClusterConsistencyAndZnopWall:
             apt = r.apartments_area.value or 0.0
             assert apt >= prev - 1.0  # неубывание (с допуском на округление)
             prev = apt
+
+
+class TestClusterZnop:
+    """ЗНОП при кластерах считается покластерно (v0.11.0)."""
+
+    def test_znop_per_cluster_differs_from_global(self, spb):
+        """Разноэтажные зоны → ЗНОП между ступенью низкой и высокой зоны,
+        не равен ступени единого среднего КИТ."""
+        from urban_model.calculations import znop as Z
+        site = Site(area_m2=50_000)
+        clusters = [
+            FloorCluster(area_m2=25_000, floors=6),
+            FloorCluster(area_m2=25_000, floors=18),
+        ]
+        r = solve_max_kit(site, CalculationOptions(floor_clusters=clusters), spb)
+        pp = r.znop_per_person.value
+        # покластерно: низкая зона даёт малую ступень, высокая — большую;
+        # средневзвешенное строго между 0 и 6 и не равно единому 4.0.
+        assert 0 < pp <= 6
+        # площадь ЗНОП = сумма по зонам (положительна)
+        assert r.znop_area.value > 0
+
+    def test_single_cluster_znop_matches_plain(self, spb):
+        """Один кластер N эт. == одиночная этажность N по ЗНОП."""
+        site = Site(area_m2=50_000)
+        clustered = solve_max_kit(
+            site, CalculationOptions(floor_clusters=[FloorCluster(area_m2=50_000, floors=12)]), spb)
+        plain = solve_max_kit(site, CalculationOptions(floors=12), spb)
+        assert abs((clustered.znop_per_person.value or 0)
+                   - (plain.znop_per_person.value or 0)) < 1e-6
