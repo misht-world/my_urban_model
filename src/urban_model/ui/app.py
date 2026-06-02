@@ -79,6 +79,15 @@ if not _check_password():
 # страницу. Hard refresh (Ctrl+F5) сбрасывает кэш.
 st.markdown("""
 <style>
+  /* v0.11.0: скрываем GitHub-бейдж (fork) и тулбар Streamlit в правом
+     верхнем углу — для публичного приложения он не нужен. */
+  .stAppToolbar, [data-testid="stToolbar"],
+  [data-testid="stToolbarActions"],
+  .viewerBadge_container__1QSob, .stAppDeployButton,
+  a[href*="github.com"][class*="viewerBadge"] {
+      display: none !important;
+      visibility: hidden !important;
+  }
   /* v0.10.19 stylesheet marker — Material Symbols Sharp. bump кэша. */
   /* Подгружаем Material Symbols Sharp с Google Fonts (вариант «sharp» —
      прямоугольные иконки без скруглений, идеально под стиль спецификации). */
