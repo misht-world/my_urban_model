@@ -78,6 +78,8 @@ if not _check_password():
 # отладке. Если ты видишь старый стиль — это значит браузер кэшировал
 # страницу. Hard refresh (Ctrl+F5) сбрасывает кэш.
 st.markdown("""
+<link rel="stylesheet"
+  href="https://fonts.googleapis.com/css2?family=Material+Symbols+Sharp:opsz,wght,FILL,GRAD@20..48,300..700,0..1,-50..200">
 <style>
   /* v0.11.0: скрываем GitHub-бейдж (fork) и тулбар Streamlit в правом
      верхнем углу — для публичного приложения он не нужен. */
@@ -88,12 +90,9 @@ st.markdown("""
       display: none !important;
       visibility: hidden !important;
   }
-  /* v0.11.0 stylesheet marker — Material Symbols Sharp. bump кэша. */
-  /* Подгружаем Material Symbols Sharp с Google Fonts (вариант «sharp» —
-     прямоугольные иконки без скруглений, идеально под стиль спецификации). */
-  @import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Sharp:opsz,wght,FILL,GRAD@20..48,300..700,0..1,-50..200');
-  /* Streamlit рендерит :material/...: через свой класс. Заставляем все
-     material-иконки использовать Sharp-вариант. */
+  /* v0.11.1 stylesheet marker — Material Symbols Sharp через <link>. bump кэша. */
+  /* Шрифт грузится <link> выше (надёжнее @import внутри st.markdown).
+     Заставляем все material-иконки использовать Sharp-вариант. */
   span.material-symbols-rounded,
   span.material-symbols-outlined,
   span.material-symbols-sharp,
@@ -101,7 +100,12 @@ st.markdown("""
   [class*="material-icons"] {
       font-family: 'Material Symbols Sharp' !important;
       font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24 !important;
-      font-feature-settings: 'liga';
+      font-feature-settings: 'liga' 1 !important;
+      -webkit-font-feature-settings: 'liga' 1 !important;
+      text-transform: none !important;
+      white-space: nowrap !important;
+      word-wrap: normal !important;
+      letter-spacing: normal !important;
       vertical-align: middle !important;
   }
   /* v0.10.19: расширил max-width до 1340px (раньше 1180px было тесно для
