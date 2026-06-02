@@ -78,9 +78,8 @@ if not _check_password():
 # отладке. Если ты видишь старый стиль — это значит браузер кэшировал
 # страницу. Hard refresh (Ctrl+F5) сбрасывает кэш.
 st.markdown("""
-<link rel="stylesheet"
-  href="https://fonts.googleapis.com/css2?family=Material+Symbols+Sharp:opsz,wght,FILL,GRAD@20..48,300..700,0..1,-50..200">
 <style>
+  @import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Sharp:opsz,wght,FILL,GRAD@20..48,300..700,0..1,-50..200');
   /* v0.11.0: скрываем GitHub-бейдж (fork) и тулбар Streamlit в правом
      верхнем углу — для публичного приложения он не нужен. */
   .stAppToolbar, [data-testid="stToolbar"],
@@ -90,7 +89,7 @@ st.markdown("""
       display: none !important;
       visibility: hidden !important;
   }
-  /* v0.11.1 stylesheet marker — Material Symbols Sharp через <link>. bump кэша. */
+  /* v0.11.2 stylesheet marker. bump кэша. */
   /* Шрифт грузится <link> выше (надёжнее @import внутри st.markdown).
      Заставляем все material-иконки использовать Sharp-вариант. */
   span.material-symbols-rounded,
