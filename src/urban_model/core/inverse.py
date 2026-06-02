@@ -213,11 +213,30 @@ def solve_max_kit(
             "с запасом. " + _identify_limiting_factor(result)
         )
     elif reason == "lo_infeasible":
-        result.limiting_factor = (
-            f"при минимальной квартальной плотности ({lo}, GFA/S_кв) "
-            "ни один норматив не проходит — "
-            + _identify_limiting_factor(result)
-        )
+        # v0.11.0: частая причина при ручном ЗНОП «м²/чел» — заданная ступень
+        # ЗНОП по обратной piecewise ПЗЗ ограничивает КИТ потолком (напр. 3 →
+        # КИТ≤1.79), который НИЖЕ естественного КИТ_ПЗЗ застройки. КИТ_ПЗЗ
+        # почти не зависит от плотности (определяется составом ЗУ), поэтому
+        # снизить его нельзя → вариант недостижим. Объясняем прямо.
+        from urban_model.calculations import znop as _znop
+        _ov = options.znop_per_person_override
+        _cap = (_znop.kit_cap_for_znop(float(_ov), norms)
+                if _ov is not None else None)
+        if (_cap is not None and result.kit.status == Status.ERROR
+                and (result.kit.value or 0) > _cap + 1e-3):
+            result.limiting_factor = (
+                f"при ЗНОП = {_ov:g} м²/чел норматив ПЗЗ ограничивает КИТ "
+                f"потолком {_cap}, но естественный КИТ застройки "
+                f"({result.kit.value:.2f}) выше — вариант недостижим. "
+                f"Увеличьте ЗНОП (выше ступень → выше потолок КИТ) либо "
+                f"задайте ЗНОП общей площадью (без ограничения плотности)."
+            )
+        else:
+            result.limiting_factor = (
+                f"при минимальной квартальной плотности ({lo}, GFA/S_кв) "
+                "ни один норматив не проходит — "
+                + _identify_limiting_factor(result)
+            )
     else:
         result.limiting_factor = _identify_limiting_factor(result)
     return result
