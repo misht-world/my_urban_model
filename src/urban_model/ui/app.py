@@ -43,14 +43,14 @@ st.set_page_config(
 # ---------------------------------------------------------------------------
 # Пароль берётся из Streamlit Secrets (st.secrets["app_password"]) — его
 # НЕЛЬЗЯ хранить в публичном репозитории. Если secrets не заданы — дефолт
-# "123321" (для быстрого старта; смените через Secrets в Streamlit Cloud:
+# "123231" (для быстрого старта; смените через Secrets в Streamlit Cloud:
 #   Manage app → Settings → Secrets →  app_password = "ваш_пароль"
 # ).
 def _check_password() -> bool:
     try:
-        expected = str(st.secrets.get("app_password", "123321"))
+        expected = str(st.secrets.get("app_password", "123231"))
     except Exception:  # noqa: BLE001 — secrets-файла нет (локальный запуск)
-        expected = "123321"
+        expected = "123231"
 
     if st.session_state.get("_auth_ok"):
         return True
