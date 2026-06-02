@@ -55,6 +55,16 @@ def _check_password() -> bool:
     if st.session_state.get("_auth_ok"):
         return True
 
+    # Скрываем GitHub-бейдж/тулбар и на странице входа (основной CSS-блок
+    # идёт ниже st.stop() и сюда не доходит).
+    st.markdown(
+        '<style>.stAppToolbar,[data-testid="stToolbar"],'
+        '[data-testid="stToolbarActions"],.viewerBadge_container__1QSob,'
+        '.stAppDeployButton,a[href*="github.com"][class*="viewerBadge"]'
+        '{display:none!important;visibility:hidden!important;}</style>',
+        unsafe_allow_html=True,
+    )
+
     # Центрированная форма входа
     _, mid, _ = st.columns([1, 1.4, 1])
     with mid:
