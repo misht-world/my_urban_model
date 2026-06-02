@@ -88,7 +88,7 @@ st.markdown("""
       display: none !important;
       visibility: hidden !important;
   }
-  /* v0.10.19 stylesheet marker — Material Symbols Sharp. bump кэша. */
+  /* v0.11.0 stylesheet marker — Material Symbols Sharp. bump кэша. */
   /* Подгружаем Material Symbols Sharp с Google Fonts (вариант «sharp» —
      прямоугольные иконки без скруглений, идеально под стиль спецификации). */
   @import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Sharp:opsz,wght,FILL,GRAD@20..48,300..700,0..1,-50..200');
@@ -139,10 +139,13 @@ st.markdown("""
   [data-testid="stAppViewContainer"] th {
       font-family: -apple-system, "Segoe UI", Roboto, Arial, sans-serif !important;
   }
-  /* Защищаем шрифт иконок от любых перекрытий */
+  /* Защищаем шрифт иконок Streamlit (expand_more, arrow_drop_down) от
+     перекрытия системным шрифтом. ВАЖНО: НЕ трогаем material-symbols-* —
+     ими управляет правило выше (Material Symbols Sharp). Иначе лигатуры
+     наших алертов (check_circle/info) рендерились бы как текст. */
   .material-icons, .material-icons-outlined,
-  [class*="material-icons"], [class*="material-symbols"],
-  span[class*="MuiIcon"], i[class*="material"] {
+  [class*="material-icons"],
+  span[class*="MuiIcon"], i[class*="material-icons"] {
       font-family: "Material Symbols Rounded", "Material Icons",
         "Material Icons Outlined" !important;
   }
