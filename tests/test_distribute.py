@@ -129,7 +129,8 @@ class TestDrivewayOverrides:
         from urban_model.core.forward import compute_tep_for_kit
         from urban_model.models import CalculationOptions, Site
         site = Site(area_m2=50_000)
-        # По умолчанию 10% → 5000 м²; override 20% → 10000 м²
+        # По умолчанию 7.5% → 3750 м² (v0.12: было 10%, инженерка вынесена
+        # в отдельный компонент); override 20% → 10000 м²
         opts_default = CalculationOptions(floors=12, planning_doc=True)
         opts_override = CalculationOptions(
             floors=12, planning_doc=True,
@@ -137,7 +138,7 @@ class TestDrivewayOverrides:
         )
         r_default = compute_tep_for_kit(1.0, site, opts_default, spb)
         r_override = compute_tep_for_kit(1.0, site, opts_override, spb)
-        assert abs(r_default.driveways_intra_quarter_area.value - 5000) < 1
+        assert abs(r_default.driveways_intra_quarter_area.value - 3750) < 1
         assert abs(r_override.driveways_intra_quarter_area.value - 10000) < 1
 
     def test_lot_override_applies(self, spb):

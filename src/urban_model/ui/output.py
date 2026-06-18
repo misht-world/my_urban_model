@@ -223,6 +223,16 @@ def render_kpi(result: TEPResult, *, scenario_default_name: str | None = None,
             f"\n"
             f"ЗНОП: {znop_area:,} м² ({znop_pp:.1f} м²/чел)"
         ).replace(",", " ")
+        # Инженерная инфраструктура (v0.12)
+        if result.engineering is not None and result.engineering.objects:
+            _eng = result.engineering
+            _eng_parts = ", ".join(
+                f"{o.label.split(' (')[0]} ×{o.count}"
+                for o in _eng.objects if o.count > 0
+            )
+            summary_text += (
+                f"\nИнженерия (ЗУ в балансе {_eng.plot_in_balance:,.0f} м²): {_eng_parts}"
+            ).replace(",", " ")
         # v0.9.28.2: разбивка территорий по зонам (если заданы кластеры).
         if result.floor_clusters_detail:
             _total_a = sum(d["area_m2"] for d in result.floor_clusters_detail) or 1.0
@@ -608,15 +618,48 @@ def render_details(result: TEPResult) -> None:
         _show_rows(rows)
 
     # Проезды и инженерия — формулы скрыты (v0.10.19, на время тестирования).
-    with st.expander(":material/route: Проезды и инженерия", expanded=False):
+    with st.expander(":material/route: Проезды", expanded=False):
         rows = [
-            _row("Внутриквартальные и инженерия", result.driveways_intra_quarter_area, fmt_m2),
+            _row("Внутриквартальные", result.driveways_intra_quarter_area, fmt_m2),
             _row("На ЗУ жилой застройки", result.driveways_housing_lot_area, fmt_m2),
         ]
         for r in rows:
             r["Формула"] = ""
             r["Источник"] = ""
         _show_rows(rows)
+
+    # 🔌 Инженерная инфраструктура (v0.12)
+    if result.engineering is not None and result.engineering.objects:
+        eng = result.engineering
+        n_obj = sum(1 for o in eng.objects if o.count > 0)
+        with st.expander(
+            f":material/bolt: Инженерная инфраструктура ({fmt_m2(eng.plot_in_balance)})",
+            expanded=False,
+        ):
+            eng_rows = []
+            for o in eng.objects:
+                if o.count <= 0:
+                    continue
+                cap = (
+                    f"{o.capacity:g} {o.capacity_unit}"
+                    if o.capacity and o.capacity_unit else "—"
+                )
+                eng_rows.append({
+                    "Объект": o.label,
+                    "Кол-во": o.count,
+                    "Мощность (1 шт.)": cap,
+                    "ЗУ (1 шт.), м²": f"{o.plot_each:,.0f}".replace(",", " "),
+                    "ЗУ всего, м²": f"{o.plot_total:,.0f}".replace(",", " "),
+                    "В балансе": "да" if o.in_balance else "только потребность",
+                })
+            st.dataframe(pd.DataFrame(eng_rows), hide_index=True, use_container_width=True)
+            cooking_lbl = "электроплиты" if eng.cooking == "electric" else "газовые плиты"
+            st.caption(
+                f"Приготовление пищи: **{cooking_lbl}**. В баланс входит "
+                f"**{fmt_m2(eng.plot_in_balance)}** "
+                f"(всего по объектам {fmt_m2(eng.plot_total_all)}). "
+                f"«Только потребность» — объект считается, но ЗУ вне баланса."
+            )
 
     # ⚖️ Баланс территории (детализация). v0.9.17: диаграмма теперь в
     # KPI-блоке, здесь — табличная детализация на случай нужды.
@@ -652,6 +695,9 @@ def render_details(result: TEPResult) -> None:
             "znop": result.znop_area.value,
             "intra_quarter_driveways": result.driveways_intra_quarter_area.value,
             "parking_multilevel": result.parking_multilevel_area.value,
+            "engineering_plot": (
+                result.engineering.plot_total_all if result.engineering else 0.0
+            ),
         }
 
         for name, val in sorted(b.components.items(), key=lambda kv: -kv[1]):
@@ -667,6 +713,7 @@ def render_details(result: TEPResult) -> None:
                 "parking_multilevel": "Многоуровневые паркинги",
                 "built_in_greening": "Озеленение ВПП",
                 "custom_objects": "Пользовательские объекты",
+                "engineering_plot": "Инженерная инфраструктура",
             }.get(name, name)
             req = required_map.get(name, val)
             if req is None:
@@ -764,6 +811,7 @@ def render_details(result: TEPResult) -> None:
                 _eco_row("Парковки соцобъектов", cb.social_parking),
                 _eco_row("Спортивные сооружения", cb.sport),
                 _eco_row("Пользовательские объекты", cb.custom_objects),
+                _eco_row("Инженерная инфраструктура", cb.engineering),
                 {"Статья": "— Σ зданий и сооружений", "Баллы": f"{cb.shell_total:,.0f}".replace(",", " ")},
                 _eco_row("Сети", cb.networks),
                 _eco_row("Благоустройство", cb.landscaping),
@@ -942,6 +990,7 @@ def _render_balance_bar(result: TEPResult) -> None:
         "intra_quarter_driveways": "Проезды",
         "parking_multilevel": "Р. многоур.",
         "custom_objects": "Доп. об.",
+        "engineering_plot": "Инж. инфр.",
     }
     # Цвета по типам — деловая палитра
     colors = {
@@ -954,6 +1003,7 @@ def _render_balance_bar(result: TEPResult) -> None:
         "Проезды":                 "#B8B8B8",
         "Р. многоур.":             "#50E3C2",
         "Доп. об.":                "#BD10E0",
+        "Инж. инфр.":              "#8B5E3C",
         "Резерв":                  "#D5E8D4",
     }
     rows = []

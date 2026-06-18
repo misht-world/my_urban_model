@@ -7,6 +7,11 @@ from urban_model.models.parking import ParkingConfig, ParkingBreakdown
 from urban_model.models.built_in import BuiltInArea
 from urban_model.models.cluster import FloorCluster
 from urban_model.models.custom_object import CustomObject
+from urban_model.models.engineering import (
+    EngineeringSpec,
+    EngineeringObject,
+    EngineeringResult,
+)
 
 __all__ = [
     "TEPField",
@@ -23,4 +28,7 @@ __all__ = [
     "BuiltInArea",
     "FloorCluster",
     "CustomObject",
+    "EngineeringSpec",
+    "EngineeringObject",
+    "EngineeringResult",
 ]

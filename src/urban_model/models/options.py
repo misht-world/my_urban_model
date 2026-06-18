@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from urban_model.models.built_in import BuiltInArea
 from urban_model.models.cluster import FloorCluster
 from urban_model.models.custom_object import CustomObject
+from urban_model.models.engineering import EngineeringSpec
 from urban_model.models.parking import ParkingConfig
 from urban_model.models.social import KindergartenSpec, SchoolSpec, SportFacilitiesSpec
 
@@ -70,6 +71,15 @@ class CalculationOptions(BaseModel):
     include_intra_driveways: bool = Field(
         default=True, description="Учитывать внутриквартальные проезды в балансе"
     )
+
+    # Инженерная инфраструктура (v0.12): ТП/РТП/котельная/ГРП/ОСПС/насосная.
+    # По умолчанию включено — объекты считаются и изымают площадь из баланса.
+    # Тонкая настройка (какие объекты «только потребность», тип плит, override
+    # нагрузок) — в `engineering`.
+    include_engineering: bool = Field(
+        default=True, description="Учитывать инженерную инфраструктуру в балансе"
+    )
+    engineering: EngineeringSpec = Field(default_factory=EngineeringSpec)
 
     # v0.8.7: «мягкие» нормативы — пользователь может отключить проверку.
     # На малых кварталах (< 0.5 га) норматив 25% озеленения и норматив

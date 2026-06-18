@@ -22,6 +22,7 @@ class CostBreakdown(BaseModel):
     social_parking: float = Field(0.0, description="Парковки ДОО/СОШ (открытые на ЗУ соцобъекта)")
     sport: float = Field(0.0, description="Плоскостные спорт. сооружения (ВРИ 5.1.3)")
     custom_objects: float = Field(0.0, description="Кастомные объекты (офис/ФОК/поликлиника)")
+    engineering: float = Field(0.0, description="Инженерная инфраструктура (ТП/котельная/ОСПС…)")
 
     # Подытоги
     shell_total: float = Field(0.0, description="Σ зданий и сооружений")

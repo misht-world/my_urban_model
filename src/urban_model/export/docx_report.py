@@ -275,7 +275,7 @@ _PRETTY_BALANCE = {
     "school_plot": "СОШ", "sport_facilities": "Спорт",
     "social_parking_plot": "Парк. соцобъектов", "znop": "ЗНОП",
     "intra_quarter_driveways": "Проезды", "parking_multilevel": "Многоур. паркинги",
-    "custom_objects": "Доп. объекты",
+    "custom_objects": "Доп. объекты", "engineering_plot": "Инж. инфраструктура",
 }
 
 

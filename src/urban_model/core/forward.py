@@ -21,6 +21,7 @@ from urban_model.calculations import (
     balance,
     clusters,
     driveways,
+    engineering,
     greening,
     housing,
     kindergarten,
@@ -387,15 +388,40 @@ def compute_tep_for_kit(
     open_space_per_place = norms.resolve("parking.open_space_per_place")
     soc_park_area = soc_park.total_places * open_space_per_place
 
+    # === Инженерная инфраструктура (v0.12) ===
+    # Считается здесь (после соцобъектов, до знаменателя озеленения), т.к. её
+    # ЗУ исключается из базы 25%-норматива наравне с ДОО/СОШ/спортом.
+    # ТП дополнительно ставится на каждый ФИЗИЧЕСКИ размещаемый соцобъект
+    # (ДОО/СОШ/поликлиника). Объекты «только потребность» размещаются вне
+    # квартала → ТП на них здесь не нужна. Поликлиника = CustomObject c ВРИ 3.4*.
+    n_kg_obj = len(kg_buckets) if (options.include_kindergarten and not _kg_only_demand) else 0
+    n_sch_obj = len(sch_buckets) if (options.include_school and not _sch_only_demand) else 0
+    n_med_custom = sum(
+        1 for o in options.custom_objects
+        if (o.vri_code or "").strip().startswith("3.4")
+    )
+    eng_result = engineering.compute_engineering(
+        apartments_area=apartments_area_v,
+        population=pop_v,
+        n_social_objects=n_kg_obj + n_sch_obj + n_med_custom,
+        norms=norms,
+        spec=options.engineering,
+    )
+    # В баланс/озеленение инженерка входит, только если include_engineering=True.
+    eng_plot_in_balance = (
+        eng_result.plot_in_balance if options.include_engineering else 0.0
+    )
+
     # === Озеленение жилого ЗУ (нужно до housing_lot) ===
     green_ratio = norms.resolve("greening.housing_per_apartments")
     green_housing_v = greening.housing_greening_area(apartments_area_v, green_ratio)
     quarter_share = norms.resolve("greening.quarter_min_share")
     # Из знаменателя 25%-норматива озеленения исключаем все «нежилые» ЗУ:
-    # ДОО, СОШ, спорт, парковки соцобъектов.
+    # ДОО, СОШ, спорт, парковки соцобъектов, инженерную инфраструктуру.
     green_quarter_req_v = greening.quarter_greening_required(
         site.area_m2,
-        kg_plot_in_balance + sch_plot_in_balance + sport_plot_in_balance + soc_park_area,
+        kg_plot_in_balance + sch_plot_in_balance + sport_plot_in_balance
+        + soc_park_area + eng_plot_in_balance,
         quarter_share,
     )
 
@@ -599,6 +625,7 @@ def compute_tep_for_kit(
         "znop": znop_in_balance,
         "intra_quarter_driveways": drive_intra_in_balance,
         "parking_multilevel": parking_ml_footprint_in_balance,
+        "engineering_plot": eng_plot_in_balance,
     }
     if custom_total_plot > 0:
         components["custom_objects"] = custom_total_plot
@@ -1112,6 +1139,7 @@ def compute_tep_for_kit(
         built_in_vri_code=bi_vri,
         effective_floors=floors_eff,
         floor_clusters_detail=floor_clusters_detail,
+        engineering=eng_result,
         warnings=warnings,
     )
 

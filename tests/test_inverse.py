@@ -129,7 +129,14 @@ def test_density_norm_identified_as_limiting_factor():
     n = load_normatives("spb")
     r = solve_max_kit(
         Site(area_m2=500_000),
-        CalculationOptions(floors=12, planning_doc=True, parking=ParkingConfig(mode="all_open")),
+        # v0.12: инженерка отключена, чтобы изолировать сценарий «плотность
+        # высвобождает землю → большой резерв» (иначе инженерная
+        # инфраструктура заполняет этот резерв на крупном участке).
+        CalculationOptions(
+            floors=12, planning_doc=True,
+            parking=ParkingConfig(mode="all_open"),
+            include_engineering=False,
+        ),
         n,
     )
     # плотность у норматива

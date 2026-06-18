@@ -136,6 +136,7 @@ def slide_balance(deck, tep: TEPResult, name: str):
         "sport_facilities": "Спорт", "social_parking_plot": "Парковки соц.",
         "znop": "Озеленение", "intra_quarter_driveways": "Проезды",
         "parking_multilevel": "Паркинг МУ", "custom_objects": "Доп. объекты",
+        "engineering_plot": "Инж. инфраструктура",
     }
     rows = []
     for nm, val in sorted(b.components.items(), key=lambda kv: -kv[1]):

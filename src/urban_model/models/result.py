@@ -11,6 +11,8 @@ from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from urban_model.models.engineering import EngineeringResult
+
 # P0-4: ленивый импорт EconomicMetrics. economy/result.py не импортирует
 # ничего из models, поэтому прямой импорт работает, но создаёт жёсткую
 # связность: поломка в economy уронит весь TEPResult. TYPE_CHECKING-импорт
@@ -150,6 +152,11 @@ class TEPResult(BaseModel):
     # GFA_i, площадь квартир_i, пятно_i, себестоимость жилья_i).
     effective_floors: float | None = None
     floor_clusters_detail: list[dict[str, Any]] = Field(default_factory=list)
+
+    # Инженерная инфраструктура (v0.12). None — не считалась (старые расчёты /
+    # unit-тесты ядра). При include_engineering=False объекты считаются, но
+    # plot_in_balance=0.
+    engineering: "EngineeringResult | None" = None
 
     # Ограничивающий фактор (для обратного расчёта)
     limiting_factor: str | None = None

@@ -15,6 +15,11 @@ from urban_model.calculations.vpp import VppMode
 from urban_model.models import CalculationOptions, FloorCluster, Site
 from urban_model.models.built_in import BuiltInArea
 from urban_model.models.custom_object import CustomObject
+from urban_model.models.engineering import (
+    ENGINEERING_KEYS,
+    ENGINEERING_LABELS,
+    EngineeringSpec,
+)
 from urban_model.models.parking import ParkingConfig
 from urban_model.models.social import KindergartenSpec, SchoolSpec, SportFacilitiesSpec
 
@@ -195,7 +200,15 @@ def render_params_tab() -> UserInputs:
                 value=True, key="include_vpp",
             )
             include_intra = st.checkbox(
-                ":material/route: Внутриквартальные проезды и инженерия", value=True, key="include_intra_driveways",
+                ":material/route: Внутриквартальные проезды", value=True, key="include_intra_driveways",
+            )
+            include_engineering = st.checkbox(
+                ":material/bolt: Инженерная инфраструктура", value=True,
+                key="include_engineering",
+                help=(
+                    "ТП/РТП, котельная/ГРП, ОСПС/насосная (ВРИ 3.1). Каждый "
+                    "объект занимает свой ЗУ. Раньше был неявно в проездах."
+                ),
             )
             include_custom = st.checkbox(
                 ":material/inventory_2: Дополнительные объекты", value=False, key="include_custom_objects",
@@ -224,6 +237,7 @@ def render_params_tab() -> UserInputs:
     vpp_auto = False
     intra_override = None
     custom_objects_list: list = []
+    engineering_spec = EngineeringSpec()
     residential_class = "comfort"
 
     # Активные тайлы: (key, render-callable). Раскладываются по 2 столбцам.
@@ -237,6 +251,7 @@ def render_params_tab() -> UserInputs:
     # v0.10.19: плитка настроек проездов СКРЫТА (на время тестирования —
     # детали расчёта проездов пользователю знать не нужно). Флаг include_intra
     # продолжает учитываться в расчёте, доля — по нормативу (override=None).
+    if include_engineering: active_tiles.append(("engineering", _render_engineering_tile))
     if include_custom:   active_tiles.append(("custom", _render_custom_objects_tile))
     if include_economy:  active_tiles.append(("economy", _render_economy_tile))
 
@@ -260,7 +275,7 @@ def render_params_tab() -> UserInputs:
             # v0.10.18: «широкие» плитки (parking + custom_objects) рендерятся
             # на ВСЮ ширину правой колонки — там много контролов, в 2-кол
             # сетке они сжимаются. Остальные — стандартная 2-кол сетка.
-            WIDE_KEYS = {"parking", "custom", "vpp"}
+            WIDE_KEYS = {"parking", "custom", "vpp", "engineering"}
             narrow = [(k, fn) for k, fn in active_tiles if k not in WIDE_KEYS]
             wide = [(k, fn) for k, fn in active_tiles if k in WIDE_KEYS]
             results: dict[str, object] = {}
@@ -279,6 +294,7 @@ def render_params_tab() -> UserInputs:
                 znop_pp_override, znop_total_override, znop_only_demand = results["znop"]
             vpp_request = results.get("vpp", vpp_request)
             intra_override = results.get("intra", intra_override)
+            engineering_spec = results.get("engineering", engineering_spec)
             custom_objects_list = results.get("custom", custom_objects_list)
             residential_class = results.get("economy", residential_class)
 
@@ -295,6 +311,8 @@ def render_params_tab() -> UserInputs:
         include_parking=include_parking,
         include_znop=include_znop,
         include_intra_driveways=include_intra,
+        include_engineering=include_engineering,
+        engineering=engineering_spec,
         kindergarten=kg_spec,
         school=school_spec,
         sport_facilities=sport_spec,
@@ -388,6 +406,76 @@ def _render_intra_driveways_tile() -> float | None:
             key="drive_intra_pct",
         )
         return intra_pct / 100
+
+
+def _render_engineering_tile() -> EngineeringSpec:
+    """Плитка инженерной инфраструктуры (v0.12).
+
+    Управление: тип плит (электро/газ), раскрывающийся список 6 объектов с
+    переключателем «только потребность» по каждому, advanced-override нагрузок.
+    Возвращает EngineeringSpec.
+    """
+    with st.container(border=True):
+        _tile_header(":material/bolt: Инженерная инфраструктура", "include_engineering")
+        st.caption(
+            "ТП/РТП (электро), котельная/ГРП (тепло+газ), ОСПС/насосная "
+            "(водоотведение). Количество и площади считаются от площади квартир, "
+            "населения и числа соцобъектов."
+        )
+
+        # --- Приготовление пищи ---
+        cooking_label = st.radio(
+            "Приготовление пищи",
+            ["Электроплиты", "Газовые плиты"],
+            index=0, horizontal=True, key="eng_cooking",
+            help=(
+                "Тип плит влияет на электрическую нагрузку (ТП) и газоснабжение. "
+                "Электроплиты — текущий режим."
+            ),
+        )
+        cooking = "electric" if cooking_label == "Электроплиты" else "gas"
+        if cooking == "gas":
+            st.caption(
+                ":material/info: Демо-режим: расчёт газового варианта пока "
+                "идентичен электрическому — коэффициенты будут уточнены."
+            )
+
+        # --- Список объектов с режимом «только потребность» ---
+        st.markdown("**Учитывать ЗУ в балансе** (снимите — объект «только потребность»):")
+        demand_only: list[str] = []
+        grid = st.columns(2, gap="small")
+        for i, key in enumerate(ENGINEERING_KEYS):
+            with grid[i % 2]:
+                in_balance = st.checkbox(
+                    ENGINEERING_LABELS[key], value=True, key=f"eng_inbal_{key}",
+                    help="Снято — объект считается, но его ЗУ не изымается из "
+                         "баланса (размещается вне квартала / городские сети).",
+                )
+                if not in_balance:
+                    demand_only.append(key)
+
+        # --- Advanced: override удельных нагрузок ---
+        with st.expander("Удельные нагрузки (по умолчанию — норматив)"):
+            use_q = st.checkbox("Задать вручную", value=False, key="eng_q_override")
+            q_heat = q_water = None
+            if use_q:
+                q_heat = float(st.number_input(
+                    "Тепловая нагрузка, кВт/м² квартир",
+                    min_value=0.02, max_value=0.30, value=0.10, step=0.01,
+                    key="eng_q_heat",
+                ))
+                q_water = float(st.number_input(
+                    "Водоотведение, л/чел·сут",
+                    min_value=100.0, max_value=400.0, value=230.0, step=10.0,
+                    key="eng_q_water",
+                ))
+
+    return EngineeringSpec(
+        cooking=cooking,
+        demand_only=demand_only,
+        q_heat_override=q_heat,
+        q_water_override=q_water,
+    )
 
 
 def _render_essentials() -> tuple[Site, int, bool, "float | None", bool, bool, list]:

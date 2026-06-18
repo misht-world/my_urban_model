@@ -191,11 +191,41 @@ def calc_cost(tep, options, norms: Normatives) -> CostBreakdown:
         else:
             cost_custom += floor_area * c_vpp  # по умолчанию — коммерция
 
+    # --- Инженерная инфраструктура (v0.12) ---
+    # Себестоимость по объектам (ориентиры в у.е., уточнить по НЦС). Объекты
+    # «только потребность» (in_balance=False) строит город/иной инвестор —
+    # симметрично ДОО/СОШ only_demand, их себестоимость к нам не относится.
+    cost_engineering = 0.0
+    eng = getattr(tep, "engineering", None)
+    if eng is not None:
+        _ec = "economy.engineering_cost"
+        rate_tp = float(norms.resolve(f"{_ec}.tp_per_object"))
+        rate_rtp = float(norms.resolve(f"{_ec}.rtp_per_object"))
+        rate_boiler = float(norms.resolve(f"{_ec}.boiler_per_mw"))
+        rate_grp = float(norms.resolve(f"{_ec}.grp_per_object"))
+        rate_osps = float(norms.resolve(f"{_ec}.osps_per_m3day"))
+        rate_pump = float(norms.resolve(f"{_ec}.pump_per_object"))
+        for o in eng.objects:
+            if not o.in_balance:
+                continue  # объект вне квартала — строит не застройщик
+            if o.key == "tp":
+                cost_engineering += o.count * rate_tp
+            elif o.key == "rtp":
+                cost_engineering += o.count * rate_rtp
+            elif o.key == "boiler":
+                cost_engineering += o.count * (o.capacity or 0.0) * rate_boiler
+            elif o.key == "grp":
+                cost_engineering += o.count * rate_grp
+            elif o.key == "osps":
+                cost_engineering += o.count * (o.capacity or 0.0) * rate_osps
+            elif o.key == "pump":
+                cost_engineering += o.count * rate_pump
+
     # --- Подытоги ---
     shell_total = (
         cost_residential + cost_vpp + cost_kg + cost_sch
         + cost_open + cost_ml + cost_ug
-        + cost_soc_park + cost_sport + cost_custom
+        + cost_soc_park + cost_sport + cost_custom + cost_engineering
     )
     networks = shell_total * pct_networks
     landscaping = shell_total * pct_landscape
@@ -221,6 +251,7 @@ def calc_cost(tep, options, norms: Normatives) -> CostBreakdown:
         social_parking=cost_soc_park,
         sport=cost_sport,
         custom_objects=cost_custom,
+        engineering=cost_engineering,
         shell_total=shell_total,
         networks=networks,
         landscaping=landscaping,

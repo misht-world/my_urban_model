@@ -48,6 +48,7 @@ def chart_balance(tep: TEPResult) -> BytesIO | None:
         "intra_quarter_driveways": ("Проезды", _CC["driveways"]),
         "parking_multilevel": ("Паркинг МУ", _CC["parking"]),
         "custom_objects": ("Доп. объекты", _CC["engineering"]),
+        "engineering_plot": ("Инж. инфр.", _CC["engineering"]),
     }
     items = []
     for name, val in sorted(b.components.items(), key=lambda kv: -kv[1]):
