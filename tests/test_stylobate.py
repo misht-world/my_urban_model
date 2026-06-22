@@ -97,6 +97,32 @@ def test_parking_suitability_matrix_loads(spb):
         assert all(0.0 <= v <= 1.0 for v in m.values())
 
 
+def test_parking_caps_matrix_loads(spb):
+    for cls in ("economy", "comfort", "business"):
+        caps = spb.resolve("economy.parking_caps", residential_class=cls)
+        assert set(caps.keys()) == {"open", "multilevel", "underground", "stylobate"}
+        assert all(0.0 <= v <= 1.0 for v in caps.values())
+    # Эконом: подземка жёстко ограничена; бизнес — свободно
+    eco = spb.resolve("economy.parking_caps", residential_class="economy")
+    biz = spb.resolve("economy.parking_caps", residential_class="business")
+    assert eco["underground"] <= 0.25
+    assert biz["underground"] >= 0.9
+
+
+def test_economy_recommendations_respect_underground_cap(spb, site):
+    """Эконом-рекомендации не предлагают много подземки (потолок 20%)."""
+    from urban_model.optimize.pareto import generate_pareto_recommendations, _parking_shares
+    base = solve_max_kit(site, CalculationOptions(floors=14, residential_class="economy"), spb)
+    bundle = generate_pareto_recommendations(
+        site, CalculationOptions(floors=14, residential_class="economy"),
+        spb, base, n_trials=120, seed=7,
+    )
+    cap = spb.resolve("economy.parking_caps", residential_class="economy")["underground"]
+    for r in bundle.recommendations:
+        ug_share = _parking_shares(r.tep)["underground"]
+        assert ug_share <= cap + 0.03, f"{r.label}: подземка {ug_share:.2f} > потолка {cap}"
+
+
 def test_developer_recommendation_present(spb, site):
     from urban_model.optimize.pareto import generate_pareto_recommendations
     base = solve_max_kit(site, CalculationOptions(floors=14, residential_class="comfort"), spb)

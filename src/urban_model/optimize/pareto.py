@@ -186,6 +186,34 @@ def _parking_rationality(tep: TEPResult, residential_class: str, norms) -> float
     )
 
 
+def _parking_shares(tep: TEPResult) -> dict[str, float]:
+    """Итоговые доли типов парковки от ОБЩЕГО числа м/м (v0.12.7)."""
+    o = float(tep.parking_open_places.value or 0)
+    m = float(tep.parking_multilevel_places.value or 0)
+    u = float(tep.parking_underground_places.value or 0)
+    s = float(getattr(tep, "parking_stylobate_places", None).value or 0) \
+        if getattr(tep, "parking_stylobate_places", None) is not None else 0.0
+    total = o + m + u + s
+    if total <= 0:
+        return {"open": 0.0, "multilevel": 0.0, "underground": 0.0, "stylobate": 0.0}
+    return {
+        "open": o / total, "multilevel": m / total,
+        "underground": u / total, "stylobate": s / total,
+    }
+
+
+def _violates_parking_caps(tep: TEPResult, caps: dict | None, tol: float = 0.02) -> bool:
+    """True если итоговая доля какого-либо типа превышает потолок класса (v0.12.7)."""
+    if not caps:
+        return False
+    sh = _parking_shares(tep)
+    for key, frac in sh.items():
+        cap = float(caps.get(key, 1.0))
+        if frac > cap + tol:
+            return True
+    return False
+
+
 def _robustness_score(tep: TEPResult) -> float:
     """«Крепость» решения 0…1 (v0.12.2): 1 = надёжно, 0 = хрупко.
 
@@ -430,6 +458,23 @@ def _select_three(
         if filtered:
             feasible = filtered
 
+    # v0.12.7: жёсткие потолки долей по классу жилья — отсев нереалистичных
+    # миксов (напр. много подземки в Экономе). С откатом: если на плотном
+    # участке иначе невозможно (пул опустел) — оставляем как есть.
+    _caps = None
+    if norms is not None:
+        try:
+            _caps = norms.resolve(
+                "economy.parking_caps",
+                residential_class=getattr(base_options, "residential_class", "comfort"),
+            )
+        except (KeyError, TypeError, ValueError):
+            _caps = None
+    if _caps:
+        capped = [r for r in feasible if not _violates_parking_caps(r.tep, _caps)]
+        if capped:
+            feasible = capped
+
     with_econ = [r for r in feasible if r.tep.economy is not None]
 
     # Заготовим отсортированные пулы для каждого критерия
@@ -564,6 +609,7 @@ def _build_search_space(
     constraints: ParetoConstraints,
     has_clusters: bool = False,
     vary_zones: bool = False,
+    caps: dict | None = None,
 ) -> SearchSpace:
     """SearchSpace с учётом пользовательских ограничений.
 
@@ -585,13 +631,18 @@ def _build_search_space(
         # Запретили всё — оставляем хотя бы all_open, иначе ничего не построится
         parking_modes = ["all_open"]
 
+    # v0.12.7: верхние границы диапазонов перебора — из потолков класса
+    # (caps). Это мягкая направляющая для Optuna (жёсткую гарантию даёт фильтр
+    # рекомендаций); сужает зону поиска под реалистичные для класса миксы.
+    def _cap(key: str, default: float) -> float:
+        return float(caps.get(key, default)) if caps else default
+
     # Диапазоны долей: если тип запрещён — фиксируем 0..0
-    ug_range = (0.0, 1.0) if constraints.allow_underground else (0.0, 0.0)
-    ml_range = (0.0, 0.5) if constraints.allow_multilevel else (0.0, 0.0)
-    # Open: минимум 12.5% (норматив). Если разрешено всё подземное — открытые
-    # могут быть на минимуме; если же открытые запрещены — не получится
-    # (норматив требует ≥12.5%), здесь open_share_range игнорируется.
-    open_range = (0.125, 0.5) if constraints.allow_open else (0.125, 0.125)
+    ug_range = (0.0, _cap("underground", 1.0)) if constraints.allow_underground else (0.0, 0.0)
+    ml_range = (0.0, _cap("multilevel", 0.5)) if constraints.allow_multilevel else (0.0, 0.0)
+    # Open: минимум 12.5% (норматив). Верх — по потолку класса.
+    open_range = (0.125, max(0.125, _cap("open", 0.5))) if constraints.allow_open else (0.125, 0.125)
+    styl_cap = _cap("stylobate", 0.7)
 
     return SearchSpace(
         # При кластерах глобальная этажность не варьируется — её определяют зоны.
@@ -603,8 +654,8 @@ def _build_search_space(
         parking_underground_share_range=ug_range,
         multilevel_levels_range=(1, 5) if constraints.allow_multilevel else None,
         underground_levels_range=(1, 3) if constraints.allow_underground else None,
-        # v0.12.2: даём Optuna исследовать стилобат (0…70% жилищной парковки).
-        parking_stylobate_share_range=(0.0, 0.7) if constraints.allow_stylobate else None,
+        # v0.12.2/v0.12.7: стилобат — диапазон до потолка класса.
+        parking_stylobate_share_range=(0.0, styl_cap) if constraints.allow_stylobate else None,
         # v0.9.4: ЗНОП НЕ варьируется в Парето — он считается по нормативу
         # piecewise(КИТ ПЗЗ). Принудительный ЗНОП имеет смысл ТОЛЬКО когда
         # бисекция упирается в потолок КИТ; если КИТ ниже нормативной ступени,
@@ -655,10 +706,19 @@ def generate_pareto_recommendations(
             ]
         })
 
+    # v0.12.7: потолки долей парковки по классу жилья — направляют перебор.
+    try:
+        _pcaps = norms.resolve(
+            "economy.parking_caps",
+            residential_class=getattr(base_options, "residential_class", "comfort"),
+        )
+    except (KeyError, TypeError, ValueError):
+        _pcaps = None
     space = _build_search_space(
         constraints,
         has_clusters=bool(base_options.floor_clusters),
         vary_zones=vary_zones,
+        caps=_pcaps,
     )
     report: OptimizationReport = optimize_max_apartments(
         site=site,
