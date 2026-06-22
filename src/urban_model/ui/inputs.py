@@ -169,15 +169,18 @@ def render_params_tab() -> UserInputs:
             '<div class="params-col-input" style="display:none"></div>',
             unsafe_allow_html=True,
         )
+        # v0.12.8: левые карточки получают key → Streamlit вешает класс
+        # .st-key-param_left_card, по нему app.py красит фон/рамку БЕЗ :has()
+        # (прежний :has-селектор не срабатывал в проде).
         # v0.10.19: один блок «Общие сведения о территории» (не expander) —
         # в собственном st.container(border=True) с padding/рамкой.
-        with st.container(border=True):
+        with st.container(border=True, key="param_left_card_essentials"):
             (
                 site, floors, planning_doc, lot_override,
                 enforce_greening_norm, enforce_density_norm, floor_clusters,
             ) = _render_essentials()
 
-        with st.container(border=True):
+        with st.container(border=True, key="param_left_card_include"):
             st.markdown("##### Учитывать в расчёте")
             st.caption("Включите компоненты — справа появятся их настройки.")
             include_kg = st.checkbox(":material/child_care: ДОО — детские сады", value=True, key="include_kg")
@@ -1190,8 +1193,9 @@ def _render_share_slider(
             )
 
     # v0.10.18: чекбокс-замок под слайдером (компактнее, на всю ширину).
+    # v0.12.8: эмодзи 🔒 → material-иконка (единообразие с прочими иконками).
     with c_lock:
-        st.checkbox("🔒 Зафиксировать долю", key=lock_key)
+        st.checkbox(":material/lock: Зафиксировать долю", key=lock_key)
 
     if show_norm_warning and st.session_state[pct_key] < NORM_MIN_OPEN:
         st.markdown(
@@ -1215,9 +1219,10 @@ def _render_parking_custom() -> ParkingConfig:
     _init_parking_state()
 
     st.caption(
-        "Выберите типы парковок и доли. Замок 🔒 рядом со слайдером "
+        "Выберите типы парковок и доли. Замок рядом со слайдером "
         "фиксирует долю — двигаться будут только остальные. "
-        "Сумма всех активных = 100%."
+        "Сумма открытые + многоуровневые + подземные = 100% "
+        "(стилобат — отдельная доля)."
     )
 
     # v0.10.18: чекбоксы списком (раньше в 3 колонках текст переносился
@@ -1226,28 +1231,13 @@ def _render_parking_custom() -> ParkingConfig:
     use_ml = st.checkbox("Многоуровневые наземные", value=True, key=_USE_KEY["ml"])
     use_ug = st.checkbox("Подземные", value=False, key=_USE_KEY["ug"])
     # v0.12.2: стилобат — ОТДЕЛЬНОЕ измерение (доля жилищной парковки), не
-    # участвует в нормировке open+ml+ug=100%. Берёт долю жилищных м/м в
-    # поднятый стилобат; остаток делится между выбранными типами.
+    # участвует в нормировке open+ml+ug=100%. Слайдер — в своей карточке ниже
+    # (как у остальных типов), здесь только чекбокс.
     use_styl = st.checkbox("Стилобатные (поднятая дека)", value=False, key="park_use_styl")
-    stylobate_share = 0.0
-    if use_styl:
-        styl_pct = st.slider(
-            "Доля жилищной парковки в стилобате, %",
-            min_value=0, max_value=100, value=30, step=5,
-            key="park_stylobate_pct",
-            help=(
-                "Стилобат — поднятый над землёй паркинг (35 м²/м.м). Не занимает "
-                "ЗУ квартала и не заглубляется. Это ОТДЕЛЬНАЯ доля жилищных м/м; "
-                "остальные места делятся между типами выше (open+МУ+подземка=100%). "
-                "25% деки под домами снимает 1 этаж жилья там, остальное — "
-                "поднятый двор (озеленение ≤70% по ПЗЗ)."
-            ),
-        )
-        stylobate_share = styl_pct / 100.0
 
-    if not (use_open or use_ml or use_ug):
+    if not (use_open or use_ml or use_ug or use_styl):
         st.error("Выберите хотя бы один тип парковок.")
-        return ParkingConfig(mode="min_open", stylobate_share=stylobate_share)
+        return ParkingConfig(mode="min_open")
 
     # Определяем режим multilevel (Доля / Количество × вместимость)
     ml_use_explicit = False
@@ -1340,6 +1330,28 @@ def _render_parking_custom() -> ParkingConfig:
                 "ug", "Подземные",
                 interactive=can_redistribute or _is_type_locked("ug"),
                 is_remainder_mode=ml_use_explicit,
+            )
+
+    # === Стилобатные (ОТДЕЛЬНОЕ измерение, не входит в open+МУ+подземка=100%) ===
+    stylobate_share = 0.0
+    if use_styl:
+        with st.container(border=True):
+            st.markdown("**Стилобатные (поднятая дека)**")
+            styl_pct = st.slider(
+                "Доля жилищной парковки в стилобате, %",
+                min_value=0, max_value=100, value=30, step=5,
+                key="park_stylobate_pct",
+                help=(
+                    "Отдельная доля ЖИЛИЩНЫХ м/м (не входит в 100% выше). "
+                    "Стилобат — поднятый паркинг (35 м²/м.м), не занимает ЗУ "
+                    "квартала. 25% деки под домами снимает 1 этаж жилья там, "
+                    "остальное — поднятый двор (озеленение ≤70% по ПЗЗ)."
+                ),
+            )
+            stylobate_share = styl_pct / 100.0
+            st.caption(
+                "Не перераспределяет открытые/МУ/подземные — берёт свою долю "
+                "поверх; остальные места делятся между типами выше."
             )
 
     # === Сборка ParkingConfig ===

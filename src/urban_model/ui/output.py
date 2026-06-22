@@ -261,8 +261,9 @@ def render_kpi(result: TEPResult, *, scenario_default_name: str | None = None,
         if result.economy is not None:
             e = result.economy
             summary_text += (
-                f"\n\n— Оценка выгодности —\n"
-                f"Баллы (итого): {e.profit:+,.0f}\n"
+                f"\n\n— Экономика —\n"
+                f"Эконом-индекс: {e.economy_index:.0f} / 100 (100 = окупаемость)\n"
+                f"Условная прибыль: {e.profit:+,.0f} баллов\n"
             ).replace(",", " ")
             _soc = e.cost.kindergarten + e.cost.school + e.cost.social_parking
             if _soc > 0.5 or e.revenue.social_compensation > 0.5:
@@ -371,10 +372,13 @@ def render_kpi(result: TEPResult, *, scenario_default_name: str | None = None,
         open_pl = int(result.parking_open_places.value or 0)
         ml_pl = int(result.parking_multilevel_places.value or 0)
         ug_pl = int(result.parking_underground_places.value or 0)
+        styl_pl = int(getattr(result, "parking_stylobate_places", None).value or 0) \
+            if getattr(result, "parking_stylobate_places", None) is not None else 0
         total_pl = int(result.parking_required_places.value or 0)
         breakdown_parts = []
         if open_pl: breakdown_parts.append(f"откр. {open_pl}")
         if ml_pl:   breakdown_parts.append(f"многоур. {ml_pl}")
+        if styl_pl: breakdown_parts.append(f"стилоб. {styl_pl}")
         if ug_pl:   breakdown_parts.append(f"подз. {ug_pl}")
         c7.metric(
             "Парковки",
@@ -418,61 +422,52 @@ def render_kpi(result: TEPResult, *, scenario_default_name: str | None = None,
             with kpi_col:
                 st.markdown("---")
                 e = result.economy
-                score_help = (
-                    "Баллы выгодности проекта — безразмерный индикатор для "
-                    "сравнения вариантов. Положительные значения = проект "
-                    "выгоднее базовой ситуации; отрицательные = убыточнее."
-                )
+                # v0.12.8: headline — стабильный ЭКОНОМ-ИНДЕКС (100=окупаемость).
+                # Сырые «баллы выгодности»/маржа/ROI убраны в раскрывающийся блок.
                 _social_cost = (
                     e.cost.kindergarten + e.cost.school + e.cost.social_parking
                 )
                 _has_social = _social_cost > 0.5 or e.revenue.social_compensation > 0.5
-                ec1, ec2, ec3, ec4 = st.columns(4)
+                ec1, ec2, ec3 = st.columns(3)
                 ec1.metric(
-                    ":material/payments: Оценка выгодности",
-                    f"{e.profit:+,.0f}".replace(",", " "),
-                    delta=("плюс" if e.profit >= 0 else "минус"),
-                    delta_color=("normal" if e.profit >= 0 else "inverse"),
-                    help=score_help,
+                    ":material/payments: Эконом-индекс",
+                    f"{e.economy_index:.0f} / 100",
+                    help="100 × выручка / себестоимость. 100 = окупаемость; "
+                         "выше — эффективнее. Стабильный показатель модели.",
+                )
+                ec2.metric(
+                    "Выход жилья",
+                    f"{e.sellable_ratio * 100:.0f}%" if e.sellable_ratio else "—",
+                    help="Площадь квартир / общая GFA — доля продаваемого жилья.",
                 )
                 if _has_social:
-                    # v0.9.28.2: соцобъекты вынесены отдельно от прибыли.
-                    ec2.metric(
-                        "Без соц. нагрузки",
-                        f"{e.profit_before_social:+,.0f}".replace(",", " "),
-                        delta=("плюс" if e.profit_before_social >= 0 else "минус"),
-                        delta_color=("normal" if e.profit_before_social >= 0 else "inverse"),
-                        help="Прибыль проекта без социальных обязательств "
-                             "(profit + чистая соц. нагрузка).",
-                    )
                     ec3.metric(
                         "Соц. нагрузка",
                         f"{-e.net_social_burden:+,.0f}".replace(",", " "),
-                        delta=("убыток" if e.net_social_burden > 0 else "плюс"),
+                        delta=("в минус" if e.net_social_burden > 0 else "плюс"),
                         delta_color=("inverse" if e.net_social_burden > 0 else "normal"),
                         help="Себестоимость ДОО/СОШ/соц.парковок за вычетом "
-                             "компенсации города. Отрицательное = тянет проект в минус.",
-                    )
-                    ec4.metric(
-                        "Маржа",
-                        f"{e.margin * 100:.1f}%" if e.revenue.total > 0 else "—",
-                        help="profit / revenue",
+                             "компенсации города (условные баллы).",
                     )
                 else:
-                    ec2.metric(
-                        "Маржа",
-                        f"{e.margin * 100:.1f}%" if e.revenue.total > 0 else "—",
-                        help="profit / revenue",
-                    )
                     ec3.metric(
                         "ROI",
                         f"{e.roi * 100:.1f}%" if e.cost.total > 0 else "—",
-                        help="profit / cost",
+                        help="profit / cost (условные баллы).",
                     )
-                    ec4.metric(
-                        "Cost / Revenue",
-                        f"{int(e.cost.total):,} / {int(e.revenue.total):,}".replace(",", " "),
-                        help="Сумма cost-компонентов и revenue-компонентов в баллах",
+                with st.expander("Технические метрики (условные баллы)"):
+                    st.caption(
+                        "Безразмерные баллы для сравнения вариантов (1 балл ≈ м² "
+                        "жилья 9 эт. монолит). Не денежный прогноз в рублях."
+                    )
+                    st.markdown(
+                        f"• Условная прибыль: **{e.profit:+,.0f}** "
+                        f"(без соц. нагрузки: {e.profit_before_social:+,.0f})  \n"
+                        f"• Маржа: **{e.margin * 100:.1f}%**  ·  ROI: "
+                        f"**{e.roi * 100:.1f}%**  \n"
+                        f"• Себестоимость / Выручка: "
+                        f"**{int(e.cost.total):,} / {int(e.revenue.total):,}**"
+                        .replace(",", " ")
                     )
 
         # === Inline-actions: «Добавить в сравнение» + xlsx (внутри блока) ===
@@ -875,20 +870,20 @@ def render_details(result: TEPResult) -> None:
             st.markdown("**Метрики**")
             mc1, mc2, mc3 = st.columns(3)
             mc1.metric(
-                "Оценка выгодности",
-                f"{e.profit:+,.0f}".replace(",", " "),
-                help="Безразмерный индикатор для сравнения вариантов (revenue − cost).",
+                "Эконом-индекс",
+                f"{e.economy_index:.0f} / 100",
+                help="100 × выручка / себестоимость. 100 = окупаемость; выше — эффективнее.",
             )
             mc2.metric(
+                "Условная прибыль",
+                f"{e.profit:+,.0f}".replace(",", " "),
+                help="Безразмерный индикатор (revenue − cost), баллы.",
+            )
+            mc3.metric(
                 "Прибыль без соц.",
                 f"{e.profit_before_social:+,.0f}".replace(",", " "),
                 help="Прибыль проекта без социальных обязательств "
-                     "(profit + чистая соц. нагрузка). Показывает «чистый» девелопмент.",
-            )
-            mc3.metric(
-                "Запас / м²",
-                f"{e.profit_per_site_m2:+.3f}",
-                help="Прибыль на 1 м² участка — основная метрика для сравнения территорий.",
+                     "(profit + чистая соц. нагрузка). «Чистый» девелопмент.",
             )
 
             mc4, mc5, mc6 = st.columns(3)

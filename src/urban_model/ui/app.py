@@ -302,20 +302,21 @@ st.markdown("""
   /* Чуть меньше пустоты у containers с border */
   div[data-testid="stVerticalBlockBorderWrapper"] {padding: 0.6rem 0.9rem;}
 
-  /* v0.12.1 / v0.12.5: карточки ЛЕВОЙ колонки «Параметры» («Общие сведения о
-     территории» и «Учитывать в расчёте») — ЗАМЕТНО серый фон + акцентная
-     линия слева, чтобы чётко отделить «управление» (что считать) от плиток
-     «настройки» справа. Цвет усилен — прежний #F4F5F7 был почти белым и не
-     читался. Таргет — border-обёртки внутри колонки с маркером .params-col-input.
-     Дублируем фон на вложенный stVerticalBlock на случай, если он перекрывает. */
-  [data-testid="stColumn"]:has(.params-col-input) div[data-testid="stVerticalBlockBorderWrapper"],
-  [data-testid="column"]:has(.params-col-input) div[data-testid="stVerticalBlockBorderWrapper"] {
+  /* v0.12.8: карточки ЛЕВОЙ колонки «Параметры» — серый фон + акцентная линия
+     слева + лёгкая тень, чтобы отделить «управление» (что считать) от плиток
+     «настройки» справа. Прежний :has()-селектор не срабатывал в проде, поэтому
+     таргетим по классу .st-key-<key> (Streamlit вешает его на st.container(key=…)).
+     Класс ставится на сам border-wrapper. */
+  .st-key-param_left_card_essentials,
+  .st-key-param_left_card_include {
       background-color: #E9EEF4 !important;
-      border-color: #CBD5E1 !important;
-      border-left: 3px solid #94A3B8 !important;
+      border: 1px solid #CBD5E1 !important;
+      border-left: 3px solid #7C8BA1 !important;
+      box-shadow: 0 1px 4px rgba(15,23,42,0.10) !important;
   }
-  [data-testid="stColumn"]:has(.params-col-input) div[data-testid="stVerticalBlockBorderWrapper"] > div,
-  [data-testid="column"]:has(.params-col-input) div[data-testid="stVerticalBlockBorderWrapper"] > div {
+  /* Вложенные блоки не перекрывают серый фон белым */
+  .st-key-param_left_card_essentials [data-testid="stVerticalBlock"],
+  .st-key-param_left_card_include [data-testid="stVerticalBlock"] {
       background-color: transparent !important;
   }
 
