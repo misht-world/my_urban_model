@@ -680,21 +680,20 @@ def _rec_options_from_params(
         # сценариями уровни сбрасываются в дефолты, что путает в KPI-карточке.
         ml_lvl = int(params.get("multilevel_levels", base_options.parking.multilevel_levels))
         ug_lvl = int(params.get("underground_levels", base_options.parking.underground_levels))
-        # v0.12.2: стилобат — ортогональная доля, восстанавливаем всегда.
+        # v0.12.2/v0.12.9: стилобат — 4-й тип, восстанавливаем всегда.
         styl_sh = float(params.get(
             "parking_stylobate_share",
             getattr(base_options.parking, "stylobate_share", 0.0),
         ))
         if mode == "custom":
-            # v0.9.10: нормализация долей перед созданием ParkingConfig.
-            # Optuna в `_build_options_for_trial` сэмплирует доли независимо,
-            # в `sampled` (params) попадает раундед-версия с суммой 1.001/0.999.
+            # v0.12.9: нормализуем ВСЕ ЧЕТЫРЕ доли к сумме 1.0 (стилобат —
+            # полноценный тип; sampled-доли могут быть округлены 0.999/1.001).
             o = float(params.get("parking_open_share", base_options.parking.open_share))
             m = float(params.get("parking_ml_share", base_options.parking.multilevel_share))
             u = float(params.get("parking_ug_share", base_options.parking.underground_share))
-            s = o + m + u
+            s = o + m + u + styl_sh
             if s > 0:
-                o, m, u = o / s, m / s, u / s
+                o, m, u, styl_sh = o / s, m / s, u / s, styl_sh / s
             opts.parking = ParkingConfig(
                 mode="custom",
                 open_share=o, multilevel_share=m, underground_share=u,

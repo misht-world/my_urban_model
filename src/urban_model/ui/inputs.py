@@ -1014,7 +1014,8 @@ NORM_MIN_OPEN = 12.5  # % — норматив СПб (parking.open_share_min)
 # Слайдер показывается интерактивным только если включён И не заблокирован И
 # есть хотя бы один другой свободный слайдер для перераспределения.
 
-_ALL_TYPES = ["open", "ml", "ug"]
+# v0.12.9: стилобат — полноценный 4-й тип в общей сумме = 100%.
+_ALL_TYPES = ["open", "ml", "ug", "styl"]
 _PCT_KEY = {t: f"park_{t}_pct" for t in _ALL_TYPES}
 _USE_KEY = {t: f"park_use_{t}" for t in _ALL_TYPES}
 _LOCK_KEY = {t: f"park_{t}_locked" for t in _ALL_TYPES}
@@ -1078,9 +1079,11 @@ def _init_parking_state() -> None:
         "park_open_pct": 50.0,
         "park_ml_pct": 50.0,
         "park_ug_pct": 0.0,
+        "park_styl_pct": 0.0,
         "park_open_locked": False,
         "park_ml_locked": False,
         "park_ug_locked": False,
+        "park_styl_locked": False,
     }
     for k, v in defaults.items():
         if k not in st.session_state:
@@ -1332,26 +1335,19 @@ def _render_parking_custom() -> ParkingConfig:
                 is_remainder_mode=ml_use_explicit,
             )
 
-    # === Стилобатные (ОТДЕЛЬНОЕ измерение, не входит в open+МУ+подземка=100%) ===
-    stylobate_share = 0.0
+    # === Стилобатные (v0.12.9: полноценный 4-й тип, в общей сумме 100%) ===
     if use_styl:
         with st.container(border=True):
             st.markdown("**Стилобатные (поднятая дека)**")
-            styl_pct = st.slider(
-                "Доля жилищной парковки в стилобате, %",
-                min_value=0, max_value=100, value=30, step=5,
-                key="park_stylobate_pct",
-                help=(
-                    "Отдельная доля ЖИЛИЩНЫХ м/м (не входит в 100% выше). "
-                    "Стилобат — поднятый паркинг (35 м²/м.м), не занимает ЗУ "
-                    "квартала. 25% деки под домами снимает 1 этаж жилья там, "
-                    "остальное — поднятый двор (озеленение ≤70% по ПЗЗ)."
-                ),
+            _render_share_slider(
+                "styl", "Стилобатные",
+                interactive=can_redistribute or _is_type_locked("styl"),
+                is_remainder_mode=ml_use_explicit,
             )
-            stylobate_share = styl_pct / 100.0
             st.caption(
-                "Не перераспределяет открытые/МУ/подземные — берёт свою долю "
-                "поверх; остальные места делятся между типами выше."
+                "Поднятый паркинг (35 м²/м.м), не занимает ЗУ квартала. "
+                "25% деки под домами снимает 1 этаж жилья там, остальное — "
+                "поднятый двор (озеленение ≤70% по ПЗЗ)."
             )
 
     # === Сборка ParkingConfig ===
@@ -1361,18 +1357,21 @@ def _render_parking_custom() -> ParkingConfig:
         if (use_ml and not ml_use_explicit) else 0.0
     )
     ug_pct = st.session_state.park_ug_pct if use_ug else 0.0
+    styl_pct_v = st.session_state.park_styl_pct if use_styl else 0.0
 
     if ml_use_explicit:
-        # multilevel — абсолютным числом. open и ug делят остаток.
-        sum_ou = max(open_pct + ug_pct, 0.01)
-        open_share = open_pct / sum_ou
-        ug_share = ug_pct / sum_ou
+        # multilevel — абсолютным числом. open, ug, стилобат делят остаток.
+        sum_rest = max(open_pct + ug_pct + styl_pct_v, 0.01)
+        open_share = open_pct / sum_rest
+        ug_share = ug_pct / sum_rest
+        styl_share = styl_pct_v / sum_rest
         ml_share = 0.0
     else:
-        total = max(open_pct + ml_pct + ug_pct, 0.01)
+        total = max(open_pct + ml_pct + ug_pct + styl_pct_v, 0.01)
         open_share = open_pct / total
         ml_share = ml_pct / total
         ug_share = ug_pct / total
+        styl_share = styl_pct_v / total
 
     try:
         return ParkingConfig(
@@ -1382,11 +1381,11 @@ def _render_parking_custom() -> ParkingConfig:
             underground_share=ug_share,
             multilevel_levels=int(ml_levels),
             multilevel_explicit_places=ml_explicit_places,
-            stylobate_share=stylobate_share,
+            stylobate_share=styl_share,
         )
     except Exception as e:
         st.error(f"Некорректная конфигурация парковок: {e}")
-        return ParkingConfig(mode="min_open", stylobate_share=stylobate_share)
+        return ParkingConfig(mode="min_open")
 
 
 def _render_economy_tile() -> str:

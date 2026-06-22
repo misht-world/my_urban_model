@@ -21,11 +21,13 @@ def site():
 
 
 def _cfg(styl, **kw):
+    # v0.12.9: стилобат — 4-й тип в общей сумме 1.0; open/ug делят остаток.
+    rest = (1.0 - styl) / 2.0
     return CalculationOptions(
         floors=14,
         parking=ParkingConfig(
-            mode="custom", open_share=0.5, multilevel_share=0.0,
-            underground_share=0.5, stylobate_share=styl,
+            mode="custom", open_share=rest, multilevel_share=0.0,
+            underground_share=rest, stylobate_share=styl,
         ),
         **kw,
     )

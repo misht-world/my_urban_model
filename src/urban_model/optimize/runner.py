@@ -189,18 +189,25 @@ def _build_options_for_trial(
         else:
             ug_levels = getattr(opts.parking, "underground_levels", 1) or 1
 
+        # v0.12.9: стилобат — 4-й тип в общей сумме = 1.0. open/ml/ug уже
+        # нормированы к 1 → масштабируем их на (1 − styl), чтобы все четыре
+        # дали 1.0.
+        _scale = max(0.0, 1.0 - styl_share)
+        open_r4 = round(open_r * _scale, 4)
+        ml_r4 = round(ml_r * _scale, 4)
+        ug_r4 = max(0.0, 1.0 - styl_share - open_r4 - ml_r4)
         opts.parking = ParkingConfig(
             mode="custom",
-            open_share=open_r,
-            multilevel_share=ml_r,
-            underground_share=ug_r,
+            open_share=open_r4,
+            multilevel_share=ml_r4,
+            underground_share=ug_r4,
             multilevel_levels=int(ml_levels),
             underground_levels=int(ug_levels),
             stylobate_share=styl_share,
         )
-        sampled["parking_open_share"] = round(open_r, 3)
-        sampled["parking_ml_share"] = round(ml_r, 3)
-        sampled["parking_ug_share"] = round(ug_r, 3)
+        sampled["parking_open_share"] = round(open_r4, 3)
+        sampled["parking_ml_share"] = round(ml_r4, 3)
+        sampled["parking_ug_share"] = round(ug_r4, 3)
         sampled["multilevel_levels"] = int(ml_levels)
     else:
         opts.parking = ParkingConfig(mode=parking_mode, stylobate_share=styl_share)

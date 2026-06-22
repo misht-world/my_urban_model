@@ -267,24 +267,35 @@ def compute_tep_for_kit(
             else Status.OK
         )
 
-    # === Стилобатная парковка (v0.12.2) ===
-    # Стилобат обслуживает долю ЖИЛИЩНОЙ парковки. 25% его деки стоит под
-    # жилыми домами → там 1-й этаж = парковка, не квартиры (теряем 1 этаж
-    # жилья на этом пятне). Размер стилобата зависит от парковки, парковка —
-    # от площади квартир, площадь квартир — от стилобата: решаем локальной
-    # фикс-точкой (эффект ~3% → сходится за пару итераций). По аналогии с
-    # корректировкой встроенного ДОО НЕ перекаскадируем в число мест ДОО
-    # (выше) — погрешность второго порядка незначительна.
+    # === Стилобатная парковка (v0.12.2 / v0.12.9) ===
+    # Стилобат — полноценный 4-й тип: доля от ОБЩЕГО числа м/м (жильё + ВПП +
+    # доп-объекты). Физически обслуживает жильё: 25% деки стоит под жилыми
+    # домами → там 1-й этаж = парковка, не квартиры (теряем 1 этаж жилья).
+    # Размер стилобата зависит от парковки, парковка — от площади квартир,
+    # площадь квартир — от стилобата: решаем локальной фикс-точкой (эффект
+    # ~3% → сходится за пару итераций). По аналогии с корректировкой ДОО НЕ
+    # перекаскадируем в число мест ДОО — погрешность второго порядка мала.
     stylobate_places_v = 0
     stylobate_area_v = 0.0
     _styl_share = float(getattr(options.parking, "stylobate_share", 0.0) or 0.0)
     if _styl_share > 0 and apartments_area_v > 0 and options.include_parking:
         _styl_per_place = norms.resolve("parking.housing.m2_apartments_per_place")
         _styl_apl = norms.resolve("parking.stylobate_area_per_place")
+        # v0.12.9: нежилые парковки (ВПП + доп-объекты) для сайзинга стилобата
+        # от ОБЩЕГО пула. Лёгкий предрасчёт (полные блоки — ниже), не зависит
+        # от площади квартир, поэтому считаем один раз до фикс-точки.
+        _vpp_pp = norms.resolve("parking.vpp.m2_per_place")
+        _add_parking = 0
+        for _b in all_built_ins:
+            _add_parking += math.ceil(_b.area_m2 / _vpp_pp)
+        for _obj in options.custom_objects:
+            _fa = _obj.floor_area_m2 or _obj.plot_area_m2
+            _add_parking += math.ceil(_fa / _vpp_pp)
         _rgfa_base = residential_gfa  # после вычетов ВПП и встроенного ДОО
         for _ in range(6):
             _hreq = math.ceil(apartments_area_v / _styl_per_place) if apartments_area_v > 0 else 0
-            stylobate_places_v = round(_hreq * _styl_share)
+            _total_demand = _hreq + _add_parking
+            stylobate_places_v = round(_total_demand * _styl_share)
             stylobate_area_v = stylobate_places_v * _styl_apl
             apartments_area_v = max(0.0, (_rgfa_base - 0.25 * stylobate_area_v) * apt_ratio)
         residential_gfa = max(0.0, _rgfa_base - 0.25 * stylobate_area_v)

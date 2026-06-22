@@ -61,18 +61,17 @@ class ParkingConfig(BaseModel):
         description="Число уровней подземного паркинга",
     )
 
-    # v0.12.2: стилобатные парковки. Доля ЖИЛИЩНОЙ потребности в м/м,
-    # размещаемая в стилобате (поднятый над землёй 1-уровневый паркинг).
-    # ОРТОГОНАЛЬНА open/ml/ug: сначала из жилищной парковки изымается
-    # stylobate_share, остаток (+ВПП/доп.объекты) делится по mode/долям.
-    # Стилобат не заглубляется, не занимает ЗУ квартала (стоит над пятном
-    # домов на 25% и над двором на 75%), но 25% «съедает» 1 этаж жилья
-    # под собой, а дворовая дека (75%) даёт ≤70% озеленения (ПЗЗ).
+    # v0.12.2 / v0.12.9: стилобатные парковки — ПОЛНОЦЕННЫЙ 4-й тип. Доля от
+    # ОБЩЕГО числа м/м (open+ml+ug+stylobate=1.0 в custom). Стилобат —
+    # поднятый над землёй 1-уровневый паркинг: не заглубляется, не занимает
+    # ЗУ квартала (стоит над пятном домов на 25% и над двором на 75%), но
+    # 25% «съедает» 1 этаж жилья под собой, а дворовая дека (75%) даёт ≤70%
+    # озеленения (ПЗЗ). Физически обслуживает жильё (см. forward.py).
     stylobate_share: float = Field(
         default=0.0,
         ge=0.0,
         le=1.0,
-        description="Доля жилищных м/м в стилобате (0 = без стилобата)",
+        description="Доля стилобата от общего числа м/м (0 = без стилобата)",
     )
 
     # v0.6: альтернативный способ задать многоуровневые парковки —
@@ -94,12 +93,17 @@ class ParkingConfig(BaseModel):
         if self.mode not in valid_modes:
             raise ValueError(f"mode должен быть одним из {valid_modes}")
         if self.mode == "custom":
-            total = self.open_share + self.multilevel_share + self.underground_share
+            # v0.12.9: стилобат — полноценный 4-й тип; все доли в сумме = 1.0
+            # (раньше стилобат был ортогональной долей жилищной парковки).
+            total = (
+                self.open_share + self.multilevel_share
+                + self.underground_share + self.stylobate_share
+            )
             # Tolerance 1e-3 (0.1% доли) — практичная точность; жёсткое 1e-6
             # ловило артефакты fp-арифметики в Optuna-сэмплере.
             if abs(total - 1.0) > 1e-3:
                 raise ValueError(
-                    f"open_share + multilevel_share + underground_share = {total:.4f},"
+                    f"open + multilevel + underground + stylobate = {total:.4f},"
                     " ожидается 1.0 (допуск 0.1%)"
                 )
             # Нормализуем, чтобы сумма точно = 1.0 (для дальнейших расчётов)
@@ -107,6 +111,7 @@ class ParkingConfig(BaseModel):
             self.open_share *= scale
             self.multilevel_share *= scale
             self.underground_share *= scale
+            self.stylobate_share *= scale
         return self
 
 

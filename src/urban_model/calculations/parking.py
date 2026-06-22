@@ -109,12 +109,16 @@ def compute_parking_breakdown(
                 open_rel = open_share_min_v
             open_pl = math.ceil(remaining * open_rel)
         else:
-            open_pl = math.ceil(pool * config.open_share)
-            multilevel_pl = math.floor(pool * config.multilevel_share)
+            # v0.12.9: доли open/ml/ug — от ОБЩЕГО числа м/м (как и стилобат),
+            # т.к. все четыре в сумме = 1.0. Раньше делили «остаток» pool.
+            open_pl = math.ceil(total_required * config.open_share)
+            multilevel_pl = math.floor(total_required * config.multilevel_share)
 
-        # Гарантируем жёсткий минимум открытых (12.5% по нормативу СПб)
-        open_min = math.ceil(pool * open_share_min_v)
+        # Гарантируем жёсткий минимум открытых (12.5% от общего числа по СПб),
+        # но не больше доступного пула (total − стилобат).
+        open_min = math.ceil(total_required * open_share_min_v)
         open_pl = max(open_pl, open_min)
+        open_pl = min(open_pl, pool)  # не больше, чем осталось после стилобата
         # Если из-за минимума суммарно > pool — урезаем многоуровневые
         if open_pl + multilevel_pl > pool:
             multilevel_pl = max(0, pool - open_pl)
