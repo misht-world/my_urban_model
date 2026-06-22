@@ -5,6 +5,7 @@ from __future__ import annotations
 from urban_model.calculations.distribute import (
     choose_n_objects,
     distribute_places_evenly,
+    split_to_allowed_capacities,
 )
 from urban_model.calculations.rounding import round_up_to_multiple
 from urban_model.normatives import Normatives
@@ -21,6 +22,7 @@ def split_into_objects(
     capacity_min: int | None,
     capacity_max: int,
     multiple: int = 5,
+    allowed_capacities: list[int] | None = None,
 ) -> list[int]:
     """Разбить общее число мест на отдельные ДОО максимально равномерно.
 
@@ -44,6 +46,11 @@ def split_into_objects(
     # из-за чего Optuna-размерность `kg_num_objects` и скан числа ДОО были no-op.
     if spec_count:
         return distribute_places_evenly(total_places, int(spec_count), multiple)
+
+    # v0.12.4: режим «только нормативная наполняемость» — вместимости строго
+    # из типового списка СП/КОБр (allowed_capacities), а не произвольным кратным.
+    if allowed_capacities:
+        return split_to_allowed_capacities(total_places, allowed_capacities, capacity_min)
 
     n = choose_n_objects(total_places, capacity_min, capacity_max)
     return distribute_places_evenly(total_places, n, multiple)

@@ -840,6 +840,15 @@ def _render_kg_tile() -> KindergartenSpec:
             key="kg_btype_label",
         )
         kg_btype = "detached" if kg_btype_label == "Отдельно стоящее" else "built_in"
+        kg_strict = st.toggle(
+            "Только нормативная наполняемость",
+            value=False, key="kg_strict_capacity",
+            help=(
+                "Вместимости корпусов ДОО выбираются ТОЛЬКО из типового списка "
+                "(СП / письмо КОБр): 90, 100, …, 350. Иначе — свободная "
+                "разбивка кратно 5."
+            ),
+        )
         # v0.11.0: «Задать число вручную» = только КОЛИЧЕСТВО объектов;
         # наполняемость система считает сама (потребность / число). Вложенная
         # галочка «Задать наполняемость» — задать вместимость вручную.
@@ -874,6 +883,7 @@ def _render_kg_tile() -> KindergartenSpec:
         num_objects=int(kg_num_objects) if kg_num_objects else None,
         capacity_per_object=int(kg_capacity) if kg_capacity else None,
         only_demand=bool(kg_only_demand),
+        strict_capacity=bool(kg_strict),
     )
 
 
@@ -896,6 +906,15 @@ def _render_school_tile() -> SchoolSpec:
         )
         school_sport = st.checkbox(
             "Со спортивным ядром (+0.7 га)", value=True, key="school_sport",
+        )
+        sch_strict = st.toggle(
+            "Только нормативная наполняемость",
+            value=False, key="sch_strict_capacity",
+            help=(
+                "Вместимости корпусов СОШ выбираются ТОЛЬКО из типового списка "
+                "(СП / письмо КОБр): 550, 825, 1100, 1375, 1650, 1925, 2200, "
+                "2475. Иначе — свободная разбивка кратно 25."
+            ),
         )
         # v0.11.0: «Задать число вручную» = только КОЛИЧЕСТВО объектов;
         # наполняемость система считает сама. Вложенная галочка — вручную.
@@ -928,6 +947,7 @@ def _render_school_tile() -> SchoolSpec:
         num_objects=int(sch_num_objects) if sch_num_objects else None,
         capacity_per_object=int(sch_capacity) if sch_capacity else None,
         only_demand=bool(sch_only_demand),
+        strict_capacity=bool(sch_strict),
     )
 
 
@@ -949,28 +969,12 @@ def _render_parking_tile() -> ParkingConfig:
         )
         park_mode = PARK_MODE_LABELS[park_label]
 
-        # v0.12.2: стилобат — ортогональная доля жилищной парковки в поднятом
-        # стилобате (не заглубляется, не занимает ЗУ квартала; 25% деки под
-        # домами = −1 этаж жилья там, дворовая дека даёт ≤70% озеленения).
-        styl_pct = st.slider(
-            "Доля жилищной парковки в стилобате, %",
-            min_value=0, max_value=100, value=0, step=5,
-            key="park_stylobate_pct",
-            help=(
-                "Стилобат — поднятый над землёй паркинг (35 м²/м.м). Не занимает "
-                "ЗУ квартала и не заглубляется. Берёт долю ЖИЛИЩНЫХ м/м; остаток "
-                "делится по выбранному режиму. 25% стилобата под домами снимает "
-                "1 этаж жилья на этом пятне, остальное — поднятый двор."
-            ),
-        )
-        styl_share = styl_pct / 100.0
-
         if park_mode == "min_open":
             st.caption("12.5% открыто (норматив СПб), 87.5% — подземные.")
-            return ParkingConfig(mode="min_open", stylobate_share=styl_share)
+            return ParkingConfig(mode="min_open")
         if park_mode == "all_open":
             st.caption("100% м/м на поверхности — максимальная нагрузка на квартал.")
-            return ParkingConfig(mode="all_open", stylobate_share=styl_share)
+            return ParkingConfig(mode="all_open")
         if park_mode == "preset_50_50":
             ml_levels = st.slider(
                 "Этажность многоуровневого паркинга",
@@ -991,9 +995,8 @@ def _render_parking_tile() -> ParkingConfig:
                 multilevel_share=0.5,
                 underground_share=0.0,
                 multilevel_levels=int(ml_levels),
-                stylobate_share=styl_share,
             )
-        return _render_parking_custom(styl_share)
+        return _render_parking_custom()
 
 
 NORM_MIN_OPEN = 12.5  # % — норматив СПб (parking.open_share_min)
@@ -1200,7 +1203,7 @@ def _render_share_slider(
         )
 
 
-def _render_parking_custom(stylobate_share: float = 0.0) -> ParkingConfig:
+def _render_parking_custom() -> ParkingConfig:
     """Custom-режим парковок (v0.6.2):
        - чекбоксы для включения каждого типа;
        - «🔒 Зафиксировать» для каждого активного типа;
@@ -1222,10 +1225,29 @@ def _render_parking_custom(stylobate_share: float = 0.0) -> ParkingConfig:
     use_open = st.checkbox("Открытые наземные", value=True, key=_USE_KEY["open"])
     use_ml = st.checkbox("Многоуровневые наземные", value=True, key=_USE_KEY["ml"])
     use_ug = st.checkbox("Подземные", value=False, key=_USE_KEY["ug"])
+    # v0.12.2: стилобат — ОТДЕЛЬНОЕ измерение (доля жилищной парковки), не
+    # участвует в нормировке open+ml+ug=100%. Берёт долю жилищных м/м в
+    # поднятый стилобат; остаток делится между выбранными типами.
+    use_styl = st.checkbox("Стилобатные (поднятая дека)", value=False, key="park_use_styl")
+    stylobate_share = 0.0
+    if use_styl:
+        styl_pct = st.slider(
+            "Доля жилищной парковки в стилобате, %",
+            min_value=0, max_value=100, value=30, step=5,
+            key="park_stylobate_pct",
+            help=(
+                "Стилобат — поднятый над землёй паркинг (35 м²/м.м). Не занимает "
+                "ЗУ квартала и не заглубляется. Это ОТДЕЛЬНАЯ доля жилищных м/м; "
+                "остальные места делятся между типами выше (open+МУ+подземка=100%). "
+                "25% деки под домами снимает 1 этаж жилья там, остальное — "
+                "поднятый двор (озеленение ≤70% по ПЗЗ)."
+            ),
+        )
+        stylobate_share = styl_pct / 100.0
 
     if not (use_open or use_ml or use_ug):
         st.error("Выберите хотя бы один тип парковок.")
-        return ParkingConfig(mode="min_open")
+        return ParkingConfig(mode="min_open", stylobate_share=stylobate_share)
 
     # Определяем режим multilevel (Доля / Количество × вместимость)
     ml_use_explicit = False

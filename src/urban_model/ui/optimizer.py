@@ -241,7 +241,7 @@ def _render_pareto_constraints(base_options: CalculationOptions) -> ParetoConstr
                 help="Самые дешёвые, но требуют пятна на квартале (≥12.5% по нормативу).",
             )
             allow_multilevel = st.checkbox(
-                ":material/apartment: Многоуровневые наземные", value=True, key="pareto_allow_ml",
+                ":material/vertical_align_top: Многоуровневые наземные", value=True, key="pareto_allow_ml",
                 help="Компактнее открытых, средняя себестоимость.",
             )
             allow_underground = st.checkbox(
@@ -252,7 +252,7 @@ def _render_pareto_constraints(base_options: CalculationOptions) -> ParetoConstr
                 ),
             )
             allow_stylobate = st.checkbox(
-                ":material/deck: Стилобатные", value=True, key="pareto_allow_styl",
+                ":material/last_page: Стилобатные", value=True, key="pareto_allow_styl",
                 help=(
                     "Поднятый стилобат-паркинг (не заглубляется, не занимает ЗУ "
                     "квартала). 25% деки под домами = −1 этаж жилья там; "
@@ -392,10 +392,29 @@ def _render_recommendations_section(
             )
         st.markdown("📈 " + "  ·  ".join(parts) + " — относительно базы.")
 
-    cols = st.columns(len(cached_bundle.recommendations))
-    for i, rec in enumerate(cached_bundle.recommendations):
-        with cols[i]:
-            _render_recommendation_card(rec, i, base_options)
+    # v0.12.3: карточки сеткой 2×2 (а не в один ряд из 4). В каждом ряду
+    # карточки растягиваются до одинаковой высоты (CSS .rec-card → height:100%).
+    recs = cached_bundle.recommendations
+    for row_start in range(0, len(recs), 2):
+        row = recs[row_start:row_start + 2]
+        cols = st.columns(2)
+        for j, rec in enumerate(row):
+            with cols[j]:
+                _render_recommendation_card(rec, row_start + j, base_options)
+
+    # v0.12.3: пояснение «Пороговый ↔ Девелоперский» — почему практичнее.
+    _labels = {r.label for r in recs}
+    if "Пороговый" in _labels and "Девелоперский" in _labels:
+        st.info(
+            "**Пороговый** — предельная застройка «на грани»: эконом-индекс ≈ 100, "
+            "почти весь экономический запас исчерпан, выше чувствительность к "
+            "ошибкам сметы и рынка. **Девелоперский** жертвует частью площади ради "
+            "запаса по экономике и устойчивости: уместный для класса жилья тип "
+            "парковок, меньше предупреждений и запас до потолка КИТ, меньше крупных "
+            "инженерных объектов (котельные/ОСПС). Для реальной проработки обычно "
+            "предпочтителен именно он.",
+            icon=":material/lightbulb:",
+        )
 
     # v0.9.12 (AUDIT S-3): если у нескольких рекомендаций ИДЕНТИЧНАЯ
     # apartments_area — обычно это значит «КИТ упёрт в нормативный потолок
@@ -586,6 +605,16 @@ def _extract_kpi_fields(
         f"{tep.economy.economy_index:.0f} / 100"
         if tep.economy is not None else "—"
     )
+    # v0.12.3: краткая инженерия — крупные объекты (котельные/ОСПС) и итог.
+    eng_str = "—"
+    eng = getattr(tep, "engineering", None)
+    if eng is not None and eng.objects:
+        _cnt = {o.key: o.count for o in eng.objects}
+        n_total = sum(o.count for o in eng.objects if o.count > 0)
+        eng_str = (
+            f"{n_total} об. (котельн. {_cnt.get('boiler', 0)}, "
+            f"ОСПС {_cnt.get('osps', 0)})"
+        )
     return [
         ("Площадь квартир",      f"{_fmt_int(tep.apartments_area.value)} м²"),
         ("КИТ ПЗЗ",              f"{(tep.kit.value or 0):.3f}"),
@@ -597,6 +626,7 @@ def _extract_kpi_fields(
         ("ДОО",                  f"{kg} мест" if kg > 0 else "—"),
         ("СОШ",                  f"{sch} мест" if sch > 0 else "—"),
         ("ЗНОП",                 f"{zpp:.0f} м²/чел" if zpp > 0 else "0 м²/чел"),
+        ("Инженерия",            eng_str),
         ("Эконом-индекс",        econ_index),
     ]
 
@@ -684,6 +714,10 @@ def _render_recommendation_card(
 ) -> None:
     """Одна карточка рекомендации — единый формат KPI (v0.9.6)."""
     with st.container(border=True):
+        # v0.12.3: невидимый маркер — по нему CSS растягивает карточку до
+        # высоты соседней в ряду (равная высота сетки 2×2).
+        st.markdown('<div class="rec-card" style="display:none"></div>',
+                    unsafe_allow_html=True)
         st.markdown(f"#### {rec.label}")
         st.caption(rec.rationale)
 
@@ -709,10 +743,8 @@ def _render_recommendation_card(
                     "(1.0 ≈ м² жилья 9 эт. монолит). Не денежный прогноз."
                 )
                 st.markdown(
-                    f"• Условная прибыль: **{int(e.profit):,}** баллов  \n"
-                    f"• Маржа: **{e.margin*100:.1f}%**  ·  ROI: **{e.roi*100:.1f}%**  \n"
-                    f"• Эконом-индекс: **{e.economy_index:.0f}** "
-                    f"(100 = окупаемость)".replace(",", " ")
+                    f"• Эконом-индекс: **{e.economy_index:.0f}** (100 = окупаемость)  \n"
+                    f"• ROI: **{e.roi*100:.1f}%**"
                 )
 
         # Что отличается от базы (текстом, как было)

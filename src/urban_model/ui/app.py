@@ -311,6 +311,19 @@ st.markdown("""
       background-color: #F4F5F7 !important;
   }
 
+  /* v0.12.3: карточки рекомендаций в сетке 2×2 — равная высота в ряду.
+     Колонка-флекс растягивает дочерний border-wrapper, помеченный .rec-card,
+     на всю высоту (даже если контент короче — внизу пустое место). */
+  [data-testid="stColumn"]:has(.rec-card),
+  [data-testid="column"]:has(.rec-card) {
+      display: flex !important;
+  }
+  [data-testid="stColumn"]:has(.rec-card) > div[data-testid="stVerticalBlockBorderWrapper"],
+  [data-testid="column"]:has(.rec-card) > div[data-testid="stVerticalBlockBorderWrapper"] {
+      height: 100% !important;
+      width: 100% !important;
+  }
+
   /* v0.9.15: единый деловой стиль для ВСЕХ вкладок.
      Контейнеры st.container(border=True) получают тонкий приглушённый
      border и едва заметный фон. Subheader'ы становятся ненавязчивыми. */

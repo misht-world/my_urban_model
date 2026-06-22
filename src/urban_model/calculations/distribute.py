@@ -57,6 +57,37 @@ def distribute_places_evenly(
     return result
 
 
+def split_to_allowed_capacities(
+    total_places: int,
+    allowed: list[int],
+    capacity_min: int | None = None,
+) -> list[int]:
+    """Разбить спрос на объекты СТАНДАРТНЫХ вместимостей (СП / письмо КОБр).
+
+    Используется в режиме «только нормативная наполняемость»: вместимость
+    каждого объекта берётся ТОЛЬКО из списка `allowed` (типовые размеры),
+    а не произвольным кратным. Цель — минимум объектов с минимальным
+    профицитом мест, при вместимости ≥ capacity_min.
+
+    Логика:
+      n = ceil(target / max_allowed), где target = max(спрос, capacity_min);
+      на каждый объект — наименьшая разрешённая вместимость ≥ target/n
+      (и ≥ capacity_min). Объекты одинаковой типовой вместимости.
+    """
+    if total_places <= 0 or not allowed:
+        return []
+    allowed_sorted = sorted(set(int(a) for a in allowed))
+    cap_max = allowed_sorted[-1]
+    floor = capacity_min or 0
+    target = max(int(total_places), floor)
+    n = max(1, -(-target // cap_max))  # ceil
+    per = -(-target // n)              # ceil(target / n)
+    need = max(per, floor)
+    # наименьшая разрешённая вместимость ≥ need (иначе максимальная)
+    cap = next((a for a in allowed_sorted if a >= need), cap_max)
+    return [cap] * n
+
+
 def choose_n_objects(
     total_places: int,
     capacity_min: int | None,

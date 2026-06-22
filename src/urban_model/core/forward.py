@@ -161,6 +161,12 @@ def compute_tep_for_kit(
         kg_src_max = norms.source_of(
             "social_objects.kindergarten.capacity_max", building_type=kg_btype
         )
+        # v0.12.4: режим «только нормативная наполняемость» — вместимости
+        # из типового списка СП/КОБр.
+        kg_allowed_strict = (
+            norms.resolve("social_objects.kindergarten.allowed_capacities")
+            if options.kindergarten.strict_capacity else None
+        )
         kg_buckets = kindergarten.split_into_objects(
             total_places=kg_accepted,
             spec_capacity=options.kindergarten.capacity_per_object,
@@ -168,8 +174,14 @@ def compute_tep_for_kit(
             capacity_min=kg_cap_min_active,
             capacity_max=kg_cap_max,
             multiple=int(kg_round),
+            allowed_capacities=kg_allowed_strict,
         )
         kg_plot_total, kg_bld_total = kindergarten.total_areas(kg_buckets, norms, kg_btype)
+        # v0.12.4: «принято мест» = фактическая вместимость корпусов (Σ buckets).
+        # В strict-режиме корпуса снапаются вверх к типовым размерам → принято
+        # может превышать спрос (профицит виден). В обычном режиме Σ == kg_accepted.
+        if kg_buckets:
+            kg_accepted = sum(kg_buckets)
         # Предупреждения по вместимости ДОО (дифференцированы по типу и значению).
         # Пороги берутся из YAML (capacity_min/max — единый источник истины):
         #   c < kg_cap_min_builtin                          → меньше норм. наполняемости любого ДОО
@@ -324,6 +336,10 @@ def compute_tep_for_kit(
             )
             if sch_cap_min else None
         )
+        sch_allowed_strict = (
+            norms.resolve("social_objects.school.allowed_capacities")
+            if options.school.strict_capacity else None
+        )
         sch_buckets = school.split_into_objects(
             total_places=sch_accepted,
             spec_capacity=options.school.capacity_per_object,
@@ -331,6 +347,7 @@ def compute_tep_for_kit(
             capacity_min=sch_cap_min,
             capacity_max=sch_cap_max,
             multiple=int(sch_round),
+            allowed_capacities=sch_allowed_strict,
         )
         sch_plot_total = sum(
             school.plot_area_with_extras(
@@ -339,6 +356,10 @@ def compute_tep_for_kit(
             for c in sch_buckets
         )
         sch_bld_total = sum(school.building_area_for_capacity(c, norms) for c in sch_buckets)
+        # v0.12.4: «принято мест» = фактическая вместимость корпусов (Σ buckets);
+        # в strict-режиме снап вверх к типовым параллелям → виден профицит.
+        if sch_buckets:
+            sch_accepted = sum(sch_buckets)
         # Проверка минимальной вместимости: расчёт даёт меньше норматива.
         # Для СПб нет «built_in» школ → минимум распространяется на любую СОШ.
         if sch_cap_min and sch_buckets and any(c < sch_cap_min for c in sch_buckets):

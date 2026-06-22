@@ -3,7 +3,7 @@
 Один прогон Optuna в широком SearchSpace → до 4 готовых рекомендаций:
   • Максимум площади квартир
   • Максимум эконом-индекса (стабильный 100 × выручка / себестоимость)
-  • Сбалансированный (50% площадь + 50% эконом-индекс)
+  • Пороговый (эконом-индекс ≈ 100 — предельная застройка на грани окупаемости)
   • Девелоперский (практичный: уклон в экономику, без перекосов/хрупкости)
 
 Optuna здесь — ГЕНЕРАТОР допустимых сценариев, а не «выбор лучшего проекта».
@@ -207,6 +207,25 @@ def _robustness_score(tep: TEPResult) -> float:
     return max(0.0, min(1.0, score))
 
 
+def _social_plot_per_place(tep: TEPResult) -> float:
+    """ЗУ соцобъектов (ДОО+СОШ) на 1 место, м²/место (v0.12.4).
+
+    Ниже = эффективнее: piecewise-норматив даёт больше м²/место для мелких
+    объектов, поэтому «2 маленьких» и «перескок на 2 с недозагрузкой» дают
+    более высокий показатель. Используется как тай-брейк в developer_score.
+    Возвращает 0.0, если соцобъектов нет (нейтрально).
+    """
+    plot = (
+        float(tep.kindergarten_plot_area.value or 0.0)
+        + float(tep.school_plot_area.value or 0.0)
+    )
+    places = (
+        float(tep.kindergarten_places_accepted.value or 0.0)
+        + float(tep.school_places_accepted.value or 0.0)
+    )
+    return plot / places if places > 0 else 0.0
+
+
 def _engineering_risk_penalty(tep: TEPResult) -> float:
     """Штраф за число крупных инженерных объектов (котельные + ОСПС) сверх
     базовых 1+1 (v0.12.2). Тай-брейк: при близких вариантах предпочесть тот,
@@ -377,7 +396,7 @@ def _select_three(
     """Из топа выбирает до 4 рекомендаций по разным критериям + DeltaSummary.
 
     v0.12.1: 4 стратегии — Максимум площади / Максимум эконом-индекса /
-    Сбалансированный (50/50) / Девелоперский (практичный). Ранжирование
+    Пороговый (≈100) / Девелоперский (практичный). Ранжирование
     экономики — по стабильному economy_index, а не по сырой прибыли.
 
     v0.9.9: при `constraints.restrict_parking_combos=True` (дефолт)
@@ -429,9 +448,20 @@ def _select_three(
         def _idx_n(r: OptimizationResult) -> float:
             return (r.tep.economy.economy_index - i_min) / i_range
 
-        # Сбалансированный: 50% площадь + 50% эконом-индекс.
-        balanced_sorted = sorted(
-            with_econ, key=lambda r: 0.5 * _apt_n(r) + 0.5 * _idx_n(r), reverse=True
+        # v0.12.4: соц-эффективность (ЗУ/место) — нормировка по пулу для
+        # тай-брейка в developer_score (ниже ЗУ/место → лучше → меньше штраф).
+        _spps = [_social_plot_per_place(r.tep) for r in with_econ]
+        _spp_min, _spp_max = min(_spps), max(_spps)
+        _spp_range = _spp_max - _spp_min if _spp_max > _spp_min else 1.0
+
+        def _spp_n(r: OptimizationResult) -> float:
+            return (_social_plot_per_place(r.tep) - _spp_min) / _spp_range
+
+        # Пороговый (v0.12.3): вариант на пороге окупаемости — эконом-индекс
+        # ближе всего к 100 (выручка ≈ себестоимость). Это «потолок застройки
+        # при нулевом запасе экономики».
+        threshold_sorted = sorted(
+            with_econ, key=lambda r: abs(r.tep.economy.economy_index - 100.0)
         )
         # Девелоперский (v0.12.2) — полноценный developer_score (аудит-формула):
         #   0.50·эконом-индекс + 0.25·площадь + 0.15·парк.рациональность
@@ -446,23 +476,27 @@ def _select_three(
             )
             robustness = _robustness_score(r.tep)
             risk = _engineering_risk_penalty(r.tep)
+            # v0.12.4: соц-нагрузка как тай-брейк — штраф за неэффективную
+            # соцземлю (мелкие/недозагруженные ДОО/СОШ → выше ЗУ/место).
+            social_penalty = 0.05 * _spp_n(r)
             return (
                 0.50 * _idx_n(r)
                 + 0.25 * _apt_n(r)
                 + 0.15 * rationality
                 + 0.10 * robustness
                 - risk
+                - social_penalty
             )
 
         developer_sorted = sorted(with_econ, key=_dev_score, reverse=True)
     else:
-        balanced_sorted = apt_sorted
+        threshold_sorted = apt_sorted
         developer_sorted = apt_sorted
 
     rationales = {
         "Максимум площади": "Наибольшая площадь квартир — максимальный выход ТЭП.",
         "Максимум эконом-индекса": "Наивысший экономический индекс (выручка ÷ себестоимость).",
-        "Сбалансированный": "Компромисс: 50% площадь квартир + 50% эконом-индекс.",
+        "Пороговый": "На пороге окупаемости (эконом-индекс ≈ 100): предельная застройка при нулевом запасе экономики.",
         "Девелоперский": "Практичный вариант для дальнейшей проработки: уклон в экономику, без перекосов парковок и спорных решений.",
     }
 
@@ -495,7 +529,7 @@ def _select_three(
     for i, (label, pool) in enumerate([
         ("Максимум площади", apt_sorted),
         ("Максимум эконом-индекса", index_sorted),
-        ("Сбалансированный", balanced_sorted),
+        ("Пороговый", threshold_sorted),
         ("Девелоперский", developer_sorted),
     ]):
         # Первая рекомендация — без ограничения архетипа.

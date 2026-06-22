@@ -5,6 +5,7 @@ from __future__ import annotations
 from urban_model.calculations.distribute import (
     choose_n_objects,
     distribute_places_evenly,
+    split_to_allowed_capacities,
 )
 from urban_model.calculations.rounding import round_up_to_multiple
 from urban_model.normatives import Normatives
@@ -25,6 +26,7 @@ def split_into_objects(
     capacity_min: int | None,
     capacity_max: int | None,
     multiple: int = 10,
+    allowed_capacities: list[int] | None = None,
 ) -> list[int]:
     """Разбить общее число мест СОШ на отдельные корпуса максимально равномерно.
 
@@ -41,6 +43,10 @@ def split_into_objects(
     # распределяем места ровно на это число (раньше игнорировалось → no-op).
     if spec_count:
         return distribute_places_evenly(total_places, int(spec_count), multiple)
+    # v0.12.4: «только нормативная наполняемость» — корпуса строго типовых
+    # вместимостей (СП/КОБр), а не произвольным кратным 10.
+    if allowed_capacities:
+        return split_to_allowed_capacities(total_places, allowed_capacities, capacity_min)
     cap_max = capacity_max if capacity_max is not None else total_places
     n = choose_n_objects(total_places, capacity_min, cap_max)
     return distribute_places_evenly(total_places, n, multiple)
