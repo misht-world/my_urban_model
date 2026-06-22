@@ -76,6 +76,7 @@ def _vpp_preview_key(opts: CalculationOptions) -> tuple:
         bool(opts.planning_doc),
         p.mode, p.open_share, p.multilevel_share, p.underground_share,
         p.multilevel_levels, p.underground_levels,
+        getattr(p, "stylobate_share", 0.0),  # v0.12.2 — влияет на apt/footprint
         opts.znop_per_person_override,
         opts.znop_total_area_override,
         bool(opts.include_kindergarten),
@@ -127,6 +128,13 @@ def _build_options_for_trial(
     if space.parking_modes:
         parking_mode = trial.suggest_categorical("parking_mode", space.parking_modes)
         sampled["parking_mode"] = parking_mode
+
+    # --- Стилобат (v0.12.2): ортогональная доля, любой режим ---
+    styl_share = float(getattr(opts.parking, "stylobate_share", 0.0) or 0.0)
+    if space.parking_stylobate_share_range:
+        s_lo, s_hi = space.parking_stylobate_share_range
+        styl_share = trial.suggest_float("parking_stylobate_share", s_lo, s_hi)
+        sampled["parking_stylobate_share"] = round(styl_share, 3)
 
     # --- Парковки: доли (только при custom) ---
     if parking_mode == "custom":
@@ -188,13 +196,14 @@ def _build_options_for_trial(
             underground_share=ug_r,
             multilevel_levels=int(ml_levels),
             underground_levels=int(ug_levels),
+            stylobate_share=styl_share,
         )
         sampled["parking_open_share"] = round(open_r, 3)
         sampled["parking_ml_share"] = round(ml_r, 3)
         sampled["parking_ug_share"] = round(ug_r, 3)
         sampled["multilevel_levels"] = int(ml_levels)
     else:
-        opts.parking = ParkingConfig(mode=parking_mode)
+        opts.parking = ParkingConfig(mode=parking_mode, stylobate_share=styl_share)
 
     # --- ДОО: число объектов ---
     if space.kg_num_objects_range and opts.include_kindergarten:

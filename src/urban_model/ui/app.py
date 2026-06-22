@@ -302,6 +302,15 @@ st.markdown("""
   /* Чуть меньше пустоты у containers с border */
   div[data-testid="stVerticalBlockBorderWrapper"] {padding: 0.6rem 0.9rem;}
 
+  /* v0.12.1: карточки ЛЕВОЙ колонки «Параметры» («Общие сведения о
+     территории» и «Учитывать в расчёте») — серый фон, чтобы отделить
+     управление от плиток-настроек справа. Таргет — border-обёртки внутри
+     колонки с маркером .params-col-input. */
+  [data-testid="stColumn"]:has(.params-col-input) div[data-testid="stVerticalBlockBorderWrapper"],
+  [data-testid="column"]:has(.params-col-input) div[data-testid="stVerticalBlockBorderWrapper"] {
+      background-color: #F4F5F7 !important;
+  }
+
   /* v0.9.15: единый деловой стиль для ВСЕХ вкладок.
      Контейнеры st.container(border=True) получают тонкий приглушённый
      border и едва заметный фон. Subheader'ы становятся ненавязчивыми. */

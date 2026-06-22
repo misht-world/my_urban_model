@@ -162,6 +162,12 @@ def calc_cost(tep, options, norms: Normatives) -> CostBreakdown:
     ug_levels = getattr(options.parking, "underground_levels", None) or 1
     cost_ug = _cost_underground_parking(n_ug, int(ug_levels), m2_ug, c_ug, norms)
 
+    # --- Стилобат (v0.12.2): себестоимость = площадь деки × ставка. ---
+    styl_area = float(getattr(tep, "parking_stylobate_area", None).value or 0.0) \
+        if getattr(tep, "parking_stylobate_area", None) is not None else 0.0
+    c_styl = float(norms.resolve("economy.construction.parking_stylobate"))
+    cost_stylobate = styl_area * c_styl
+
     # --- Парковки соцобъектов (P0-6): открытые на ЗУ соцобъекта, та же ---
     # удельная стоимость, что у обычных открытых парковок (c_surface).
     soc_park_area = float(tep.social_parking_area.value or 0.0)
@@ -224,7 +230,7 @@ def calc_cost(tep, options, norms: Normatives) -> CostBreakdown:
     # --- Подытоги ---
     shell_total = (
         cost_residential + cost_vpp + cost_kg + cost_sch
-        + cost_open + cost_ml + cost_ug
+        + cost_open + cost_ml + cost_ug + cost_stylobate
         + cost_soc_park + cost_sport + cost_custom + cost_engineering
     )
     networks = shell_total * pct_networks
@@ -248,6 +254,7 @@ def calc_cost(tep, options, norms: Normatives) -> CostBreakdown:
         parking_open=cost_open,
         parking_multilevel=cost_ml,
         parking_underground=cost_ug,
+        parking_stylobate=cost_stylobate,
         social_parking=cost_soc_park,
         sport=cost_sport,
         custom_objects=cost_custom,

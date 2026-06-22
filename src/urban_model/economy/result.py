@@ -17,6 +17,7 @@ class CostBreakdown(BaseModel):
     parking_open: float = Field(0.0, description="Открытые парковки (пятно)")
     parking_multilevel: float = Field(0.0, description="Многоуровневые наземные паркинги")
     parking_underground: float = Field(0.0, description="Подземные паркинги (с прогрессией уровней)")
+    parking_stylobate: float = Field(0.0, description="Стилобатные паркинги (дека над землёй)")
 
     # AUDIT P0-6: ранее экономика игнорировала эти статьи.
     social_parking: float = Field(0.0, description="Парковки ДОО/СОШ (открытые на ЗУ соцобъекта)")
@@ -43,6 +44,7 @@ class RevenueBreakdown(BaseModel):
     parking_open: float = Field(0.0, description="Открытые м/м × цена/м.м.")
     parking_multilevel: float = Field(0.0, description="Многоуровневые м/м × цена/м.м.")
     parking_underground: float = Field(0.0, description="Подземные м/м × цена/м.м.")
+    parking_stylobate: float = Field(0.0, description="Стилобатные м/м × цена × доля реализации")
     vpp_commercial: float = Field(0.0, description="Площадь ВПП × цена/м² коммерции")
     # AUDIT P0-6: коммерческие кастомные объекты дают выручку. Соцобъекты
     # (ДОО/СОШ/спорт) — соцнагрузка, выручка = 0.
@@ -68,6 +70,13 @@ class EconomicMetrics(BaseModel):
     roi: float = Field(0.0, description="profit / cost (0 если cost=0)")
     profit_per_site_m2: float = Field(
         0.0, description="profit / site.area_m2 — «Запас проекта / м²», основная метрика ранжирования"
+    )
+    # v0.12.1: стабильный экономический индекс = 100 × выручка / себестоимость.
+    # 100 = окупаемость; >100 эффективнее; <100 ниже. Не зависит от пула Optuna
+    # (в отличие от min-max-нормировки) → стабилен между запусками. Headline-
+    # метрика для UI вместо сырой прибыли в у.е. (которая может быть «в минус»).
+    economy_index: float = Field(
+        0.0, description="100 × выручка / себестоимость (100 = окупаемость)"
     )
 
     # v0.9.14: разделение социальной нагрузки.

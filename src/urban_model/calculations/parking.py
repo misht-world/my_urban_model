@@ -46,6 +46,7 @@ def compute_parking_breakdown(
     config,          # ParkingConfig — импорт снизу, чтобы избежать циклов
     norms: Normatives,
     additional_places: int = 0,
+    stylobate_places: int = 0,
 ):
     """Рассчитать разбивку парковок по типам.
 
@@ -54,9 +55,13 @@ def compute_parking_breakdown(
         config:             ParkingConfig — режим и доли.
         norms:              нормативная база.
         additional_places:  дополнительные м/м (например, для ВПП по своему ВРИ).
+        stylobate_places:   м/м в стилобате (v0.12.2). Изымаются из общего пула
+            ДО деления на open/ml/ug (стилобат сайзится в forward по жилищной
+            потребности). Отражаются отдельными полями, ЗУ квартала не занимают.
 
     Returns:
-        ParkingBreakdown с открытыми, многоуровневыми и подземными м/м и площадями.
+        ParkingBreakdown с открытыми, многоуровневыми, подземными, стилобатными
+        м/м и площадями.
     """
     from urban_model.models.parking import ParkingBreakdown
 
@@ -68,16 +73,24 @@ def compute_parking_breakdown(
     housing_required = math.ceil(apartments_area / per_place) if apartments_area > 0 else 0
     total_required = housing_required + max(0, int(additional_places))
 
+    # v0.12.2: стилобат изымается из пула, делимого на open/ml/ug.
+    styl_pl = max(0, min(int(stylobate_places), total_required))
+    styl_area = (
+        styl_pl * norms.resolve("parking.stylobate_area_per_place")
+        if styl_pl > 0 else 0.0
+    )
+    pool = max(0, total_required - styl_pl)
+
     if config.mode == "min_open":
         # Минимум открытых, остаток — подземные (текущее v0.1 поведение)
-        open_pl = max(math.ceil(total_required * open_share_min_v), 1 if total_required > 0 else 0)
+        open_pl = max(math.ceil(pool * open_share_min_v), 1 if pool > 0 else 0)
         multilevel_pl = 0
-        underground_pl = max(0, total_required - open_pl)
+        underground_pl = max(0, pool - open_pl)
         ml_levels = 0
 
     elif config.mode == "all_open":
         # Всё открытое
-        open_pl = total_required
+        open_pl = pool
         multilevel_pl = 0
         underground_pl = 0
         ml_levels = 0
@@ -86,9 +99,9 @@ def compute_parking_breakdown(
         # Если задано абсолютное количество многоуровневых м/м (v0.6) —
         # используем его. Иначе — доля.
         if config.multilevel_explicit_places is not None:
-            multilevel_pl = min(int(config.multilevel_explicit_places), total_required)
+            multilevel_pl = min(int(config.multilevel_explicit_places), pool)
             # Открытые и подземные делят остаток по своим относительным долям
-            remaining = max(0, total_required - multilevel_pl)
+            remaining = max(0, pool - multilevel_pl)
             open_un_sum = config.open_share + config.underground_share
             if open_un_sum > 0:
                 open_rel = config.open_share / open_un_sum
@@ -96,16 +109,16 @@ def compute_parking_breakdown(
                 open_rel = open_share_min_v
             open_pl = math.ceil(remaining * open_rel)
         else:
-            open_pl = math.ceil(total_required * config.open_share)
-            multilevel_pl = math.floor(total_required * config.multilevel_share)
+            open_pl = math.ceil(pool * config.open_share)
+            multilevel_pl = math.floor(pool * config.multilevel_share)
 
         # Гарантируем жёсткий минимум открытых (12.5% по нормативу СПб)
-        open_min = math.ceil(total_required * open_share_min_v)
+        open_min = math.ceil(pool * open_share_min_v)
         open_pl = max(open_pl, open_min)
-        # Если из-за минимума суммарно > total — урезаем многоуровневые
-        if open_pl + multilevel_pl > total_required:
-            multilevel_pl = max(0, total_required - open_pl)
-        underground_pl = max(0, total_required - open_pl - multilevel_pl)
+        # Если из-за минимума суммарно > pool — урезаем многоуровневые
+        if open_pl + multilevel_pl > pool:
+            multilevel_pl = max(0, pool - open_pl)
+        underground_pl = max(0, pool - open_pl - multilevel_pl)
         ml_levels = config.multilevel_levels
 
     # === Площадь открытых ===
@@ -134,4 +147,6 @@ def compute_parking_breakdown(
         multilevel_levels=ml_levels,
         open_area=open_area,
         multilevel_footprint=ml_footprint,
+        stylobate_places=styl_pl,
+        stylobate_area=styl_area,
     )

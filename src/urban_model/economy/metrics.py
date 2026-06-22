@@ -24,6 +24,16 @@ def calc_metrics(
     roi = profit / cost.total if cost.total > 1e-9 else 0.0
     profit_per_m2 = profit / site_area_m2 if site_area_m2 > 1e-9 else 0.0
 
+    # Экономический индекс (v0.12.1) — стабильная абсолютная метрика для UI:
+    #   economy_index = 100 × выручка / себестоимость
+    #   100 = окупаемость (выручка = затраты); >100 эффективнее; <100 ниже.
+    # По сути 100 + ROI%, но без отрицательных чисел и слова «убыток». В отличие
+    # от min-max-нормировки по пулу Optuna — НЕ зависит от набора найденных
+    # сценариев, поэтому стабилен между запусками.
+    economy_index = (
+        100.0 * revenue.total / cost.total if cost.total > 1e-9 else 0.0
+    )
+
     # v0.9.14: социальная нагрузка отдельным блоком.
     social_cost = cost.kindergarten + cost.school + cost.social_parking
     social_revenue = revenue.social_compensation
@@ -44,6 +54,7 @@ def calc_metrics(
         margin=margin,
         roi=roi,
         profit_per_site_m2=profit_per_m2,
+        economy_index=economy_index,
         net_social_burden=net_social_burden,
         profit_before_social=profit_before_social,
         profit_before_land=profit_before_land,

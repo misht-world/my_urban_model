@@ -1,11 +1,13 @@
-"""Парето-рекомендации (v0.9.0).
+"""Парето-рекомендации (v0.9.0; 4 стратегии — v0.12.1).
 
-Один прогон Optuna в широком SearchSpace → 3 готовые рекомендации:
+Один прогон Optuna в широком SearchSpace → до 4 готовых рекомендаций:
   • Максимум площади квартир
-  • Максимум прибыли (если экономика включена)
-  • Сбалансированный (нормированная сумма apt и profit)
+  • Максимум эконом-индекса (стабильный 100 × выручка / себестоимость)
+  • Сбалансированный (50% площадь + 50% эконом-индекс)
+  • Девелоперский (практичный: уклон в экономику, без перекосов/хрупкости)
 
-Это даёт пользователю не «крути 20 ручек», а 3 конкретных сценария
+Optuna здесь — ГЕНЕРАТОР допустимых сценариев, а не «выбор лучшего проекта».
+Пользователь видит не один «лучший», а несколько осмысленных стратегий
 с явным сравнением vs «база» (текущий результат вкладки Расчёт).
 """
 
@@ -37,6 +39,8 @@ class DeltaSummary:
     d_profit_abs: float | None
     d_profit_pct: float | None
     d_kit_abs: float
+    # v0.12.1: дельта экономического индекса (в пунктах индекса, не %).
+    d_index_abs: float | None = None
     key_changes: list[str] = field(default_factory=list)
 
 
@@ -80,6 +84,7 @@ class ParetoConstraints:
     allow_open: bool = True
     allow_multilevel: bool = True
     allow_underground: bool = True
+    allow_stylobate: bool = True  # v0.12.2
     restrict_parking_combos: bool = True
     # v0.10.4: диапазон этажности ПО КАЖДОЙ ЗОНЕ для подбора (список (lo,hi) в
     # порядке зон). None → этажность зон НЕ варьируется (берётся из базы).
@@ -135,6 +140,87 @@ def _has_token_parking(tep: TEPResult) -> bool:
     return False
 
 
+def _is_kit_at_ceiling(tep: TEPResult, tol: float = 0.01) -> bool:
+    """True если КИТ упёрся в нормативный потолок (хрупкое решение —
+    нет запаса до ограничения). Слабый сигнал для девелоперского отбора."""
+    try:
+        kit = float(tep.kit.value or 0.0)
+        kmax = float(tep.kit_normative_max.value or 0.0)
+    except (TypeError, ValueError):
+        return False
+    return kmax > 0 and kit >= kmax - tol
+
+
+def _parking_rationality(tep: TEPResult, residential_class: str, norms) -> float:
+    """Рыночная уместность парковочного микса для класса жилья (0…1, v0.12.2).
+
+    = Σ(доля_типа × пригодность[класс][тип]) по фактическим м/м варианта.
+    Матрица пригодности — economy.parking_suitability в YAML.
+    """
+    o = float(tep.parking_open_places.value or 0)
+    m = float(tep.parking_multilevel_places.value or 0)
+    u = float(tep.parking_underground_places.value or 0)
+    s = float(getattr(tep, "parking_stylobate_places", None).value or 0) \
+        if getattr(tep, "parking_stylobate_places", None) is not None else 0.0
+    total = o + m + u + s
+    if total <= 0:
+        return 0.5  # нет парковок — нейтрально
+    try:
+        suit = norms.resolve(
+            "economy.parking_suitability", residential_class=residential_class)
+    except (KeyError, TypeError, ValueError):
+        return 0.5
+    return (
+        o / total * float(suit.get("open", 0.5))
+        + m / total * float(suit.get("multilevel", 0.5))
+        + u / total * float(suit.get("underground", 0.5))
+        + s / total * float(suit.get("stylobate", 0.5))
+    )
+
+
+def _robustness_score(tep: TEPResult) -> float:
+    """«Крепость» решения 0…1 (v0.12.2): 1 = надёжно, 0 = хрупко.
+
+    Штрафы: warning-и, КИТ на нормативном потолке, баланс почти в ноль
+    (слабый), плотность у верхней границы.
+    """
+    score = 1.0
+    score -= 0.10 * min(len(tep.warnings or []), 5)
+    if _is_kit_at_ceiling(tep):
+        score -= 0.15
+    # Баланс почти в ноль — слабый технический сигнал (НЕ критерий качества).
+    try:
+        site = float(tep.balance.site_area or 0.0)
+        surplus = float(tep.balance.surplus or 0.0)
+        if site > 0 and surplus < 0.005 * site:
+            score -= 0.05
+    except (TypeError, ValueError, AttributeError):
+        pass
+    # Плотность у верхней границы (≥95% норматива).
+    try:
+        d = float(tep.density_chel_per_ga.value or 0.0)
+        dn = float(tep.density_chel_per_ga.normative or 0.0)
+        if dn > 0 and d >= 0.95 * dn:
+            score -= 0.10
+    except (TypeError, ValueError, AttributeError):
+        pass
+    return max(0.0, min(1.0, score))
+
+
+def _engineering_risk_penalty(tep: TEPResult) -> float:
+    """Штраф за число крупных инженерных объектов (котельные + ОСПС) сверх
+    базовых 1+1 (v0.12.2). Тай-брейк: при близких вариантах предпочесть тот,
+    где меньше крупных объектов инфраструктуры."""
+    eng = getattr(tep, "engineering", None)
+    if eng is None:
+        return 0.0
+    big = sum(
+        o.count for o in eng.objects
+        if o.key in ("boiler", "osps") and o.in_balance
+    )
+    return 0.03 * max(0, big - 2)
+
+
 # ---------------------------------------------------------------------------
 # Текстовая дельта параметров (для подписи «что изменилось»)
 # ---------------------------------------------------------------------------
@@ -170,6 +256,12 @@ def _format_key_changes(base_options: CalculationOptions, scenario_params: dict)
         old_ug = float(base_options.parking.underground_share)
         if abs(new_ug - old_ug) > 0.05:
             changes.append(f"Подземн. парковка: {old_ug*100:.0f}% → {new_ug*100:.0f}%")
+    # Доля стилобата (v0.12.2)
+    if "parking_stylobate_share" in scenario_params:
+        new_s = float(scenario_params["parking_stylobate_share"])
+        old_s = float(getattr(base_options.parking, "stylobate_share", 0.0) or 0.0)
+        if abs(new_s - old_s) > 0.05:
+            changes.append(f"Стилобат: {old_s*100:.0f}% → {new_s*100:.0f}%")
     # ВПП-режим
     if "vpp_mode" in scenario_params:
         vm = scenario_params["vpp_mode"]
@@ -209,11 +301,16 @@ def _delta(
 
     d_profit_abs: float | None = None
     d_profit_pct: float | None = None
+    d_index_abs: float | None = None
     if base_tep.economy is not None and scenario_tep.economy is not None:
         base_p = float(base_tep.economy.profit)
         sc_p = float(scenario_tep.economy.profit)
         d_profit_abs = sc_p - base_p
         d_profit_pct = (d_profit_abs / abs(base_p) * 100.0) if abs(base_p) > 1e-9 else 0.0
+        d_index_abs = (
+            float(scenario_tep.economy.economy_index)
+            - float(base_tep.economy.economy_index)
+        )
 
     d_kit_abs = float(scenario_tep.kit.value or 0.0) - float(base_tep.kit.value or 0.0)
 
@@ -223,6 +320,7 @@ def _delta(
         d_profit_abs=d_profit_abs,
         d_profit_pct=d_profit_pct,
         d_kit_abs=d_kit_abs,
+        d_index_abs=d_index_abs,
         key_changes=_format_key_changes(base_options, scenario_params),
     )
 
@@ -238,6 +336,10 @@ def _parking_archetype(r: OptimizationResult) -> str:
     даже когда Optuna сходится в одну точку по основной метрике.
     """
     p = r.params
+    # v0.12.2: существенная доля стилобата — отдельный архетип (для разнообразия).
+    styl = float(p.get("parking_stylobate_share", 0.0))
+    if styl >= 0.4:
+        return "stylobate"
     mode = p.get("parking_mode", "")
     if mode != "custom":
         return mode  # "min_open" / "all_open"
@@ -261,6 +363,7 @@ def _params_fingerprint(r: OptimizationResult) -> tuple:
         round(float(p.get("znop_per_person", -1.0)), 1),
         int(p.get("kg_num_objects", 0)),
         int(p.get("school_num_objects", 0)),
+        round(float(p.get("parking_stylobate_share", 0.0)), 1),  # v0.12.2
     )
 
 
@@ -269,8 +372,13 @@ def _select_three(
     base_tep: TEPResult,
     base_options: CalculationOptions,
     constraints: "ParetoConstraints | None" = None,
+    norms=None,
 ) -> list[Recommendation]:
-    """Из топа выбирает 3 лучших по разным критериям + DeltaSummary.
+    """Из топа выбирает до 4 рекомендаций по разным критериям + DeltaSummary.
+
+    v0.12.1: 4 стратегии — Максимум площади / Максимум эконом-индекса /
+    Сбалансированный (50/50) / Девелоперский (практичный). Ранжирование
+    экономики — по стабильному economy_index, а не по сырой прибыли.
 
     v0.9.9: при `constraints.restrict_parking_combos=True` (дефолт)
     отбрасываются типологически редкие гибриды МУ+подземные.
@@ -299,33 +407,63 @@ def _select_three(
 
     # Заготовим отсортированные пулы для каждого критерия
     apt_sorted = sorted(feasible, key=lambda r: r.apartments_area, reverse=True)
-    profit_sorted = (
-        sorted(with_econ, key=lambda r: r.tep.economy.profit, reverse=True)
+    # v0.12.1: ранжируем по СТАБИЛЬНОМУ экономическому индексу
+    # (100 × выручка / себестоимость), а не по сырой прибыли в у.е.
+    index_sorted = (
+        sorted(with_econ, key=lambda r: r.tep.economy.economy_index, reverse=True)
         if with_econ else apt_sorted
     )
 
-    # Balanced: нормировка min-max → argmax 0.5*apt + 0.5*profit
+    # Нормировки apt и economy_index (min-max по пулу) — для blended-скоров.
     if with_econ and len(with_econ) >= 2:
         apts = [r.apartments_area for r in with_econ]
-        profits = [r.tep.economy.profit for r in with_econ]
+        idxs = [r.tep.economy.economy_index for r in with_econ]
         apt_min, apt_max = min(apts), max(apts)
-        p_min, p_max = min(profits), max(profits)
+        i_min, i_max = min(idxs), max(idxs)
         apt_range = apt_max - apt_min if apt_max > apt_min else 1.0
-        p_range = p_max - p_min if p_max > p_min else 1.0
+        i_range = i_max - i_min if i_max > i_min else 1.0
 
-        def score(r: OptimizationResult) -> float:
-            apt_n = (r.apartments_area - apt_min) / apt_range
-            p_n = (r.tep.economy.profit - p_min) / p_range
-            return 0.5 * apt_n + 0.5 * p_n
+        def _apt_n(r: OptimizationResult) -> float:
+            return (r.apartments_area - apt_min) / apt_range
 
-        balanced_sorted = sorted(with_econ, key=score, reverse=True)
+        def _idx_n(r: OptimizationResult) -> float:
+            return (r.tep.economy.economy_index - i_min) / i_range
+
+        # Сбалансированный: 50% площадь + 50% эконом-индекс.
+        balanced_sorted = sorted(
+            with_econ, key=lambda r: 0.5 * _apt_n(r) + 0.5 * _idx_n(r), reverse=True
+        )
+        # Девелоперский (v0.12.2) — полноценный developer_score (аудит-формула):
+        #   0.50·эконом-индекс + 0.25·площадь + 0.15·парк.рациональность
+        #   + 0.10·robustness − риск(крупная инженерка)
+        # Парк.рациональность учитывает класс жилья (матрица пригодности).
+        _res_class = getattr(base_options, "residential_class", "comfort")
+
+        def _dev_score(r: OptimizationResult) -> float:
+            rationality = (
+                _parking_rationality(r.tep, _res_class, norms)
+                if norms is not None else 0.5
+            )
+            robustness = _robustness_score(r.tep)
+            risk = _engineering_risk_penalty(r.tep)
+            return (
+                0.50 * _idx_n(r)
+                + 0.25 * _apt_n(r)
+                + 0.15 * rationality
+                + 0.10 * robustness
+                - risk
+            )
+
+        developer_sorted = sorted(with_econ, key=_dev_score, reverse=True)
     else:
         balanced_sorted = apt_sorted
+        developer_sorted = apt_sorted
 
     rationales = {
         "Максимум площади": "Наибольшая площадь квартир — максимальный выход ТЭП.",
-        "Максимум прибыли": "Лучший баланс себестоимости и выручки в условных единицах.",
-        "Сбалансированный": "Компромисс между площадью квартир и прибылью.",
+        "Максимум эконом-индекса": "Наивысший экономический индекс (выручка ÷ себестоимость).",
+        "Сбалансированный": "Компромисс: 50% площадь квартир + 50% эконом-индекс.",
+        "Девелоперский": "Практичный вариант для дальнейшей проработки: уклон в экономику, без перекосов парковок и спорных решений.",
     }
 
     def _pick(
@@ -356,8 +494,9 @@ def _select_three(
     seen_arch: set[str] = set()
     for i, (label, pool) in enumerate([
         ("Максимум площади", apt_sorted),
-        ("Максимум прибыли", profit_sorted),
+        ("Максимум эконом-индекса", index_sorted),
         ("Сбалансированный", balanced_sorted),
+        ("Девелоперский", developer_sorted),
     ]):
         # Первая рекомендация — без ограничения архетипа.
         # Вторая и третья — стараемся выбрать другой архетип парковки,
@@ -422,6 +561,8 @@ def _build_search_space(
         parking_underground_share_range=ug_range,
         multilevel_levels_range=(1, 5) if constraints.allow_multilevel else None,
         underground_levels_range=(1, 3) if constraints.allow_underground else None,
+        # v0.12.2: даём Optuna исследовать стилобат (0…70% жилищной парковки).
+        parking_stylobate_share_range=(0.0, 0.7) if constraints.allow_stylobate else None,
         # v0.9.4: ЗНОП НЕ варьируется в Парето — он считается по нормативу
         # piecewise(КИТ ПЗЗ). Принудительный ЗНОП имеет смысл ТОЛЬКО когда
         # бисекция упирается в потолок КИТ; если КИТ ниже нормативной ступени,
@@ -489,7 +630,7 @@ def generate_pareto_recommendations(
         seed=seed,
         progress_callback=progress_callback,
     )
-    recs = _select_three(report.top_n, base_tep, base_options, constraints)
+    recs = _select_three(report.top_n, base_tep, base_options, constraints, norms)
 
     # v0.9.11 (AUDIT S-1/P1-7): диагностика «почему пусто», чтобы UI
     # мог показать прицельное сообщение пользователю.

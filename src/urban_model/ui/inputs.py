@@ -238,7 +238,7 @@ def render_params_tab() -> UserInputs:
     intra_override = None
     custom_objects_list: list = []
     engineering_spec = EngineeringSpec()
-    residential_class = "comfort"
+    residential_class = "economy"
 
     # Активные тайлы: (key, render-callable). Раскладываются по 2 столбцам.
     active_tiles: list[tuple[str, "callable"]] = []
@@ -423,22 +423,16 @@ def _render_engineering_tile() -> EngineeringSpec:
             "населения и числа соцобъектов."
         )
 
-        # --- Приготовление пищи ---
-        cooking_label = st.radio(
+        # --- Приготовление пищи (газ пока недоступен — серым) ---
+        st.radio(
             "Приготовление пищи",
-            ["Электроплиты", "Газовые плиты"],
+            ["Электроплиты", "Газовые плиты (в разработке)"],
             index=0, horizontal=True, key="eng_cooking",
-            help=(
-                "Тип плит влияет на электрическую нагрузку (ТП) и газоснабжение. "
-                "Электроплиты — текущий режим."
-            ),
+            disabled=True,
+            help="Тип плит влияет на электрическую нагрузку (ТП) и "
+                 "газоснабжение. Газовый режим будет добавлен позже.",
         )
-        cooking = "electric" if cooking_label == "Электроплиты" else "gas"
-        if cooking == "gas":
-            st.caption(
-                ":material/info: Демо-режим: расчёт газового варианта пока "
-                "идентичен электрическому — коэффициенты будут уточнены."
-            )
+        cooking = "electric"
 
         # --- Список объектов с режимом «только потребность» ---
         st.markdown("**Учитывать ЗУ в балансе** (снимите — объект «только потребность»):")
@@ -454,21 +448,25 @@ def _render_engineering_tile() -> EngineeringSpec:
                 if not in_balance:
                     demand_only.append(key)
 
-        # --- Advanced: override удельных нагрузок ---
-        with st.expander("Удельные нагрузки (по умолчанию — норматив)"):
-            use_q = st.checkbox("Задать вручную", value=False, key="eng_q_override")
-            q_heat = q_water = None
-            if use_q:
-                q_heat = float(st.number_input(
-                    "Тепловая нагрузка, кВт/м² квартир",
-                    min_value=0.02, max_value=0.30, value=0.10, step=0.01,
-                    key="eng_q_heat",
-                ))
-                q_water = float(st.number_input(
-                    "Водоотведение, л/чел·сут",
-                    min_value=100.0, max_value=400.0, value=230.0, step=10.0,
-                    key="eng_q_water",
-                ))
+        # --- Override удельных нагрузок (без expander — иначе при клике
+        # чекбокса expander сворачивается и скрывает раскрытые поля) ---
+        use_q = st.toggle(
+            "Задать удельные нагрузки вручную", value=False, key="eng_q_override",
+            help="По умолчанию — норматив (тепло 0.10 кВт/м², вода 230 л/чел·сут).",
+        )
+        q_heat = q_water = None
+        if use_q:
+            qc1, qc2 = st.columns(2)
+            q_heat = float(qc1.number_input(
+                "Тепловая нагрузка, кВт/м² квартир",
+                min_value=0.02, max_value=0.30, value=0.10, step=0.01,
+                key="eng_q_heat",
+            ))
+            q_water = float(qc2.number_input(
+                "Водоотведение, л/чел·сут",
+                min_value=100.0, max_value=400.0, value=230.0, step=10.0,
+                key="eng_q_water",
+            ))
 
     return EngineeringSpec(
         cooking=cooking,
@@ -950,12 +948,29 @@ def _render_parking_tile() -> ParkingConfig:
             key="park_mode_label",
         )
         park_mode = PARK_MODE_LABELS[park_label]
+
+        # v0.12.2: стилобат — ортогональная доля жилищной парковки в поднятом
+        # стилобате (не заглубляется, не занимает ЗУ квартала; 25% деки под
+        # домами = −1 этаж жилья там, дворовая дека даёт ≤70% озеленения).
+        styl_pct = st.slider(
+            "Доля жилищной парковки в стилобате, %",
+            min_value=0, max_value=100, value=0, step=5,
+            key="park_stylobate_pct",
+            help=(
+                "Стилобат — поднятый над землёй паркинг (35 м²/м.м). Не занимает "
+                "ЗУ квартала и не заглубляется. Берёт долю ЖИЛИЩНЫХ м/м; остаток "
+                "делится по выбранному режиму. 25% стилобата под домами снимает "
+                "1 этаж жилья на этом пятне, остальное — поднятый двор."
+            ),
+        )
+        styl_share = styl_pct / 100.0
+
         if park_mode == "min_open":
             st.caption("12.5% открыто (норматив СПб), 87.5% — подземные.")
-            return ParkingConfig(mode="min_open")
+            return ParkingConfig(mode="min_open", stylobate_share=styl_share)
         if park_mode == "all_open":
             st.caption("100% м/м на поверхности — максимальная нагрузка на квартал.")
-            return ParkingConfig(mode="all_open")
+            return ParkingConfig(mode="all_open", stylobate_share=styl_share)
         if park_mode == "preset_50_50":
             ml_levels = st.slider(
                 "Этажность многоуровневого паркинга",
@@ -976,8 +991,9 @@ def _render_parking_tile() -> ParkingConfig:
                 multilevel_share=0.5,
                 underground_share=0.0,
                 multilevel_levels=int(ml_levels),
+                stylobate_share=styl_share,
             )
-        return _render_parking_custom()
+        return _render_parking_custom(styl_share)
 
 
 NORM_MIN_OPEN = 12.5  # % — норматив СПб (parking.open_share_min)
@@ -1184,7 +1200,7 @@ def _render_share_slider(
         )
 
 
-def _render_parking_custom() -> ParkingConfig:
+def _render_parking_custom(stylobate_share: float = 0.0) -> ParkingConfig:
     """Custom-режим парковок (v0.6.2):
        - чекбоксы для включения каждого типа;
        - «🔒 Зафиксировать» для каждого активного типа;
@@ -1332,10 +1348,11 @@ def _render_parking_custom() -> ParkingConfig:
             underground_share=ug_share,
             multilevel_levels=int(ml_levels),
             multilevel_explicit_places=ml_explicit_places,
+            stylobate_share=stylobate_share,
         )
     except Exception as e:
         st.error(f"Некорректная конфигурация парковок: {e}")
-        return ParkingConfig(mode="min_open")
+        return ParkingConfig(mode="min_open", stylobate_share=stylobate_share)
 
 
 def _render_economy_tile() -> str:
@@ -1343,18 +1360,19 @@ def _render_economy_tile() -> str:
     with st.container(border=True):
         _tile_header(":material/payments: Экономика (условные единицы)", "include_economy")
         st.caption(
-            "Конструктив и отделка — дефолты `monolith` / `standard` из норматива. "
-            "Баллы — безразмерный индикатор для сравнения вариантов проекта."
+            "За основу принято: монолитный каркас, типовая («стандарт») отделка, "
+            "цены и себестоимость СПб. Результат — в безразмерных баллах "
+            "(1 балл ≈ м² жилья 9-этажного монолита), для сравнения вариантов "
+            "между собой, а не как смета в рублях."
         )
+        _CLASS_RU = {"economy": "Эконом", "comfort": "Комфорт", "business": "Бизнес"}
         cls_label = st.selectbox(
             "Класс жилья",
             ["economy", "comfort", "business"],
-            index=1,  # comfort по умолчанию
+            index=0,  # Эконом по умолчанию
+            format_func=lambda v: _CLASS_RU.get(v, v),
             key="residential_class",
-            help=(
-                "Влияет на цену продажи м² квартир: "
-                "economy 1.55, comfort 1.95, business 2.80 баллов/м²."
-            ),
+            help="Влияет на цену продажи м² квартир и себестоимость отделки.",
         )
     return cls_label
 

@@ -247,6 +247,27 @@ class TestSocialMetrics:
         assert e.profit_before_land == pytest.approx(e.profit)
 
 
+class TestEconomyIndex:
+    """v0.12.1: стабильный economy_index = 100 × выручка / себестоимость."""
+
+    def test_index_definition(self, spb, site):
+        e = verify_kit(1.5, site, CalculationOptions(floors=12), spb).economy
+        expected = 100.0 * e.revenue.total / e.cost.total
+        assert e.economy_index == pytest.approx(expected)
+
+    def test_index_equals_100_plus_roi(self, spb, site):
+        # economy_index = 100 × (1 + ROI) = 100 + ROI%
+        e = verify_kit(1.5, site, CalculationOptions(floors=12), spb).economy
+        assert e.economy_index == pytest.approx(100.0 * (1.0 + e.roi))
+
+    def test_index_above_100_when_profitable(self, spb, site):
+        e = verify_kit(1.5, site, CalculationOptions(floors=12), spb).economy
+        if e.profit > 0:
+            assert e.economy_index > 100.0
+        elif e.profit < 0:
+            assert e.economy_index < 100.0
+
+
 class TestIncludeEconomyToggle:
     """v0.9.29: include_economy=False → result.economy is None."""
 

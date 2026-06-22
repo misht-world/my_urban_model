@@ -24,6 +24,7 @@ def calc_revenue(tep, options, norms: Normatives) -> RevenueBreakdown:
     p_ml = float(norms.resolve("economy.sale_prices.parking_multilevel"))
     p_open = float(norms.resolve("economy.sale_prices.parking_surface"))
     p_vpp = float(norms.resolve("economy.sale_prices.vpp_commercial"))
+    p_styl = float(norms.resolve("economy.sale_prices.parking_stylobate"))
 
     # v0.9.14: доля реализации м/м по классу жилья. Не все построенные
     # места продаются — особенно в эконом/комфорт классе. Непроданные
@@ -41,11 +42,14 @@ def calc_revenue(tep, options, norms: Normatives) -> RevenueBreakdown:
     n_open = int(tep.parking_open_places.value or 0)
     n_ml = int(tep.parking_multilevel_places.value or 0)
     n_ug = int(tep.parking_underground_places.value or 0)
+    n_styl = int(getattr(tep, "parking_stylobate_places", None).value or 0) \
+        if getattr(tep, "parking_stylobate_places", None) is not None else 0
 
     r_res = apt * p_res
     r_open = n_open * p_open * park_sale_rate
     r_ml = n_ml * p_ml * park_sale_rate
     r_ug = n_ug * p_ug * park_sale_rate
+    r_styl = n_styl * p_styl * park_sale_rate
     r_vpp = bi_area * p_vpp
 
     # v0.9.14: компенсация ДОО/СОШ городом — в реальности застройщик
@@ -84,13 +88,14 @@ def calc_revenue(tep, options, norms: Normatives) -> RevenueBreakdown:
             r_custom += floor_area * p_vpp
         # 3.x → 0 (соцнагрузка)
 
-    total = r_res + r_open + r_ml + r_ug + r_vpp + r_custom + r_social_comp
+    total = r_res + r_open + r_ml + r_ug + r_styl + r_vpp + r_custom + r_social_comp
 
     return RevenueBreakdown(
         residential=r_res,
         parking_open=r_open,
         parking_multilevel=r_ml,
         parking_underground=r_ug,
+        parking_stylobate=r_styl,
         vpp_commercial=r_vpp,
         custom_commercial=r_custom,
         social_compensation=r_social_comp,

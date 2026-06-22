@@ -255,6 +255,37 @@ def compute_tep_for_kit(
             else Status.OK
         )
 
+    # === Стилобатная парковка (v0.12.2) ===
+    # Стилобат обслуживает долю ЖИЛИЩНОЙ парковки. 25% его деки стоит под
+    # жилыми домами → там 1-й этаж = парковка, не квартиры (теряем 1 этаж
+    # жилья на этом пятне). Размер стилобата зависит от парковки, парковка —
+    # от площади квартир, площадь квартир — от стилобата: решаем локальной
+    # фикс-точкой (эффект ~3% → сходится за пару итераций). По аналогии с
+    # корректировкой встроенного ДОО НЕ перекаскадируем в число мест ДОО
+    # (выше) — погрешность второго порядка незначительна.
+    stylobate_places_v = 0
+    stylobate_area_v = 0.0
+    _styl_share = float(getattr(options.parking, "stylobate_share", 0.0) or 0.0)
+    if _styl_share > 0 and apartments_area_v > 0 and options.include_parking:
+        _styl_per_place = norms.resolve("parking.housing.m2_apartments_per_place")
+        _styl_apl = norms.resolve("parking.stylobate_area_per_place")
+        _rgfa_base = residential_gfa  # после вычетов ВПП и встроенного ДОО
+        for _ in range(6):
+            _hreq = math.ceil(apartments_area_v / _styl_per_place) if apartments_area_v > 0 else 0
+            stylobate_places_v = round(_hreq * _styl_share)
+            stylobate_area_v = stylobate_places_v * _styl_apl
+            apartments_area_v = max(0.0, (_rgfa_base - 0.25 * stylobate_area_v) * apt_ratio)
+        residential_gfa = max(0.0, _rgfa_base - 0.25 * stylobate_area_v)
+        pop_v = population.population(apartments_area_v, hp)
+        pop_check_v = population.population(apartments_area_v, hp_check)
+        density_v = population.density_chel_per_ga(pop_v, site.area_m2)
+        density_check_v = population.density_chel_per_ga(pop_check_v, site.area_m2)
+        _density_over = density_check_v > density_max
+        density_status = (
+            Status.ERROR if (_density_over and options.enforce_density_norm)
+            else Status.OK
+        )
+
     # v0.10.11: предупреждение о плотности — по ИТОГОВОМУ значению (после
     # корректировки на встроенный ДОО), чтобы не показывать устаревшее число.
     if _density_over:
@@ -481,6 +512,7 @@ def compute_tep_for_kit(
     park = compute_parking_breakdown(
         apartments_area_v, options.parking, norms,
         additional_places=bi_parking_places + custom_total_parking_places,
+        stylobate_places=stylobate_places_v,
     )
 
     # === Проверка реалистичности подземного паркинга (v0.8.5, AUDIT P0-7) ===
@@ -635,7 +667,14 @@ def compute_tep_for_kit(
     greening_actual_total = (
         znop_in_balance + green_housing_v + bi_greening_v + custom_total_greening
     )
-    # v0.8.7: при выключенной проверке озеленения квартала передаём
+    # v0.12.2: стилобатный двор (75% деки) над открытой землёй квартала, но по
+    # ПЗЗ озеленения на стилобате ≤70%. Земля под декой иначе зачлась бы как
+    # озеленение на 100% (через surplus); дека капает её на 70% → штраф 30%
+    # от дворовой части. Эти 30% должны компенсироваться озеленением на земле
+    # вне стилобата (предупреждение пользователю — косвенно через дефицит).
+    if stylobate_area_v > 0:
+        styl_yard = 0.75 * stylobate_area_v
+        greening_actual_total -= 0.30 * styl_yard
     # greening_required=0 — фактическое значение всё равно записывается
     # в TEPResult для аудита, но feasible не блокируется.
     _greening_required_check = (
@@ -1112,6 +1151,16 @@ def compute_tep_for_kit(
             park.underground_places,
             unit="м/м",
             formula="не занимают поверхностную площадь квартала",
+        ),
+        parking_stylobate_places=_F(
+            park.stylobate_places,
+            unit="м/м",
+            formula="доля жилищной парковки в стилобате",
+        ),
+        parking_stylobate_area=_F(
+            park.stylobate_area,
+            unit="m2",
+            formula=f"{park.stylobate_places} м/м × {norms.resolve('parking.stylobate_area_per_place')} м²",
         ),
         # --- Проезды ---
         driveways_intra_quarter_area=_F(

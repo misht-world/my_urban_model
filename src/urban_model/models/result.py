@@ -131,6 +131,14 @@ class TEPResult(BaseModel):
     parking_multilevel_objects: TEPField# число объектов МП
     parking_multilevel_area: TEPField   # пятно МП, м²
     parking_underground_places: TEPField# подземные (не занимают surface-площадь)
+    # v0.12.2: стилобат — поднятый паркинг, не занимает ЗУ квартала; 25% деки
+    # под домами (−1 этаж жилья), 75% — двор (озеленение ≤70% по ПЗЗ).
+    parking_stylobate_places: TEPField = Field(
+        default_factory=lambda: TEPField(value=0, unit="м/м")
+    )
+    parking_stylobate_area: TEPField = Field(
+        default_factory=lambda: TEPField(value=0.0, unit="m2")
+    )
 
     # Проезды
     driveways_intra_quarter_area: TEPField

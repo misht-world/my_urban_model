@@ -603,6 +603,12 @@ def render_details(result: TEPResult) -> None:
             ]
         if result.parking_underground_places.value and result.parking_underground_places.value > 0:
             rows.append(_row("Подземные м/м", result.parking_underground_places, fmt_int))
+        if (getattr(result, "parking_stylobate_places", None)
+                and (result.parking_stylobate_places.value or 0) > 0):
+            rows += [
+                _row("Стилобатные м/м", result.parking_stylobate_places, fmt_int),
+                _row("Площадь деки стилобата", result.parking_stylobate_area, fmt_m2),
+            ]
         # Парковки соцобъектов — отдельные открытые на ЗУ соцобъектов (v0.7.0)
         if (result.social_parking_total.value or 0) > 0:
             rows += [
@@ -631,9 +637,8 @@ def render_details(result: TEPResult) -> None:
     # 🔌 Инженерная инфраструктура (v0.12)
     if result.engineering is not None and result.engineering.objects:
         eng = result.engineering
-        n_obj = sum(1 for o in eng.objects if o.count > 0)
         with st.expander(
-            f":material/bolt: Инженерная инфраструктура ({fmt_m2(eng.plot_in_balance)})",
+            ":material/bolt: Инженерная инфраструктура",
             expanded=False,
         ):
             eng_rows = []
@@ -808,6 +813,7 @@ def render_details(result: TEPResult) -> None:
                 _eco_row("Парковки открытые", cb.parking_open),
                 _eco_row("Парковки многоуровневые", cb.parking_multilevel),
                 _eco_row("Парковки подземные", cb.parking_underground),
+                _eco_row("Парковки стилобатные", cb.parking_stylobate),
                 _eco_row("Парковки соцобъектов", cb.social_parking),
                 _eco_row("Спортивные сооружения", cb.sport),
                 _eco_row("Пользовательские объекты", cb.custom_objects),
@@ -829,6 +835,7 @@ def render_details(result: TEPResult) -> None:
                 _eco_row("Парковки открытые", rb.parking_open),
                 _eco_row("Парковки многоуровневые", rb.parking_multilevel),
                 _eco_row("Парковки подземные", rb.parking_underground),
+                _eco_row("Парковки стилобатные", rb.parking_stylobate),
                 _eco_row("ВПП коммерческая", rb.vpp_commercial),
                 _eco_row("Пользовательские (коммерческие)", rb.custom_commercial),
                 _eco_row("Компенсация ДОО/СОШ городом", rb.social_compensation),

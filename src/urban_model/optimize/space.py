@@ -44,6 +44,8 @@ class SearchSpace(BaseModel):
     parking_underground_share_range: tuple[float, float] | None = None
     multilevel_levels_range: tuple[int, int] | None = None
     underground_levels_range: tuple[int, int] | None = None
+    # v0.12.2: доля жилищной парковки в стилобате (ортогональна mode).
+    parking_stylobate_share_range: tuple[float, float] | None = None
 
     # ВПП (v0.8.0): режим расчёта обязательных ВПП — список из
     # ["min_only", "min_plus", "custom_only", "full_floor", "half_floor"].
@@ -113,6 +115,7 @@ class SearchSpace(BaseModel):
                 "parking_underground_share_range",
                 "multilevel_levels_range",
                 "underground_levels_range",
+                "parking_stylobate_share_range",
                 "kg_num_objects_range",
                 "school_num_objects_range",
                 "vpp_modes",

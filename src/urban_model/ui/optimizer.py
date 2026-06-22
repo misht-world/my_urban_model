@@ -116,19 +116,19 @@ def _render_base_snapshot(
         c2.metric("Площадь квартир", f"{_fmt_int(base_tep.apartments_area.value)} м²")
         c3.metric("Этажность", _floors_label(base_tep, base_options))
         c4.metric("Население", f"{_fmt_int(base_tep.population.value)} чел")
-        c5.metric(
-            "Резерв баланса",
-            f"{_fmt_int(base_tep.balance.surplus)} м²",
-            help=(
-                "Свободная часть квартала после вычитания всех компонентов "
-                "(жильё, ДОО/СОШ, парковки, проезды, ЗНОП). "
-                "Эта территория автоматически засчитывается как зелёное "
-                "открытое пространство (двор, площадка) и учитывается в "
-                "нормативе 25% озеленения квартала. "
-                "Положительный резерв = «запас под манёвр», нулевой = "
-                "квартал максимально использован."
-            ),
-        )
+        if base_tep.economy is not None:
+            c5.metric(
+                "Эконом-индекс",
+                f"{base_tep.economy.economy_index:.0f} / 100",
+                help=(
+                    "Условный экономический индекс = 100 × выручка ÷ "
+                    "себестоимость. 100 = окупаемость; выше — эффективнее. "
+                    "Стабильная метрика модели, не зависит от набора найденных "
+                    "вариантов."
+                ),
+            )
+        else:
+            c5.metric("Эконом-индекс", "—")
 
         # Ряд 2: парковки по типам
         op = int(base_tep.parking_open_places.value or 0)
@@ -143,19 +143,17 @@ def _render_base_snapshot(
         c10.metric("СОШ", f"{_fmt_int(base_tep.school_places_accepted.value)} мест"
                    if (base_tep.school_places_accepted.value or 0) > 0 else "—")
 
-        # Ряд 3: экономика + ЗНОП
+        # Ряд 3: технические эконом-метрики + ЗНОП
         c11, c12, c13, c14, c15 = st.columns(5)
         if base_tep.economy is not None:
-            c11.metric("Выгодность, баллы", f"{_fmt_int(base_tep.economy.profit)}",
-                       help="Безразмерный индикатор для сравнения вариантов проекта.")
-            c12.metric("Маржа", f"{base_tep.economy.margin*100:.1f}%")
-            c13.metric("ROI", f"{base_tep.economy.roi*100:.1f}%")
-            # v0.9.17: «Прибыль / м² участка» убрано — не несёт пользы.
+            c11.metric("Маржа", f"{base_tep.economy.margin*100:.1f}%")
+            c12.metric("ROI", f"{base_tep.economy.roi*100:.1f}%")
+            c13.metric("", "")
             c14.metric("", "")
         else:
-            c11.metric("Выгодность, баллы", "—")
-            c12.metric("Маржа", "—")
-            c13.metric("ROI", "—")
+            c11.metric("Маржа", "—")
+            c12.metric("ROI", "—")
+            c13.metric("", "")
             c14.metric("", "")
         zpp = base_tep.znop_per_person.value or 0
         c15.metric("ЗНОП", f"{zpp:.0f} м²/чел" if zpp > 0 else "0 м²/чел")
@@ -253,6 +251,14 @@ def _render_pareto_constraints(base_options: CalculationOptions) -> ParetoConstr
                     "если по проекту или нормативам не разрешены."
                 ),
             )
+            allow_stylobate = st.checkbox(
+                ":material/deck: Стилобатные", value=True, key="pareto_allow_styl",
+                help=(
+                    "Поднятый стилобат-паркинг (не заглубляется, не занимает ЗУ "
+                    "квартала). 25% деки под домами = −1 этаж жилья там; "
+                    "дворовая дека даёт ≤70% озеленения по ПЗЗ."
+                ),
+            )
             restrict_combos = st.checkbox(
                 ":material/filter_alt: Реалистичные сочетания парковок",
                 value=True, key="pareto_restrict_combos",
@@ -271,6 +277,7 @@ def _render_pareto_constraints(base_options: CalculationOptions) -> ParetoConstr
             allow_open=allow_open,
             allow_multilevel=allow_multilevel,
             allow_underground=allow_underground,
+            allow_stylobate=allow_stylobate,
             restrict_parking_combos=restrict_combos,
             cluster_floors_ranges=cluster_floors_ranges,
         )
@@ -279,10 +286,12 @@ def _render_pareto_constraints(base_options: CalculationOptions) -> ParetoConstr
 def _render_recommendations_section(
     site: Site, base_options: CalculationOptions, norms: Normatives, base_tep: TEPResult,
 ) -> None:
-    st.markdown("### :material/track_changes: Топ-3 рекомендации")
+    st.markdown("### :material/track_changes: Рекомендации — стратегии застройки")
     st.caption(
-        "Подбор в широком диапазоне параметров находит 3 лучших сценария по "
-        "разным критериям. Дельты — относительно базы выше."
+        "Подбор в широком диапазоне параметров находит несколько осмысленных "
+        "стратегий по разным критериям (максимум площади, эконом-индекс, "
+        "сбалансированный, девелоперский). Это не «единственный лучший», а "
+        "направления для дальнейшей проработки. Дельты — относительно базы выше."
     )
 
     constraints = _render_pareto_constraints(base_options)
@@ -294,7 +303,7 @@ def _render_recommendations_section(
         + f"|site={site.area_m2}"
         + f"|floors={constraints.floors_range}"
         + f"|zones={constraints.cluster_floors_ranges}"
-        + f"|park={constraints.allow_open}{constraints.allow_multilevel}{constraints.allow_underground}"
+        + f"|park={constraints.allow_open}{constraints.allow_multilevel}{constraints.allow_underground}{constraints.allow_stylobate}"
         + f"|combos={constraints.restrict_parking_combos}"
     )
     cached_bundle: ParetoBundle | None = st.session_state.get("pareto_bundle")
@@ -365,21 +374,21 @@ def _render_recommendations_section(
     # смысл смотреть детали». Показываем максимальные Δ% по двум главным
     # критериям среди всех рекомендаций.
     deltas_apt = [r.delta_vs_base.d_apt_pct for r in cached_bundle.recommendations]
-    deltas_profit = [
-        r.delta_vs_base.d_profit_pct for r in cached_bundle.recommendations
-        if r.delta_vs_base.d_profit_pct is not None
+    deltas_index = [
+        r.delta_vs_base.d_index_abs for r in cached_bundle.recommendations
+        if r.delta_vs_base.d_index_abs is not None
     ]
-    if deltas_apt or deltas_profit:
+    if deltas_apt or deltas_index:
         parts = []
         if deltas_apt:
             best_apt = max(deltas_apt)
             parts.append(
                 f"максимальное **Δ площадь**: {best_apt:+.1f}%"
             )
-        if deltas_profit:
-            best_profit = max(deltas_profit)
+        if deltas_index:
+            best_index = max(deltas_index)
             parts.append(
-                f"максимальное **Δ прибыль**: {best_profit:+.1f}%"
+                f"максимальный **Δ эконом-индекс**: {best_index:+.0f}"
             )
         st.markdown("📈 " + "  ·  ".join(parts) + " — относительно базы.")
 
@@ -398,7 +407,7 @@ def _render_recommendations_section(
             "У нескольких рекомендаций одинаковая площадь квартир — это "
             "значит, что КИТ упёрт в нормативный потолок ПЗЗ (с ДПТ = 2.5). "
             "Площадь не увеличивается, варианты различаются ТОЛЬКО парковкой "
-            "и прибылью."
+            "и экономикой."
         )
 
     # v0.9.6: сравнительная таблица «База ↔ Рекомендации» — все варианты
@@ -436,6 +445,9 @@ def _render_comparison_table(
         if key == "profit":      return (
             float(tep.economy.profit) if tep.economy is not None else None
         )
+        if key == "index":       return (
+            float(tep.economy.economy_index) if tep.economy is not None else None
+        )
         return None
 
     # Список вариантов: (label, tep, options)
@@ -460,7 +472,7 @@ def _render_comparison_table(
         ("ДОО, мест",                  "kg",     lambda v: f"{int(v):,}".replace(",", " "), None),
         ("СОШ, мест",                  "sch",    lambda v: f"{int(v):,}".replace(",", " "), None),
         ("ЗНОП, м²/чел",               "znop",   lambda v: f"{v:.0f}",                      None),
-        ("Выгодность, баллы",              "profit", lambda v: f"{int(v):,}".replace(",", " ") if v is not None else "—", "max"),
+        ("Эконом-индекс (100=окуп.)",  "index",  lambda v: f"{v:.0f}" if v is not None else "—", "max"),
     ]
 
     # DataFrame: индекс = показатель, колонки = варианты, ячейки = строки.
@@ -494,7 +506,7 @@ def _render_comparison_table(
 
     # v0.9.13: ключевые строки выделяем bold по всей строке (визуально
     # ведут глаз). Подсветка лучшего значения остаётся.
-    _KEY_ROWS = {"Площадь квартир, м²", "Выгодность, баллы", "КИТ ПЗЗ"}
+    _KEY_ROWS = {"Площадь квартир, м²", "Эконом-индекс (100=окуп.)", "КИТ ПЗЗ"}
 
     def _highlight(row):
         styles = [""] * len(row)
@@ -518,10 +530,14 @@ def _render_comparison_table(
         st.markdown("##### :material/table_chart: Сравнительная таблица")
         st.caption(
             "Все варианты рядом. Зелёным выделено лучшее значение в строке "
-            "(где это применимо: max для площади/прибыли, min для подземки). "
+            "(где это применимо: max для площади/эконом-индекса). "
             "База — серый фон."
         )
-        st.dataframe(styler, use_container_width=True)
+        # v0.12.1: одинаковая ширина всех столбцов-вариантов.
+        col_config = {
+            col: st.column_config.Column(width="small") for col in df.columns
+        }
+        st.dataframe(styler, use_container_width=True, column_config=col_config)
 
 
 def _floors_label(tep: TEPResult, options: CalculationOptions | None = None) -> str:
@@ -556,40 +572,32 @@ def _extract_kpi_fields(
     op = int(tep.parking_open_places.value or 0)
     ml = int(tep.parking_multilevel_places.value or 0)
     ug = int(tep.parking_underground_places.value or 0)
+    styl = int(getattr(tep, "parking_stylobate_places", None).value or 0) \
+        if getattr(tep, "parking_stylobate_places", None) is not None else 0
     kg = int(tep.kindergarten_places_accepted.value or 0)
     sch = int(tep.school_places_accepted.value or 0)
     zpp = tep.znop_per_person.value or 0
     # v0.9.29: этажность берём из TEP (учитывает кластеры). При зонах —
     # «9 / 21 (ср. 15.0)»; иначе — одиночная этажность.
     floors = _floors_label(tep, options)
-    profit = (
-        _fmt_int(tep.economy.profit) + " баллов"
-        if tep.economy is not None else "—"
-    )
-
-    # v0.9.13: добавлены маржа и ROI после прибыли — полная финансовая
-    # картина в одной таблице (всё что есть в tep.economy без углубления).
-    margin_str = (
-        f"{tep.economy.margin*100:.1f}%"
-        if tep.economy is not None else "—"
-    )
-    roi_str = (
-        f"{tep.economy.roi*100:.1f}%"
+    # v0.12.1: headline — стабильный эконом-индекс (100 = окупаемость).
+    # Сырые profit/ROI/маржа вынесены в технический expander карточки.
+    econ_index = (
+        f"{tep.economy.economy_index:.0f} / 100"
         if tep.economy is not None else "—"
     )
     return [
         ("Площадь квартир",      f"{_fmt_int(tep.apartments_area.value)} м²"),
         ("КИТ ПЗЗ",              f"{(tep.kit.value or 0):.3f}"),
         ("Этажность",            str(floors)),
-        ("Парковки — открытые",  f"{op} м/м" if op + ml + ug > 0 else "—"),
+        ("Парковки — открытые",  f"{op} м/м" if op + ml + ug + styl > 0 else "—"),
         ("    многоуровневые",   f"{ml} м/м"),
         ("    подземные",        f"{ug} м/м"),
+        ("    стилобатные",      f"{styl} м/м"),
         ("ДОО",                  f"{kg} мест" if kg > 0 else "—"),
         ("СОШ",                  f"{sch} мест" if sch > 0 else "—"),
         ("ЗНОП",                 f"{zpp:.0f} м²/чел" if zpp > 0 else "0 м²/чел"),
-        ("Прибыль",              profit),
-        ("Маржа",                margin_str),
-        ("ROI",                  roi_str),
+        ("Эконом-индекс",        econ_index),
     ]
 
 
@@ -642,6 +650,11 @@ def _rec_options_from_params(
         # сценариями уровни сбрасываются в дефолты, что путает в KPI-карточке.
         ml_lvl = int(params.get("multilevel_levels", base_options.parking.multilevel_levels))
         ug_lvl = int(params.get("underground_levels", base_options.parking.underground_levels))
+        # v0.12.2: стилобат — ортогональная доля, восстанавливаем всегда.
+        styl_sh = float(params.get(
+            "parking_stylobate_share",
+            getattr(base_options.parking, "stylobate_share", 0.0),
+        ))
         if mode == "custom":
             # v0.9.10: нормализация долей перед созданием ParkingConfig.
             # Optuna в `_build_options_for_trial` сэмплирует доли независимо,
@@ -656,10 +669,12 @@ def _rec_options_from_params(
                 mode="custom",
                 open_share=o, multilevel_share=m, underground_share=u,
                 multilevel_levels=ml_lvl, underground_levels=ug_lvl,
+                stylobate_share=styl_sh,
             )
         else:
             opts.parking = ParkingConfig(
                 mode=mode, multilevel_levels=ml_lvl, underground_levels=ug_lvl,
+                stylobate_share=styl_sh,
             )
     return opts
 
@@ -675,14 +690,30 @@ def _render_recommendation_card(
         # Краткая «верхняя» сводка дельт — чтобы за секунду понять «лучше/хуже»
         d = rec.delta_vs_base
         delta_lines = [f"Δ площадь: **{d.d_apt_pct:+.1f}%**"]
-        if d.d_profit_pct is not None:
-            delta_lines.append(f"Δ прибыль: **{d.d_profit_pct:+.1f}%**")
+        if d.d_index_abs is not None:
+            delta_lines.append(f"Δ индекс: **{d.d_index_abs:+.0f}**")
         delta_lines.append(f"Δ КИТ: **{d.d_kit_abs:+.3f}**")
         st.markdown("  ·  ".join(delta_lines))
 
         # Унифицированный KPI-блок — тот же набор полей что в snapshot базы.
         rec_options = _rec_options_from_params(base_options, rec.params)
         _render_kpi_block(rec.tep, rec_options)
+
+        # Технические (условные) метрики модели — по запросу аудита спрятаны
+        # в expander: сырые баллы прибыли могут быть «в минус», что путает.
+        if rec.tep.economy is not None:
+            with st.expander(":material/calculate: Технические метрики (условные)", expanded=False):
+                e = rec.tep.economy
+                st.caption(
+                    "Безразмерные баллы модели для сравнения вариантов "
+                    "(1.0 ≈ м² жилья 9 эт. монолит). Не денежный прогноз."
+                )
+                st.markdown(
+                    f"• Условная прибыль: **{int(e.profit):,}** баллов  \n"
+                    f"• Маржа: **{e.margin*100:.1f}%**  ·  ROI: **{e.roi*100:.1f}%**  \n"
+                    f"• Эконом-индекс: **{e.economy_index:.0f}** "
+                    f"(100 = окупаемость)".replace(",", " ")
+                )
 
         # Что отличается от базы (текстом, как было)
         if d.key_changes:

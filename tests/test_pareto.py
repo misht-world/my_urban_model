@@ -51,10 +51,10 @@ class TestParetoBundle:
         assert bundle.n_trials_total >= 1
         assert bundle.n_trials_feasible >= 1
 
-    def test_returns_three_recommendations(self, bundle):
-        # На широком SearchSpace должно быть 3 разных кандидата.
-        # Может быть 2 если apt_best == profit_best и нет альтернатив.
-        assert 2 <= len(bundle.recommendations) <= 3
+    def test_returns_recommendations(self, bundle):
+        # v0.12.1: до 4 стратегий (площадь / эконом-индекс / сбаланс. /
+        # девелоперский). Может быть меньше при дедупе на узком пуле.
+        assert 2 <= len(bundle.recommendations) <= 4
 
     def test_recommendations_have_distinct_labels(self, bundle):
         labels = [r.label for r in bundle.recommendations]
