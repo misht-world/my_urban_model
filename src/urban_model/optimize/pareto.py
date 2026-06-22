@@ -118,24 +118,32 @@ def _is_hybrid_parking(params: dict, threshold: float = 0.10) -> bool:
 # одной секции» от общего числа мест для среднего квартала.
 _MIN_ML_PLACES_ABS = 50
 _MIN_UG_PLACES_ABS = 30
+# v0.12.6: стилобат — целое монолитное сооружение (дека + двор сверху),
+# строить его ради горстки мест нерационально. Порог выше, чем у МУ/подземки.
+_MIN_STYL_PLACES_ABS = 60
 _MIN_FRACTION_OF_TOTAL = 0.05
 
 
 def _has_token_parking(tep: TEPResult) -> bool:
-    """True если в варианте есть «символическое» количество МУ или подземных
-    мест: 0 < N < max(абсолютный_порог, 5% от общего числа м/м).
-    На больших кварталах порог растёт пропорционально (50 → ~100+),
-    на малых — снижается до абсолютного минимума (30/50).
+    """True если в варианте есть «символическое» количество МУ, подземных
+    ИЛИ стилобатных мест: 0 < N < max(абсолютный_порог, 5% от общего числа м/м).
+    На больших кварталах порог растёт пропорционально, на малых — снижается
+    до абсолютного минимума. v0.12.6: стилобат включён в фильтр.
     """
     ml = int(tep.parking_multilevel_places.value or 0)
     ug = int(tep.parking_underground_places.value or 0)
+    styl = int(getattr(tep, "parking_stylobate_places", None).value or 0) \
+        if getattr(tep, "parking_stylobate_places", None) is not None else 0
     total = int(tep.parking_required_places.value or 0)
     # Адаптивный порог: max(абсолютный, доля от total)
     th_ml = max(_MIN_ML_PLACES_ABS, int(total * _MIN_FRACTION_OF_TOTAL))
     th_ug = max(_MIN_UG_PLACES_ABS, int(total * _MIN_FRACTION_OF_TOTAL))
+    th_styl = max(_MIN_STYL_PLACES_ABS, int(total * _MIN_FRACTION_OF_TOTAL))
     if 0 < ml < th_ml:
         return True
     if 0 < ug < th_ug:
+        return True
+    if 0 < styl < th_styl:
         return True
     return False
 
