@@ -131,6 +131,49 @@ def compute_tep_for_kit(
     # снижает население/плотность). Иначе в warnings попадало устаревшее
     # значение (напр. 474), хотя итоговая плотность уже ≤ норматива (449.9).
 
+    # === Стилобатная парковка (v0.12.2 / v0.12.9; перенесена ВЫШЕ в v0.12.10) ===
+    # Считается ДО ДОО/СОШ, чтобы соцобъекты брали уже скорректированное
+    # население (на крупном квартале с большим стилобатом потеря квартир
+    # достигает нескольких % → иначе ДОО/СОШ были бы переоценены).
+    # Стилобат — полноценный 4-й тип: доля от ОБЩЕГО числа м/м (жильё + ВПП +
+    # доп-объекты). Физически обслуживает жильё: 25% деки стоит под жилыми
+    # домами → там 1-й этаж = парковка, не квартиры (теряем 1 этаж жилья).
+    # Размер стилобата зависит от парковки, парковка — от площади квартир,
+    # площадь квартир — от стилобата: решаем локальной фикс-точкой.
+    stylobate_places_v = 0
+    stylobate_area_v = 0.0
+    _styl_share = float(getattr(options.parking, "stylobate_share", 0.0) or 0.0)
+    if _styl_share > 0 and apartments_area_v > 0 and options.include_parking:
+        _styl_per_place = norms.resolve("parking.housing.m2_apartments_per_place")
+        _styl_apl = norms.resolve("parking.stylobate_area_per_place")
+        # Нежилые парковки (ВПП + доп-объекты) для сайзинга стилобата от ОБЩЕГО
+        # пула. Лёгкий предрасчёт (полные блоки — ниже), не зависит от площади
+        # квартир, поэтому считаем один раз до фикс-точки.
+        _vpp_pp = norms.resolve("parking.vpp.m2_per_place")
+        _add_parking = 0
+        for _b in all_built_ins:
+            _add_parking += math.ceil(_b.area_m2 / _vpp_pp)
+        for _obj in options.custom_objects:
+            _fa = _obj.floor_area_m2 or _obj.plot_area_m2
+            _add_parking += math.ceil(_fa / _vpp_pp)
+        _rgfa_base = residential_gfa  # GFA жилья − ВПП (встроенный ДОО вычтется ниже)
+        for _ in range(6):
+            _hreq = math.ceil(apartments_area_v / _styl_per_place) if apartments_area_v > 0 else 0
+            _total_demand = _hreq + _add_parking
+            stylobate_places_v = round(_total_demand * _styl_share)
+            stylobate_area_v = stylobate_places_v * _styl_apl
+            apartments_area_v = max(0.0, (_rgfa_base - 0.25 * stylobate_area_v) * apt_ratio)
+        residential_gfa = max(0.0, _rgfa_base - 0.25 * stylobate_area_v)
+        pop_v = population.population(apartments_area_v, hp)
+        pop_check_v = population.population(apartments_area_v, hp_check)
+        density_v = population.density_chel_per_ga(pop_v, site.area_m2)
+        density_check_v = population.density_chel_per_ga(pop_check_v, site.area_m2)
+        _density_over = density_check_v > density_max
+        density_status = (
+            Status.ERROR if (_density_over and options.enforce_density_norm)
+            else Status.OK
+        )
+
     # === ДОО ===
     # Резолвим нормативы заранее, чтобы они были доступны для formula-строк
     # даже когда include_kindergarten=False (важно для аудит-трейла).
@@ -267,47 +310,8 @@ def compute_tep_for_kit(
             else Status.OK
         )
 
-    # === Стилобатная парковка (v0.12.2 / v0.12.9) ===
-    # Стилобат — полноценный 4-й тип: доля от ОБЩЕГО числа м/м (жильё + ВПП +
-    # доп-объекты). Физически обслуживает жильё: 25% деки стоит под жилыми
-    # домами → там 1-й этаж = парковка, не квартиры (теряем 1 этаж жилья).
-    # Размер стилобата зависит от парковки, парковка — от площади квартир,
-    # площадь квартир — от стилобата: решаем локальной фикс-точкой (эффект
-    # ~3% → сходится за пару итераций). По аналогии с корректировкой ДОО НЕ
-    # перекаскадируем в число мест ДОО — погрешность второго порядка мала.
-    stylobate_places_v = 0
-    stylobate_area_v = 0.0
-    _styl_share = float(getattr(options.parking, "stylobate_share", 0.0) or 0.0)
-    if _styl_share > 0 and apartments_area_v > 0 and options.include_parking:
-        _styl_per_place = norms.resolve("parking.housing.m2_apartments_per_place")
-        _styl_apl = norms.resolve("parking.stylobate_area_per_place")
-        # v0.12.9: нежилые парковки (ВПП + доп-объекты) для сайзинга стилобата
-        # от ОБЩЕГО пула. Лёгкий предрасчёт (полные блоки — ниже), не зависит
-        # от площади квартир, поэтому считаем один раз до фикс-точки.
-        _vpp_pp = norms.resolve("parking.vpp.m2_per_place")
-        _add_parking = 0
-        for _b in all_built_ins:
-            _add_parking += math.ceil(_b.area_m2 / _vpp_pp)
-        for _obj in options.custom_objects:
-            _fa = _obj.floor_area_m2 or _obj.plot_area_m2
-            _add_parking += math.ceil(_fa / _vpp_pp)
-        _rgfa_base = residential_gfa  # после вычетов ВПП и встроенного ДОО
-        for _ in range(6):
-            _hreq = math.ceil(apartments_area_v / _styl_per_place) if apartments_area_v > 0 else 0
-            _total_demand = _hreq + _add_parking
-            stylobate_places_v = round(_total_demand * _styl_share)
-            stylobate_area_v = stylobate_places_v * _styl_apl
-            apartments_area_v = max(0.0, (_rgfa_base - 0.25 * stylobate_area_v) * apt_ratio)
-        residential_gfa = max(0.0, _rgfa_base - 0.25 * stylobate_area_v)
-        pop_v = population.population(apartments_area_v, hp)
-        pop_check_v = population.population(apartments_area_v, hp_check)
-        density_v = population.density_chel_per_ga(pop_v, site.area_m2)
-        density_check_v = population.density_chel_per_ga(pop_check_v, site.area_m2)
-        _density_over = density_check_v > density_max
-        density_status = (
-            Status.ERROR if (_density_over and options.enforce_density_norm)
-            else Status.OK
-        )
+    # (Блок стилобата перенесён ВЫШЕ — до ДОО/СОШ, v0.12.10 — чтобы соцобъекты
+    #  считались от скорректированного населения. См. «Стилобатная парковка».)
 
     # v0.10.11: предупреждение о плотности — по ИТОГОВОМУ значению (после
     # корректировки на встроенный ДОО), чтобы не показывать устаревшее число.
@@ -546,6 +550,22 @@ def compute_tep_for_kit(
         additional_places=bi_parking_places + custom_total_parking_places,
         stylobate_places=stylobate_places_v,
     )
+
+    # === Проверка норматива открытых м/м (v0.12.10) ===
+    # ≥12.5% всех м/м должны быть открытыми (гостевые/МГН). Если закрытые типы
+    # (особенно большой стилобат) забрали почти весь пул — открытых не хватает.
+    if options.include_parking and park.total_required > 0:
+        _open_min_share = norms.resolve("parking.open_share_min")
+        _open_share_actual = park.open_places / park.total_required
+        if _open_share_actual < _open_min_share - 1e-6:
+            warnings.append(_wcprefix(
+                WC.PARKING_OPEN_BELOW_MIN,
+                f"Открытых м/м {park.open_places} из {park.total_required} "
+                f"({_open_share_actual*100:.1f}%) — ниже норматива "
+                f"{_open_min_share*100:.1f}%. Слишком большая доля закрытых "
+                f"парковок (стилобат/подземка/МУ) не оставила места под открытые "
+                f"гостевые/МГН. Уменьшите долю закрытых типов."
+            ))
 
     # === Проверка реалистичности подземного паркинга (v0.8.5, AUDIT P0-7) ===
     # v0.9.17: на больших проектах подземка разбивается на НЕСКОЛЬКО СЕКЦИЙ

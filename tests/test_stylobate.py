@@ -99,6 +99,29 @@ def test_parking_suitability_matrix_loads(spb):
         assert all(0.0 <= v <= 1.0 for v in m.values())
 
 
+def test_open_below_min_warning_at_full_stylobate(spb, site):
+    """v0.12.10: стилобат 100% → открытых 0% → WARNING о нарушении 12.5%."""
+    r = solve_max_kit(site, _cfg(1.0), spb)
+    assert any("OPEN_BELOW_MIN" in w for w in r.warnings)
+
+
+def test_no_open_warning_normal_mix(spb, site):
+    """При нормальном миксе (open ≥ 12.5%) предупреждения нет."""
+    r = solve_max_kit(site, _cfg(0.3), spb)
+    assert not any("OPEN_BELOW_MIN" in w for w in r.warnings)
+
+
+def test_social_objects_use_post_stylobate_population(spb):
+    """v0.12.10: ДОО/СОШ считаются от населения ПОСЛЕ потери квартир под
+    стилобатом (требуемые места соответствуют итоговому населению)."""
+    site = Site(area_m2=120_000)
+    r = solve_max_kit(site, _cfg(0.7), spb)
+    kg_per_1000 = spb.resolve("social_objects.kindergarten.places_per_1000")
+    expected = r.population.value * kg_per_1000 / 1000
+    # требуемые места ДОО соответствуют ИТОГОВОМУ населению (а не «дострилоб.»)
+    assert abs(r.kindergarten_places_required.value - expected) < 1.0
+
+
 def test_parking_caps_matrix_loads(spb):
     for cls in ("economy", "comfort", "business"):
         caps = spb.resolve("economy.parking_caps", residential_class=cls)

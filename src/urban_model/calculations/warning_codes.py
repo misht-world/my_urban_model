@@ -39,6 +39,10 @@ class WC(str, Enum):
     # Плотность подземки выше норматива capacity_per_level.
     PARKING_UG_OVERPACKED = "PARKING_UG_OVERPACKED"
 
+    # Открытых м/м меньше норматива (≥12.5%) — обычно из-за слишком большой
+    # доли стилобата/закрытых типов, не оставивших места под открытые.
+    PARKING_OPEN_BELOW_MIN = "PARKING_OPEN_BELOW_MIN"
+
     # Плотность населения превышает норматив (450 чел/га для многоэтажки).
     DENSITY_ABOVE_LIMIT = "DENSITY_ABOVE_LIMIT"
 
