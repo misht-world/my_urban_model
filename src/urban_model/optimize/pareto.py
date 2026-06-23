@@ -581,41 +581,42 @@ def _select_three(
     def _pick(
         pool: list[OptimizationResult],
         seen_fps: set[tuple],
-        seen_archetypes: set[str],
-        require_new_archetype: bool,
+        seen_ids: set[int],
     ) -> OptimizationResult | None:
-        """Выбрать первый из pool, удовлетворяющий условиям дедупликации."""
-        # Сначала пробуем с new archetype (для типологического разнообразия)
-        if require_new_archetype:
-            for r in pool:
-                arch = _parking_archetype(r)
-                fp = _params_fingerprint(r)
-                if fp not in seen_fps and arch not in seen_archetypes:
-                    seen_fps.add(fp); seen_archetypes.add(arch)
-                    return r
-        # Fallback: любой уникальный fp (даже если архетип повторяется)
+        """Выбрать лучший из pool (он уже отсортирован по метрике карточки).
+
+        v0.12.12: дедуп по fingerprint (чтобы карточки не совпадали 1-в-1).
+        v0.12.13: если уникального fingerprint нет (узкий поиск — напр. только
+        open+МУ → мало различных типов), берём ЛЮБОЙ ещё не показанный сценарий.
+        Так карточки «Пороговый»/«Девелоперский» не пропадают при ограничении
+        типов парковок — они просто могут оказаться близки к другим.
+        """
+        # 1) предпочитаем сценарий с НОВЫМ fingerprint (типологически отличный)
         for r in pool:
+            if id(r) in seen_ids:
+                continue
             fp = _params_fingerprint(r)
             if fp not in seen_fps:
-                seen_fps.add(fp); seen_archetypes.add(_parking_archetype(r))
+                seen_fps.add(fp); seen_ids.add(id(r))
+                return r
+        # 2) fallback: любой ещё не показанный результат (fingerprint может
+        #    повторяться, но сам сценарий — другой по этажности/долям/метрике)
+        for r in pool:
+            if id(r) not in seen_ids:
+                seen_ids.add(id(r))
                 return r
         return None
 
     recs: list[Recommendation] = []
     seen_fps: set[tuple] = set()
-    seen_arch: set[str] = set()
+    seen_ids: set[int] = set()
     for i, (label, pool) in enumerate([
         ("Максимум площади", apt_sorted),
         ("Максимум эконом-индекса", index_sorted),
         ("Пороговый", threshold_sorted),
         ("Девелоперский", developer_sorted),
     ]):
-        # v0.12.12: НЕ требуем «новый тип парковки» — иначе карточка нарушала
-        # своё обещание (напр. «Максимум эконом-индекса» брал 94 вместо 96,
-        # «Пороговый» оказывался дальше от 100). Теперь каждая карточка строго
-        # честна критерию; разнообразие парковок — естественное следствие
-        # разных метрик. Дедуп только по fingerprint (без точных дублей).
-        picked = _pick(pool, seen_fps, seen_arch, require_new_archetype=False)
+        picked = _pick(pool, seen_fps, seen_ids)
         if picked is None:
             continue
         recs.append(Recommendation(
