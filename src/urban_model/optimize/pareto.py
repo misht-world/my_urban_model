@@ -475,6 +475,16 @@ def _select_three(
         if capped:
             feasible = capped
 
+    # v0.12.11: отсев сценариев с нарушением минимума ЗНОП по ПЗЗ (актуально
+    # при ручном override площади ЗНОП: при росте КИТ/падении населения
+    # фиксированная площадь может стать ниже норматива). С откатом.
+    _ok_znop = [
+        r for r in feasible
+        if not any("ZNOP_BELOW_MIN" in w for w in (r.tep.warnings or []))
+    ]
+    if _ok_znop:
+        feasible = _ok_znop
+
     with_econ = [r for r in feasible if r.tep.economy is not None]
 
     # Заготовим отсортированные пулы для каждого критерия
@@ -510,6 +520,18 @@ def _select_three(
         def _spp_n(r: OptimizationResult) -> float:
             return (_social_plot_per_place(r.tep) - _spp_min) / _spp_range
 
+        # v0.12.11: ЗНОП/чел — нормировка по пулу. Больше ЗНОП = качественнее
+        # среда = легче продавать (нематериальный плюс, НЕ учтённый в economy).
+        # Малый положительный вес как тай-брейк в developer_score.
+        def _znop_pp(r: OptimizationResult) -> float:
+            return float(r.tep.znop_per_person.value or 0.0)
+        _znops = [_znop_pp(r) for r in with_econ]
+        _znop_min, _znop_max = min(_znops), max(_znops)
+        _znop_range = _znop_max - _znop_min if _znop_max > _znop_min else 1.0
+
+        def _znop_n(r: OptimizationResult) -> float:
+            return (_znop_pp(r) - _znop_min) / _znop_range
+
         # Пороговый (v0.12.3): вариант на пороге окупаемости — эконом-индекс
         # ближе всего к 100 (выручка ≈ себестоимость). Это «потолок застройки
         # при нулевом запасе экономики».
@@ -532,6 +554,8 @@ def _select_three(
             # v0.12.4: соц-нагрузка как тай-брейк — штраф за неэффективную
             # соцземлю (мелкие/недозагруженные ДОО/СОШ → выше ЗУ/место).
             social_penalty = 0.05 * _spp_n(r)
+            # v0.12.11: малый бонус за ЗНОП/чел (качество среды, продаваемость).
+            znop_bonus = 0.04 * _znop_n(r)
             return (
                 0.50 * _idx_n(r)
                 + 0.25 * _apt_n(r)
@@ -539,6 +563,7 @@ def _select_three(
                 + 0.10 * robustness
                 - risk
                 - social_penalty
+                + znop_bonus
             )
 
         developer_sorted = sorted(with_econ, key=_dev_score, reverse=True)

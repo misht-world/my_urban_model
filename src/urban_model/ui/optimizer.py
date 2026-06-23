@@ -315,7 +315,7 @@ def _render_recommendations_section(
         clicked = st.button(
             ":material/track_changes: Подобрать сценарии",
             type="primary",
-            help="400 испытаний. Длительность зависит от размера квартала и параметров (типично 1-2 мин).",
+            help="700 испытаний. Длительность зависит от размера квартала и параметров (типично 1-2 мин).",
         )
     with col_msg:
         if cached_bundle is not None and not is_stale:
@@ -343,7 +343,7 @@ def _render_recommendations_section(
 
         bundle = generate_pareto_recommendations(
             site=site, base_options=base_options, norms=norms,
-            base_tep=base_tep, n_trials=400, seed=42,
+            base_tep=base_tep, n_trials=700, seed=42,
             constraints=constraints,
             progress_callback=_on_progress,
         )
@@ -402,19 +402,67 @@ def _render_recommendations_section(
             with cols[j]:
                 _render_recommendation_card(rec, row_start + j, base_options)
 
-    # v0.12.3: пояснение «Пороговый ↔ Девелоперский» — почему практичнее.
-    _labels = {r.label for r in recs}
-    if "Пороговый" in _labels and "Девелоперский" in _labels:
-        st.info(
-            "**Пороговый** — предельная застройка «на грани»: эконом-индекс ≈ 100, "
-            "почти весь экономический запас исчерпан, выше чувствительность к "
-            "ошибкам сметы и рынка. **Девелоперский** жертвует частью площади ради "
-            "запаса по экономике и устойчивости: уместный для класса жилья тип "
-            "парковок, меньше предупреждений и запас до потолка КИТ, меньше крупных "
-            "инженерных объектов (котельные/ОСПС). Для реальной проработки обычно "
-            "предпочтителен именно он.",
-            icon="💡",
+    # v0.12.11: ДИНАМИЧЕСКОЕ пояснение преимуществ «Девелоперского» —
+    # конкретные сильные стороны именно этого варианта vs остальные.
+    by_label = {r.label: r for r in recs}
+    dev = by_label.get("Девелоперский")
+    if dev is not None:
+        advs = _developer_advantages(dev, recs)
+        body = (
+            "**Девелоперский** — практичный вариант для дальнейшей проработки. "
+            "В отличие от «Порогового» (предельная застройка на грани окупаемости, "
+            "выше риск) он берёт запас по экономике и устойчивости."
         )
+        if advs:
+            body += " Его сильные стороны в этом расчёте:\n\n" + "\n".join(f"• {a}" for a in advs)
+        st.info(body, icon="💡")
+
+
+def _developer_advantages(dev, recs) -> list[str]:
+    """Динамический список преимуществ «Девелоперского» vs другие рекомендации."""
+    out: list[str] = []
+    by = {r.label: r for r in recs}
+    dt = dev.tep
+    di = dt.economy.economy_index if dt.economy else None
+    # vs «Максимум площади» — обычно выше эконом-индекс
+    ma = by.get("Максимум площади")
+    if ma is not None and di is not None and ma.tep.economy is not None:
+        if di > ma.tep.economy.economy_index + 1:
+            out.append(
+                f"эконом-индекс **{di:.0f}** против {ma.tep.economy.economy_index:.0f} "
+                f"у «Максимум площади» — выше запас окупаемости"
+            )
+    # vs «Максимум эконом-индекса» — обычно больше площади
+    mi = by.get("Максимум эконом-индекса")
+    if mi is not None:
+        da = float(dt.apartments_area.value or 0)
+        ia = float(mi.tep.apartments_area.value or 0)
+        if da > ia * 1.02:
+            out.append(
+                f"площадь квартир **{da:,.0f} м²** против {ia:,.0f} у "
+                f"«Максимум эконом-индекса» — больше выход ТЭП".replace(",", " ")
+            )
+    # Парковки — состав
+    op = int(dt.parking_open_places.value or 0); ml = int(dt.parking_multilevel_places.value or 0)
+    ug = int(dt.parking_underground_places.value or 0)
+    sp = int(getattr(dt, "parking_stylobate_places", None).value or 0) \
+        if getattr(dt, "parking_stylobate_places", None) is not None else 0
+    parts = [f"{n} {t}" for n, t in
+             [(op, "откр."), (ml, "МУ"), (ug, "подз."), (sp, "стилоб.")] if n > 0]
+    if parts:
+        out.append("парковки уместны для класса: " + " / ".join(parts))
+    # Инженерка — крупные объекты
+    eng = getattr(dt, "engineering", None)
+    if eng is not None:
+        big = sum(o.count for o in eng.objects if o.key in ("boiler", "osps") and o.in_balance)
+        if big <= 2:
+            out.append("без перегруза инженерии (1 котельная + 1 ОСПС)")
+    # ЗНОП — среда
+    zpp = float(dt.znop_per_person.value or 0)
+    others_z = [float(r.tep.znop_per_person.value or 0) for r in recs if r.label != "Девелоперский"]
+    if zpp > 0 and others_z and zpp >= max(others_z) - 0.1:
+        out.append(f"больше озеленения (ЗНОП {zpp:.1f} м²/чел) — качественнее среда, легче продавать")
+    return out[:4]
 
     # v0.9.12 (AUDIT S-3): если у нескольких рекомендаций ИДЕНТИЧНАЯ
     # apartments_area — обычно это значит «КИТ упёрт в нормативный потолок
@@ -759,6 +807,7 @@ def _render_recommendation_card(
                         use_container_width=True):
             st.session_state.scenarios.append((f"opt:{rec.label}", rec.tep))
             st.toast(f"Добавлено: {rec.label}", icon="✅")
+            st.rerun()  # v0.12.11: обновить счётчик вкладки «Сравнение» сразу
         # v0.9.30: «Применить к Расчёту» — переносит параметры сценария на
         # вкладку Расчёт через override (надёжнее патча виджетов: переносит
         # этажность/зоны/парковки целиком). Расчёт покажет баннер + «вернуть форму».
@@ -984,6 +1033,7 @@ def _render_scan_summary(scan: ScanResult) -> None:
                 (f"scan:{scan.factor}={rec_for_btn.x_label}", rec_for_btn.tep)
             )
             st.toast(f"Добавлен лучший вариант скана «{scan.title}»", icon="✅")
+            st.rerun()
 
 
 def _render_social_count_card(scan: ScanResult) -> None:
@@ -1290,6 +1340,7 @@ def _render_advanced_optuna_mode(
         name = f"opt#{preview.rank} ({params_summary})"
         st.session_state.scenarios.append((name, preview.tep))
         st.toast(f"Добавлен сценарий #{preview.rank}", icon="✅")
+        st.rerun()
 
 
 # ---------------------------------------------------------------------------

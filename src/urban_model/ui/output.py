@@ -496,6 +496,39 @@ def _row(label: str, field: TEPField, fmt_fn=fmt_int, suffix: str = "") -> dict:
     }
 
 
+def _text_row(label: str, text: str) -> dict:
+    """Строка таблицы с произвольным текстовым значением (без TEPField)."""
+    return {
+        "Показатель": label, "Значение": text,
+        "Статус": "", "Источник": "", "Формула": "",
+    }
+
+
+def _parse_object_buckets(formula: str | None) -> tuple[int, list[int]]:
+    """Из formula-строки соцобъекта вытащить (число объектов, вместимости).
+
+    Формула содержит «… [160, 160]» или «… [550]». Возвращает (N, [caps]).
+    """
+    import re
+    if not formula:
+        return 0, []
+    m = re.search(r"\[([\d,\s]+)\]", formula)
+    if not m:
+        return 0, []
+    caps = [int(x) for x in m.group(1).split(",") if x.strip()]
+    return len(caps), caps
+
+
+def _format_buckets(n: int, caps: list[int]) -> str:
+    """«2 объекта (по 160 мест)» или «2 объекта (160 + 240 мест)»."""
+    if n <= 0:
+        return "—"
+    word = "объект" if n == 1 else ("объекта" if 2 <= n <= 4 else "объектов")
+    if len(set(caps)) == 1:
+        return f"{n} {word} (по {caps[0]} мест)" if n > 1 else f"{n} {word} ({caps[0]} мест)"
+    return f"{n} {word} ({' + '.join(str(c) for c in caps)} мест)"
+
+
 def _show_rows(rows: list[dict]) -> None:
     df = pd.DataFrame(rows)
     # Скрываем колонки если все пустые
@@ -543,6 +576,11 @@ def render_details(result: TEPResult) -> None:
         rows = [
             _row("Мест требуется", result.kindergarten_places_required, fmt_float),
             _row("Мест принято (округлено)", result.kindergarten_places_accepted, fmt_int),
+        ]
+        _kg_n, _kg_caps = _parse_object_buckets(result.kindergarten_places_accepted.formula)
+        if _kg_n:
+            rows.append(_text_row("Принято объектов", _format_buckets(_kg_n, _kg_caps)))
+        rows += [
             _row("Площадь участков", result.kindergarten_plot_area, fmt_m2),
             _row("Площадь зданий", result.kindergarten_building_area, fmt_m2),
         ]
@@ -553,6 +591,11 @@ def render_details(result: TEPResult) -> None:
         rows = [
             _row("Мест требуется", result.school_places_required, fmt_float),
             _row("Мест принято (округлено)", result.school_places_accepted, fmt_int),
+        ]
+        _sch_n, _sch_caps = _parse_object_buckets(result.school_places_accepted.formula)
+        if _sch_n:
+            rows.append(_text_row("Принято объектов", _format_buckets(_sch_n, _sch_caps)))
+        rows += [
             _row("Площадь участков", result.school_plot_area, fmt_m2),
             _row("Площадь зданий", result.school_building_area, fmt_m2),
         ]

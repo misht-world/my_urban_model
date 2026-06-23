@@ -695,6 +695,21 @@ def compute_tep_for_kit(
             "znop_per_person", kit=znop_kit_for_lookup
         )
 
+    # === Проверка ЗНОП ≥ норматива ПЗЗ для КИТ (v0.12.11) ===
+    # Актуально при ручном override (фиксированная площадь / м²-чел): если
+    # задано меньше, чем требует ПЗЗ для достигнутого КИТ — норматив нарушен.
+    # (В нормативном режиме ЗНОП считается ровно по минимуму → проверка пройдёт.)
+    if options.include_znop and not options.znop_only_demand and pop_v > 0:
+        _znop_pp_req = znop.znop_per_person(min(kit_developed, 2.50), norms)
+        _znop_req = pop_v * _znop_pp_req
+        if znop_area_v < _znop_req - 1.0:
+            _msg = (
+                f"ЗНОП {znop_area_v:,.0f} м² ({znop_pp:.1f} м²/чел) ниже норматива "
+                f"ПЗЗ для КИТ {kit_developed:.2f}: требуется ≥ {_znop_req:,.0f} м² "
+                f"({_znop_pp_req:.1f} м²/чел). Увеличьте площадь ЗНОП или снизьте КИТ."
+            ).replace(",", " ")
+            warnings.append(_wcprefix(WC.ZNOP_BELOW_MIN, _msg))
+
     # === Баланс квартала ===
     # При include_*=False / only_demand компоненты в баланс не входят (см. выше).
     # v0.8.8: znop_only_demand — площадь считается, но не в балансе/озеленении.

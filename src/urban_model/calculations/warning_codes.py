@@ -43,6 +43,10 @@ class WC(str, Enum):
     # доли стилобата/закрытых типов, не оставивших места под открытые.
     PARKING_OPEN_BELOW_MIN = "PARKING_OPEN_BELOW_MIN"
 
+    # ЗНОП (площадь/м²-чел) ниже минимума ПЗЗ для достигнутого КИТ —
+    # обычно при ручном override площади ЗНОП.
+    ZNOP_BELOW_MIN = "ZNOP_BELOW_MIN"
+
     # Плотность населения превышает норматив (450 чел/га для многоэтажки).
     DENSITY_ABOVE_LIMIT = "DENSITY_ABOVE_LIMIT"
 
