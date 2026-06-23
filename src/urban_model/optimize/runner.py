@@ -227,10 +227,41 @@ def _build_options_for_trial(
         sampled["school_num_objects"] = n
 
     # --- ВПП ---
+    # v0.12.14: ФИКСИРОВАННЫЙ режим ВПП (из «Параметров») — НЕ варьируем и не
+    # отключаем. Каждый trial строит ВПП этим режимом; площадь пересчитывается
+    # под этажность варианта (тот же 2-проходный механизм, что на «Расчёте»).
+    if space.vpp_fixed_mode and site is not None and norms is not None:
+        from urban_model.calculations import vpp as _vpp
+        opts_step1 = opts.model_copy(deep=True)
+        opts_step1.built_in = None
+        opts_step1.built_in_list = []
+        cache_key = _vpp_preview_key(opts_step1)
+        cached = vpp_preview_cache.get(cache_key) if vpp_preview_cache is not None else None
+        if cached is None:
+            from urban_model import solve_max_kit as _solve
+            try:
+                r0 = _solve(site, opts_step1, norms)
+                footprint = r0.housing_footprint.value or 0.0
+                pop = r0.population.value or 0.0
+            except (ValueError, KeyError) as e:
+                logging.warning("Optuna vpp-fixed preview-solve failed: %s", e)
+                footprint = 0.0
+                pop = 0.0
+            if vpp_preview_cache is not None:
+                vpp_preview_cache[cache_key] = (footprint, pop)
+        else:
+            footprint, pop = cached
+        build = _vpp.build_built_ins(
+            mode=space.vpp_fixed_mode, population=pop, footprint=footprint, norms=norms,
+            custom_4_4_m2=space.vpp_custom_4_4_m2, custom_4_6_m2=space.vpp_custom_4_6_m2,
+        )
+        opts.built_in = None
+        opts.built_in_list = build.built_ins
+        sampled["vpp_mode"] = space.vpp_fixed_mode
     # v0.8.0: новый механизм — Optuna выбирает один из РЕЖИМОВ ВПП из
     # space.vpp_modes (как на вкладке «Параметры»). Если vpp_modes задан,
     # try_built_in игнорируется. Список ВПП собирается через vpp.build_built_ins.
-    if space.vpp_modes and site is not None and norms is not None:
+    elif space.vpp_modes and site is not None and norms is not None:
         from urban_model.calculations import vpp as _vpp
         vpp_choices = ["off"] + list(space.vpp_modes)
         chosen = trial.suggest_categorical("vpp_mode", vpp_choices)

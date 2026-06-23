@@ -638,6 +638,9 @@ def _build_search_space(
     has_clusters: bool = False,
     vary_zones: bool = False,
     caps: dict | None = None,
+    vpp_fixed_mode: str | None = None,
+    vpp_custom_4_4_m2: float | None = None,
+    vpp_custom_4_6_m2: float | None = None,
 ) -> SearchSpace:
     """SearchSpace с учётом пользовательских ограничений.
 
@@ -690,6 +693,11 @@ def _build_search_space(
         # принудительный ЗНОП лишь «проедает» квартал зеленью без пользы.
         # Анализ влияния ЗНОП остаётся в карточке «🌳 ЗНОП» Пофакторного.
         znop_per_person_choices=None,
+        # v0.12.14: ВПП — фиксированный режим из «Параметров» (пересчёт площади
+        # каждый trial); подбор не отменяет и не меняет принцип расчёта ВПП.
+        vpp_fixed_mode=vpp_fixed_mode,
+        vpp_custom_4_4_m2=vpp_custom_4_4_m2,
+        vpp_custom_4_6_m2=vpp_custom_4_6_m2,
         objective="apartments_area",
         strict_social_validation=False,
         diversify_sampler=True,
@@ -705,6 +713,7 @@ def generate_pareto_recommendations(
     seed: int | None = 42,
     constraints: ParetoConstraints | None = None,
     progress_callback=None,
+    vpp_request=None,
 ) -> ParetoBundle:
     """Запускает один Optuna-прогон в широком SearchSpace и возвращает
     3 рекомендации, привязанные к разным критериям, с дельтами vs `base_tep`.
@@ -742,11 +751,18 @@ def generate_pareto_recommendations(
         )
     except (KeyError, TypeError, ValueError):
         _pcaps = None
+    # v0.12.14: ВПП — фиксированный режим из «Параметров» (vpp_request), чтобы
+    # подбор пересчитывал площадь ВПП каждый trial, но НЕ менял принцип расчёта
+    # и не отключал ВПП.
+    _vpp_mode = getattr(vpp_request, "mode", None) if vpp_request is not None else None
     space = _build_search_space(
         constraints,
         has_clusters=bool(base_options.floor_clusters),
         vary_zones=vary_zones,
         caps=_pcaps,
+        vpp_fixed_mode=_vpp_mode,
+        vpp_custom_4_4_m2=getattr(vpp_request, "custom_4_4_m2", None) if vpp_request else None,
+        vpp_custom_4_6_m2=getattr(vpp_request, "custom_4_6_m2", None) if vpp_request else None,
     )
     report: OptimizationReport = optimize_max_apartments(
         site=site,

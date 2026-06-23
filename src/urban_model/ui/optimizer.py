@@ -64,11 +64,14 @@ _DEFAULT_SEED = 42
 
 def _get_base_tep(
     site: Site, base_options: CalculationOptions, norms: Normatives,
+    vpp_request=None,
 ) -> tuple[TEPResult, bool]:
     """Возвращает (base_tep, synced_with_calc_tab).
 
     Если на вкладке Расчёт уже посчитан результат и параметры совпадают —
     используем его. Иначе считаем сами и помечаем баннером «не синхронно».
+    v0.12.14: при пересчёте базы тоже строим ВПП (по vpp_request), иначе база
+    оказалась бы без ВПП, а рекомендации — с ВПП (несогласованно).
     """
     last_result = st.session_state.get("last_calc_result")
     last_opts = st.session_state.get("last_calc_options")
@@ -81,7 +84,29 @@ def _get_base_tep(
         and abs(last_site_area - site.area_m2) < 1e-3
     ):
         return last_result, True
-    # Fallback: считаем сами
+    # Fallback: считаем сами. С ВПП — тот же 2-проходный механизм, что на
+    # «Расчёте», но БЕЗ записи в session_state (не затираем снапшот «Расчёта»).
+    if vpp_request is not None and getattr(vpp_request, "mode", None):
+        try:
+            from urban_model.calculations import vpp as _vpp
+            opts1 = base_options.model_copy(deep=True)
+            opts1.built_in = None
+            opts1.built_in_list = []
+            r0 = solve_max_kit(site, opts1, norms)
+            build = _vpp.build_built_ins(
+                mode=vpp_request.mode,
+                population=r0.population.value or 0.0,
+                footprint=r0.housing_footprint.value or 0.0,
+                norms=norms,
+                custom_4_4_m2=getattr(vpp_request, "custom_4_4_m2", None),
+                custom_4_6_m2=getattr(vpp_request, "custom_4_6_m2", None),
+            )
+            opts2 = base_options.model_copy(deep=True)
+            opts2.built_in = None
+            opts2.built_in_list = build.built_ins
+            return solve_max_kit(site, opts2, norms), False
+        except Exception:
+            pass
     return solve_max_kit(site, base_options, norms), False
 
 
@@ -285,6 +310,7 @@ def _render_pareto_constraints(base_options: CalculationOptions) -> ParetoConstr
 
 def _render_recommendations_section(
     site: Site, base_options: CalculationOptions, norms: Normatives, base_tep: TEPResult,
+    vpp_request=None,
 ) -> None:
     st.markdown("### :material/track_changes: Рекомендации — стратегии застройки")
     st.caption(
@@ -305,6 +331,7 @@ def _render_recommendations_section(
         + f"|zones={constraints.cluster_floors_ranges}"
         + f"|park={constraints.allow_open}{constraints.allow_multilevel}{constraints.allow_underground}{constraints.allow_stylobate}"
         + f"|combos={constraints.restrict_parking_combos}"
+        + f"|vpp={getattr(vpp_request, 'mode', None)}"  # v0.12.14
     )
     cached_bundle: ParetoBundle | None = st.session_state.get("pareto_bundle")
     cached_key: str | None = st.session_state.get("pareto_bundle_key")
@@ -346,6 +373,7 @@ def _render_recommendations_section(
             base_tep=base_tep, n_trials=700, seed=42,
             constraints=constraints,
             progress_callback=_on_progress,
+            vpp_request=vpp_request,  # v0.12.14: фикс. режим ВПП
         )
         progress.empty()
         st.session_state["pareto_bundle"] = bundle
@@ -1559,6 +1587,7 @@ def _report_to_dataframe(report: OptimizationReport) -> pd.DataFrame:
 
 def render_optimizer_tab(
     site: Site, base_options: CalculationOptions, norms: Normatives,
+    vpp_request=None,
 ) -> None:
     # v0.10.18: h1-заголовок вкладки в стиле макета.
     st.markdown("# Подбор **сценариев**")
@@ -1569,13 +1598,13 @@ def render_optimizer_tab(
     )
 
     # 1. База
-    base_tep, synced = _get_base_tep(site, base_options, norms)
+    base_tep, synced = _get_base_tep(site, base_options, norms, vpp_request)
     _render_base_snapshot(base_tep, base_options, synced)
 
     st.markdown("")  # отступ
 
     # 2. Рекомендации (по кнопке)
-    _render_recommendations_section(site, base_options, norms, base_tep)
+    _render_recommendations_section(site, base_options, norms, base_tep, vpp_request)
 
     st.markdown("")
 

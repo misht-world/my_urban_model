@@ -54,6 +54,13 @@ class SearchSpace(BaseModel):
         default=None,
         description="Подмножество режимов ВПП для перебора (v0.8.0)",
     )
+    # v0.12.14: ФИКСИРОВАННЫЙ режим ВПП (как задан в «Параметрах»). Когда задан,
+    # подбор НЕ варьирует ВПП и не отключает их — каждый trial строит ВПП этим
+    # режимом (площадь пересчитывается под этажность варианта). Имеет приоритет
+    # над vpp_modes/try_built_in.
+    vpp_fixed_mode: str | None = None
+    vpp_custom_4_4_m2: float | None = None
+    vpp_custom_4_6_m2: float | None = None
 
     # ДОО: число объектов
     kg_num_objects_range: tuple[int, int] | None = None

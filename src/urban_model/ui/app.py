@@ -859,6 +859,7 @@ with tab_optimize:
         site=inputs.site,
         base_options=inputs.options,
         norms=norms,
+        vpp_request=inputs.vpp_request,  # v0.12.14: сохранить режим ВПП в подборе
     )
 
 with tab_compare:
