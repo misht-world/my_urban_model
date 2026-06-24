@@ -6,6 +6,7 @@ from urban_model.calculations.distribute import (
     choose_n_objects,
     distribute_places_evenly,
     split_to_allowed_capacities,
+    split_to_allowed_capacities_n,
 )
 from urban_model.calculations.rounding import round_up_to_multiple
 from urban_model.normatives import Normatives
@@ -45,6 +46,12 @@ def split_into_objects(
     # без spec_capacity молча игнорировался (число объектов авто-выбиралось),
     # из-за чего Optuna-размерность `kg_num_objects` и скан числа ДОО были no-op.
     if spec_count:
+        # v0.12.21: strict + заданное число корпусов → снап на типовые
+        # вместимости (раньше strict игнорировался при заданном числе).
+        if allowed_capacities:
+            return split_to_allowed_capacities_n(
+                total_places, allowed_capacities, int(spec_count), capacity_min
+            )
         return distribute_places_evenly(total_places, int(spec_count), multiple)
 
     # v0.12.4: режим «только нормативная наполняемость» — вместимости строго

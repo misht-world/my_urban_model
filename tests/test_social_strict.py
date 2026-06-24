@@ -5,9 +5,14 @@ from __future__ import annotations
 import pytest
 
 from urban_model import solve_max_kit
-from urban_model.calculations.distribute import split_to_allowed_capacities
+from urban_model.calculations.distribute import (
+    split_to_allowed_capacities,
+    split_to_allowed_capacities_n,
+)
 from urban_model.models import CalculationOptions, KindergartenSpec, SchoolSpec, Site
 from urban_model.normatives import load_normatives
+
+SCH_TYPICAL = [550, 825, 1100, 1375, 1650, 1925, 2200, 2475]
 
 
 @pytest.fixture(scope="module")
@@ -36,6 +41,36 @@ def test_allowed_splits_when_exceeds_max():
     assert len(res) == 2
     assert all(c in allowed for c in res)
     assert sum(res) >= 3000
+
+
+# --- split_to_allowed_capacities_n (strict + заданное число объектов, v0.12.21) ---
+
+def test_allowed_n_snaps_to_typical():
+    """Ровно N типовых корпусов, Σ ≥ спроса при минимальном профиците."""
+    res = split_to_allowed_capacities_n(2250, SCH_TYPICAL, 2)
+    assert len(res) == 2
+    assert all(c in SCH_TYPICAL for c in res)
+    assert sum(res) >= 2250
+    assert sum(res) == 2475  # 1375 + 1100 — минимальный профицит для 2 объектов
+
+
+def test_allowed_n_strict_bug_fixed():
+    """Регресс v0.12.21: strict + заданное число СОШ снапается на типовые
+    (раньше strict игнорировался при заданном числе → нетиповые, напр. 1125)."""
+    import re
+    spb = load_normatives("spb")
+    r = solve_max_kit(
+        Site(area_m2=600_000),
+        CalculationOptions(
+            floors=12, planning_doc=True,
+            school=SchoolSpec(num_objects=2, strict_capacity=True),
+        ),
+        spb,
+    )
+    caps = [int(x) for x in re.findall(
+        r'\d+', r.school_places_accepted.formula.split('[')[1].split(']')[0])]
+    assert len(caps) == 2
+    assert all(c in SCH_TYPICAL for c in caps), caps
 
 
 def test_allowed_single_when_fits():

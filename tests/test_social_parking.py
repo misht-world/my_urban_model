@@ -132,10 +132,12 @@ class TestSocialParkingInResult:
         assert res.social_parking_total.value > 0
         assert res.social_parking_kindergarten.value > 0
         assert res.social_parking_school.value > 0
+        # v0.12.21: total включает и доп. образование (ВРИ 3.5.1).
         assert (
             res.social_parking_total.value
             == res.social_parking_kindergarten.value
             + res.social_parking_school.value
+            + (res.add_education_parking_places.value or 0)
         )
 
     def test_separate_from_housing_pool(self, spb, site):
@@ -147,6 +149,7 @@ class TestSocialParkingInResult:
                 floors=12,
                 include_kindergarten=False,
                 include_school=False,
+                include_add_education=False,  # v0.12.21: иначе доп.обр даёт соц.парк
             ),
             spb,
         )

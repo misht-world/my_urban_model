@@ -88,6 +88,47 @@ def split_to_allowed_capacities(
     return [cap] * n
 
 
+def split_to_allowed_capacities_n(
+    total_places: int,
+    allowed: list[int],
+    n_objects: int,
+    capacity_min: int | None = None,
+) -> list[int]:
+    """Разбить спрос на РОВНО `n_objects` объектов СТАНДАРТНЫХ вместимостей.
+
+    Режим «только нормативная наполняемость» + заданное пользователем число
+    объектов: каждый корпус — из списка `allowed` (типовые СП/КОБр), а суммарная
+    вместимость ≥ спроса при МИНИМАЛЬНОМ профиците (и максимальной равномерности
+    при равном профиците). В отличие от `split_to_allowed_capacities` число
+    объектов здесь фиксировано пользователем, а не минимизируется.
+
+    Пример: спрос 2250, n=2, типовые [550..2475] → [1375, 1100] (Σ=2475).
+    """
+    from itertools import combinations_with_replacement
+
+    if n_objects <= 0 or total_places <= 0 or not allowed:
+        return []
+    allowed_sorted = sorted(set(int(a) for a in allowed))
+    floor = capacity_min or 0
+    cand = [a for a in allowed_sorted if a >= floor] or [allowed_sorted[-1]]
+
+    best_key = None
+    best_combo: tuple[int, ...] | None = None
+    for combo in combinations_with_replacement(cand, n_objects):
+        s = sum(combo)
+        if s < total_places:
+            continue
+        # минимум суммы (профицита), затем минимум разброса (равномернее)
+        key = (s, max(combo) - min(combo))
+        if best_key is None or key < best_key:
+            best_key, best_combo = key, combo
+
+    if best_combo is None:
+        # спрос превышает n × max_допустимой → все объекты максимальные
+        return [cand[-1]] * n_objects
+    return sorted(best_combo, reverse=True)
+
+
 def choose_n_objects(
     total_places: int,
     capacity_min: int | None,

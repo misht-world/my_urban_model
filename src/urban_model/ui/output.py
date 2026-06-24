@@ -197,8 +197,8 @@ def render_main_kpi_grid(result: TEPResult, options=None) -> None:
     """
     kit_max = result.kit_normative_max.value or 0
 
-    # ── Ряд 1 ───────────────────────────────────────────────────────────
-    c1, c2, c3, c4, c5 = st.columns(5)
+    # ── Ряд 1 (эконом-индекс перенесён в ряд 3, v0.12.21) ────────────────
+    c1, c2, c3, c4 = st.columns(4)
     c1.metric(
         "КИТ (ПЗЗ)", f"{result.kit.value:.3f}",
         help=(
@@ -217,16 +217,6 @@ def render_main_kpi_grid(result: TEPResult, options=None) -> None:
     )
     c3.metric("Площадь квартир", fmt_m2(result.apartments_area.value))
     c4.metric("Этажность", _kpi_floors_label(result, options))
-    if result.economy is not None:
-        c5.metric(
-            "Эконом-индекс", f"{result.economy.economy_index:.0f} / 100",
-            help=(
-                "100 × выручка / себестоимость. 100 = окупаемость; выше — "
-                "эффективнее. Стабильный показатель модели."
-            ),
-        )
-    else:
-        c5.metric("Эконом-индекс", "—")
 
     # ── Ряд 2 ───────────────────────────────────────────────────────────
     c6, c7, c8, c9, c10 = st.columns(5)
@@ -292,14 +282,22 @@ def render_main_kpi_grid(result: TEPResult, options=None) -> None:
             + getattr(e.cost, "add_education", 0.0)
         )
         _has_social = _social_cost > 0.5 or e.revenue.social_compensation > 0.5
+        # v0.12.21: эконом-индекс — здесь, в ряду экономики (а не в ряду 1).
         d1, d2, d3 = st.columns(3)
         d1.metric(
+            "Эконом-индекс", f"{e.economy_index:.0f} / 100",
+            help=(
+                "100 × выручка / себестоимость. 100 = окупаемость; выше — "
+                "эффективнее. Стабильный показатель модели."
+            ),
+        )
+        d2.metric(
             "Выход жилья",
             f"{e.sellable_ratio * 100:.0f}%" if e.sellable_ratio else "—",
             help="Площадь квартир / общая GFA — доля продаваемого жилья.",
         )
         if _has_social:
-            d2.metric(
+            d3.metric(
                 "Соц. нагрузка",
                 f"{-e.net_social_burden:+,.0f}".replace(",", " "),
                 delta=("в минус" if e.net_social_burden > 0 else "плюс"),
@@ -308,7 +306,7 @@ def render_main_kpi_grid(result: TEPResult, options=None) -> None:
                      "компенсации города (условные баллы).",
             )
         else:
-            d2.metric(
+            d3.metric(
                 "ROI", f"{e.roi * 100:.1f}%" if e.cost.total > 0 else "—",
                 help="profit / cost (условные баллы).",
             )
@@ -675,9 +673,12 @@ def render_details(result: TEPResult) -> None:
                      result.social_parking_kindergarten, fmt_int),
                 _row("В т.ч. СОШ (та же формула)",
                      result.social_parking_school, fmt_int),
-                _row("Площадь парковок соцобъектов на квартале",
-                     result.social_parking_area, fmt_m2),
             ]
+            if (result.add_education_parking_places.value or 0) > 0:
+                rows.append(_row("В т.ч. доп. образование (та же формула)",
+                                 result.add_education_parking_places, fmt_int))
+            rows.append(_row("Площадь парковок соцобъектов на квартале",
+                             result.social_parking_area, fmt_m2))
         _show_rows(rows)
 
     # Проезды и инженерия — формулы скрыты (v0.10.19, на время тестирования).
@@ -1052,6 +1053,7 @@ def _render_balance_bar(result: TEPResult) -> None:
         "school_plot": "СОШ",
         "sport_facilities": "Спорт. пл.",
         "social_parking_plot": "Р. соц.",
+        "add_education_plot": "Доп. обр.",
         "znop": "ЗНОП",
         "intra_quarter_driveways": "Проезды",
         "parking_multilevel": "Р. многоур.",
@@ -1065,6 +1067,7 @@ def _render_balance_bar(result: TEPResult) -> None:
         "СОШ":                     "#E94B3C",
         "Спорт. пл.":              "#7ED321",
         "Р. соц.":                 "#9B9B9B",
+        "Доп. обр.":               "#00ACC1",
         "ЗНОП":                    "#417505",
         "Проезды":                 "#B8B8B8",
         "Р. многоур.":             "#50E3C2",

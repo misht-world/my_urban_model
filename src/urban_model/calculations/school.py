@@ -6,6 +6,7 @@ from urban_model.calculations.distribute import (
     choose_n_objects,
     distribute_places_evenly,
     split_to_allowed_capacities,
+    split_to_allowed_capacities_n,
 )
 from urban_model.calculations.rounding import round_up_to_multiple
 from urban_model.normatives import Normatives
@@ -39,9 +40,15 @@ def split_into_objects(
         return [spec_capacity] * spec_count
     if total_places <= 0:
         return []
-    # v0.9.31 (аудит P1): только число корпусов (без явной вместимости) —
-    # распределяем места ровно на это число (раньше игнорировалось → no-op).
+    # Только число корпусов (без явной вместимости).
     if spec_count:
+        # v0.12.21: при strict («только нормативная наполняемость») заданное
+        # число корпусов снапается на типовые вместимости (раньше strict молча
+        # игнорировался при заданном числе → выдавал нетиповые, напр. 1125).
+        if allowed_capacities:
+            return split_to_allowed_capacities_n(
+                total_places, allowed_capacities, int(spec_count), capacity_min
+            )
         return distribute_places_evenly(total_places, int(spec_count), multiple)
     # v0.12.4: «только нормативная наполняемость» — корпуса строго типовых
     # вместимостей (СП/КОБр), а не произвольным кратным 10.

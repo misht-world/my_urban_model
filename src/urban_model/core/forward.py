@@ -1171,12 +1171,13 @@ def compute_tep_for_kit(
         add_education_built_in=bool(ae_res.built_in) if ae_res else False,
         # ── Парковки соцобъектов (v0.7.0) ────────────────────────────────
         social_parking_total=_F(
-            soc_park.total_places,
+            soc_park_places_total,
             unit="м/м",
             formula=(
                 f"ДОО: {soc_park.kindergarten_details} + "
                 f"СОШ: {soc_park.school_details}"
-                if soc_park.total_places > 0
+                + (f" + доп.обр: {ae_parking_places}" if ae_parking_places > 0 else "")
+                if soc_park_places_total > 0
                 else "—"
             ),
             source=(
