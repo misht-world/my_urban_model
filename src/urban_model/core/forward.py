@@ -147,6 +147,7 @@ def compute_tep_for_kit(
     if _styl_share > 0 and apartments_area_v > 0 and options.include_parking:
         _styl_per_place = norms.resolve("parking.housing.m2_apartments_per_place")
         _styl_apl = norms.resolve("parking.stylobate_area_per_place")
+        _styl_under = norms.resolve("parking.stylobate_under_buildings_share")
         # Нежилые парковки (ВПП + доп-объекты) для сайзинга стилобата от ОБЩЕГО
         # пула. Лёгкий предрасчёт (полные блоки — ниже), не зависит от площади
         # квартир, поэтому считаем один раз до фикс-точки.
@@ -163,8 +164,8 @@ def compute_tep_for_kit(
             _total_demand = _hreq + _add_parking
             stylobate_places_v = round(_total_demand * _styl_share)
             stylobate_area_v = stylobate_places_v * _styl_apl
-            apartments_area_v = max(0.0, (_rgfa_base - 0.25 * stylobate_area_v) * apt_ratio)
-        residential_gfa = max(0.0, _rgfa_base - 0.25 * stylobate_area_v)
+            apartments_area_v = max(0.0, (_rgfa_base - _styl_under * stylobate_area_v) * apt_ratio)
+        residential_gfa = max(0.0, _rgfa_base - _styl_under * stylobate_area_v)
         pop_v = population.population(apartments_area_v, hp)
         pop_check_v = population.population(apartments_area_v, hp_check)
         density_v = population.density_chel_per_ga(pop_v, site.area_m2)
@@ -809,7 +810,8 @@ def compute_tep_for_kit(
     # от дворовой части. Эти 30% должны компенсироваться озеленением на земле
     # вне стилобата (предупреждение пользователю — косвенно через дефицит).
     if stylobate_area_v > 0:
-        styl_yard = 0.75 * stylobate_area_v
+        _under = norms.resolve("parking.stylobate_under_buildings_share")
+        styl_yard = (1.0 - _under) * stylobate_area_v   # дворовая дека
         greening_actual_total -= 0.30 * styl_yard
     # greening_required=0 — фактическое значение всё равно записывается
     # в TEPResult для аудита, но feasible не блокируется.

@@ -87,6 +87,25 @@ def test_stylobate_economy(spb, site):
     assert r.economy.cost.parking_stylobate == pytest.approx(expected, rel=1e-6)
 
 
+def test_stylobate_no_residential_double_count(spb, site):
+    """v0.12.20 (аудит): этаж под стилобатом не считается дважды.
+
+    Жилая себестоимость должна опираться на GFA БЕЗ деки под домами (этот этаж
+    costed как стилобат). residential_gfa(economy) == apartments / apt_ratio (forward).
+    """
+    r = verify_kit(1.5, site, _cfg(0.6, include_add_education=False), spb)
+    e = r.economy
+    apt_ratio = spb.resolve("building_params.apartments_to_gfa_ratio")
+    c_base = (
+        spb.resolve("economy.construction.residential_by_floors", floors=14)
+        * spb.resolve("economy.construction.residential_class_factor",
+                      residential_class="comfort")
+    )
+    res_gfa_econ = e.cost.residential / c_base
+    res_gfa_fwd = r.apartments_area.value / apt_ratio
+    assert res_gfa_econ == pytest.approx(res_gfa_fwd, rel=1e-4)
+
+
 def test_stylobate_economy_index_lower_at_same_floors(spb, site):
     """Доп. себестоимость стилобата при verify (фикс. КИТ) снижает индекс."""
     base = verify_kit(1.5, site, _cfg(0.0), spb)

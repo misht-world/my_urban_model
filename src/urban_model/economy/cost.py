@@ -120,8 +120,23 @@ def calc_cost(tep, options, norms: Normatives) -> CostBreakdown:
             and getattr(tep, "add_education_building_area", None) is not None)
         else 0.0
     )
-    # GFA жилья = общая GFA − ВПП − здание встроенного ДОО − здание встроенного доп.обр
-    residential_gfa = max(0.0, gfa_v - bi_area - kg_bld_in_gfa - ae_bld_in_gfa)
+    # v0.12.20 (аудит): этаж, замещённый стилобатом под домами (доля
+    # `stylobate_under_buildings_share` × площадь деки), — это парковка, а не
+    # жильё. Он считается стоимостью стилобата (cost_stylobate ниже), поэтому
+    # вычитается из жилой GFA — иначе двойной счёт (этаж как жильё ×C_base И
+    # как стилобат ×c_styl). Симметрично forward.py (residential_gfa там тоже
+    # уменьшается на эту деку).
+    styl_area_in_gfa = float(getattr(tep, "parking_stylobate_area", None).value or 0.0) \
+        if getattr(tep, "parking_stylobate_area", None) is not None else 0.0
+    try:
+        _styl_under = float(norms.resolve("parking.stylobate_under_buildings_share"))
+    except (KeyError, TypeError, ValueError):
+        _styl_under = 0.25
+    styl_deck_in_gfa = _styl_under * styl_area_in_gfa
+    # GFA жилья = общая GFA − ВПП − встроенный ДОО − встроенный доп.обр − дека стилобата
+    residential_gfa = max(
+        0.0, gfa_v - bi_area - kg_bld_in_gfa - ae_bld_in_gfa - styl_deck_in_gfa
+    )
     # v0.9.28: при кластерах этажности себестоимость считается покластерно
     # (C_base нелинейна по этажам): residential_gfa делится по долям GFA,
     # каждая часть умножается на ставку своей этажности.
