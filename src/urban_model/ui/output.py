@@ -601,6 +601,27 @@ def render_details(result: TEPResult) -> None:
         ]
         _show_rows(rows)
 
+    # 🎨 Организации доп. образования (ВРИ 3.5.1, v0.12.15)
+    if (result.add_education_places_accepted.value or 0) > 0:
+        _ae_built_in = bool(getattr(result, "add_education_built_in", False))
+        _ae_label = "встроенное (ВПП)" if _ae_built_in else "отдельно стоящее"
+        with st.expander(
+            f":material/palette: Организации доп. образования — {_ae_label}",
+            expanded=False,
+        ):
+            rows = [
+                _row("Мест требуется", result.add_education_places_required, fmt_float),
+                _row("Мест принято", result.add_education_places_accepted, fmt_int),
+                _row("Площадь здания (17 м²/место)",
+                     result.add_education_building_area, fmt_m2),
+            ]
+            if not _ae_built_in:
+                rows.append(_row("Площадь ЗУ (15 м²/место)",
+                                 result.add_education_plot_area, fmt_m2))
+            rows.append(_row("Парковка (как у ДОУ/СОШ)",
+                             result.add_education_parking_places, fmt_int))
+            _show_rows(rows)
+
     # Плоскостные спортивные сооружения
     if (result.sport_facilities_plot_area.value or 0) > 0:
         with st.expander(":material/directions_run: Плоскостные спортивные сооружения", expanded=False):
@@ -735,6 +756,7 @@ def render_details(result: TEPResult) -> None:
             "school_plot": result.school_plot_area.value,
             "sport_facilities": result.sport_facilities_plot_area.value,
             "social_parking_plot": result.social_parking_area.value,
+            "add_education_plot": result.add_education_plot_area.value,
             "znop": result.znop_area.value,
             "intra_quarter_driveways": result.driveways_intra_quarter_area.value,
             "parking_multilevel": result.parking_multilevel_area.value,
@@ -751,6 +773,7 @@ def render_details(result: TEPResult) -> None:
                 "school_plot": "Участки СОШ",
                 "sport_facilities": "Спортивные сооружения",
                 "social_parking_plot": "Парковки соцобъектов (ДОО/СОШ)",
+                "add_education_plot": "Доп. образование (ЗУ)",
                 "znop": "ЗНОП",
                 "intra_quarter_driveways": "Внутриквартальные проезды",
                 "parking_multilevel": "Многоуровневые паркинги",

@@ -103,6 +103,25 @@ class TEPResult(BaseModel):
     school_plot_area: TEPField
     school_building_area: TEPField
 
+    # Организации доп. образования (ВРИ 3.5.1, v0.12.15). Defaults — для старых
+    # конструкторов/тестов ядра. built_in отмечает размещение в ВПП.
+    add_education_places_required: TEPField = Field(
+        default_factory=lambda: TEPField(value=0, unit="мест")
+    )
+    add_education_places_accepted: TEPField = Field(
+        default_factory=lambda: TEPField(value=0, unit="мест")
+    )
+    add_education_plot_area: TEPField = Field(
+        default_factory=lambda: TEPField(value=0.0, unit="m2")
+    )
+    add_education_building_area: TEPField = Field(
+        default_factory=lambda: TEPField(value=0.0, unit="m2")
+    )
+    add_education_parking_places: TEPField = Field(
+        default_factory=lambda: TEPField(value=0, unit="м/м")
+    )
+    add_education_built_in: bool = False
+
     # Плоскостные спортивные сооружения (v0.6.8)
     sport_facilities_area: TEPField           # площадь самих спортплощадок, м²
     sport_facilities_plot_area: TEPField      # полный ЗУ (sport + extra greening), м²

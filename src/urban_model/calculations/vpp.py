@@ -5,7 +5,7 @@
 и т.д.) — задаётся в `spb.yaml` секция `mandatory_vpp`.
 
 5 вариантов размещения:
-  1. full_floor   — весь 1 этаж = ВПП: min для 3.3/3.4.1/3.5.1, остаток
+  1. full_floor   — весь 1 этаж = ВПП: min для 3.3/3.4.1, остаток
                     между 4.4 и 4.6 (с обязательным минимумом + extra/2)
   2. half_floor   — то же, но footprint × 0.5
   3. min_only     — только обязательный минимум по всем 5 ВРИ
@@ -28,24 +28,27 @@ VppMode = Literal["full_floor", "half_floor", "min_only", "min_plus", "custom_on
 
 @dataclass
 class MandatoryVppAreas:
-    """Обязательные площади ВПП на 1000 жителей × текущая population."""
+    """Обязательные площади ВПП на 1000 жителей × текущая population.
+
+    v0.12.15: ВРИ 3.5.1 (доп. образование) вынесен в отдельный соцобъект
+    (`social_objects.add_education`) и больше не входит в обязательные ВПП.
+    """
     shopping_4_4: float = 0.0       # ВРИ 4.4 — торговля
     catering_4_6: float = 0.0       # ВРИ 4.6 — общепит
     domestic_3_3: float = 0.0       # ВРИ 3.3 — бытовое обслуживание
     medical_3_4_1: float = 0.0      # ВРИ 3.4.1 — поликлиника
-    arts_3_5_1: float = 0.0         # ВРИ 3.5.1 — школа искусств
 
     @property
     def total(self) -> float:
         return (
             self.shopping_4_4 + self.catering_4_6 + self.domestic_3_3
-            + self.medical_3_4_1 + self.arts_3_5_1
+            + self.medical_3_4_1
         )
 
     @property
     def non_44_46_total(self) -> float:
-        """Сумма минимумов для ВРИ, которые не растягиваются (3.3, 3.4.1, 3.5.1)."""
-        return self.domestic_3_3 + self.medical_3_4_1 + self.arts_3_5_1
+        """Сумма минимумов для ВРИ, которые не растягиваются (3.3, 3.4.1)."""
+        return self.domestic_3_3 + self.medical_3_4_1
 
 
 def compute_mandatory_areas(population: float, norms: Normatives) -> MandatoryVppAreas:
@@ -64,16 +67,13 @@ def compute_mandatory_areas(population: float, norms: Normatives) -> MandatoryVp
     # ВРИ 3.4.1 — посещ./смену × м²/посещение
     v_34 = population * norms.resolve("mandatory_vpp.medical_3_4_1.visits_per_shift_per_1000") / 1000
     s_34 = v_34 * norms.resolve("mandatory_vpp.medical_3_4_1.m2_per_visit_per_shift")
-    # ВРИ 3.5.1 — мест × м²/место
-    seats_35 = population * norms.resolve("mandatory_vpp.arts_3_5_1.seats_per_1000") / 1000
-    s_35 = seats_35 * norms.resolve("mandatory_vpp.arts_3_5_1.m2_per_seat")
+    # v0.12.15: ВРИ 3.5.1 (доп. образование) больше не в ВПП — см. add_education.py
 
     return MandatoryVppAreas(
         shopping_4_4=s_44,
         catering_4_6=s_46,
         domestic_3_3=s_33,
         medical_3_4_1=s_34,
-        arts_3_5_1=s_35,
     )
 
 
@@ -115,7 +115,6 @@ def build_built_ins(
         # Только обязательный минимум по всем 5 ВРИ
         _add("3.3", mandatory.domestic_3_3, "min быт.обсл.")
         _add("3.4.1", mandatory.medical_3_4_1, "min поликлиника")
-        _add("3.5.1", mandatory.arts_3_5_1, "min искусство")
         _add("4.4", mandatory.shopping_4_4, "min торговля")
         _add("4.6", mandatory.catering_4_6, "min общепит")
         return res
@@ -124,7 +123,6 @@ def build_built_ins(
         # Min всех 5 + опционально дополнительные 4.4 / 4.6
         _add("3.3", mandatory.domestic_3_3, "min быт.обсл.")
         _add("3.4.1", mandatory.medical_3_4_1, "min поликлиника")
-        _add("3.5.1", mandatory.arts_3_5_1, "min искусство")
         # Если custom задан — добавляем СВЕРХ min; иначе только min
         s_44 = mandatory.shopping_4_4 + (custom_4_4_m2 or 0.0)
         s_46 = mandatory.catering_4_6 + (custom_4_6_m2 or 0.0)
@@ -141,10 +139,9 @@ def build_built_ins(
     # Режимы full_floor / half_floor
     target_floor = footprint if mode == "full_floor" else footprint * 0.5
 
-    # Сначала размещаем min для 3.3, 3.4.1, 3.5.1
+    # Сначала размещаем min для 3.3, 3.4.1
     _add("3.3", mandatory.domestic_3_3, "min быт.обсл.")
     _add("3.4.1", mandatory.medical_3_4_1, "min поликлиника")
-    _add("3.5.1", mandatory.arts_3_5_1, "min искусство")
 
     # Минимум для 4.4 и 4.6
     s_44_min = mandatory.shopping_4_4

@@ -18,6 +18,7 @@ from __future__ import annotations
 import math
 
 from urban_model.calculations import (
+    add_education,
     balance,
     clusters,
     driveways,
@@ -410,6 +411,52 @@ def compute_tep_for_kit(
         sch_plot_total = sch_bld_total = 0.0
         sch_buckets = []
 
+    # === Организации доп. образования (ВРИ 3.5.1, v0.12.15) ===
+    # Вынесены из обязательных ВПП в отдельный соцобъект. Размещение по порогу
+    # 150 мест: <150 → встроенный (ВПП, здание из жилой GFA); ≥150 → отд. стоящий
+    # (ЗУ 15 м²/место + 30% озеленения). Парковка — по формуле соцобъектов.
+    ae_res = None
+    ae_required_raw = 0.0
+    _ae_only_demand = (
+        options.include_add_education and options.add_education.only_demand
+    )
+    if options.include_add_education and pop_v > 0:
+        ae_required_raw = add_education.required_places(
+            pop_v, norms.resolve("social_objects.add_education.places_per_1000")
+        )
+        ae_res = add_education.compute(
+            pop_v, norms,
+            mode=options.add_education.mode,
+            places_override=options.add_education.places_override,
+            in_vpp_manual=options.add_education.in_vpp,
+        )
+        # Встроенный (ВПП) и не «только потребность» → здание из жилой GFA.
+        if ae_res.built_in and ae_res.building_area > 0 and not _ae_only_demand:
+            residential_gfa = max(0.0, residential_gfa - ae_res.building_area)
+            apartments_area_v = residential_gfa * apt_ratio
+            pop_v = population.population(apartments_area_v, hp)
+            pop_check_v = population.population(apartments_area_v, hp_check)
+            density_v = population.density_chel_per_ga(pop_v, site.area_m2)
+            density_check_v = population.density_chel_per_ga(pop_check_v, site.area_m2)
+            _density_over = density_check_v > density_max
+            density_status = (
+                Status.ERROR if (_density_over and options.enforce_density_norm)
+                else Status.OK
+            )
+
+    # Эффективные значения для баланса/озеленения (only_demand → вне квартала).
+    if ae_res is not None and not _ae_only_demand:
+        ae_plot_in_balance = ae_res.plot_area          # 0 для ВПП
+        ae_greening_builtin = (                         # озеленение ВПП-здания
+            ae_res.building_area * norms.resolve("greening.vpp_per_floor_area")
+            if ae_res.built_in else 0.0
+        )
+        ae_parking_places = ae_res.parking_places if options.include_parking else 0
+    else:
+        ae_plot_in_balance = 0.0
+        ae_greening_builtin = 0.0
+        ae_parking_places = 0
+
     # === Плоскостные спортивные сооружения (ВРИ 5.1.3, v0.6.8) ===
     # Норматив: 1000 м²/1000 чел + озеленение 40% от ЗУ.
     # До 49% озеленения замещается самой спортплощадкой (п.1.9.4 ПЗЗ).
@@ -453,7 +500,10 @@ def compute_tep_for_kit(
         sch_include=sp_sch_active,
     )
     open_space_per_place = norms.resolve("parking.open_space_per_place")
-    soc_park_area = soc_park.total_places * open_space_per_place
+    # Парковка доп. образования (ВРИ 3.5.1) — открытая на своём ЗУ, как у ДОУ/СОШ
+    # (по формуле parking.social_objects). Вливается в площадь парковок соцобъектов.
+    soc_park_places_total = soc_park.total_places + ae_parking_places
+    soc_park_area = soc_park_places_total * open_space_per_place
 
     # === Инженерная инфраструктура (v0.12) ===
     # Считается здесь (после соцобъектов, до знаменателя озеленения), т.к. её
@@ -463,6 +513,13 @@ def compute_tep_for_kit(
     # квартала → ТП на них здесь не нужна. Поликлиника = CustomObject c ВРИ 3.4*.
     n_kg_obj = len(kg_buckets) if (options.include_kindergarten and not _kg_only_demand) else 0
     n_sch_obj = len(sch_buckets) if (options.include_school and not _sch_only_demand) else 0
+    # Доп. образование: ТП нужна только отдельно стоящему (встроенный — в составе
+    # жилого дома, питается от его ТП; «только потребность» — вне квартала).
+    n_ae_obj = (
+        1 if (ae_res is not None and not ae_res.built_in
+              and not _ae_only_demand and ae_res.places > 0)
+        else 0
+    )
     n_med_custom = sum(
         1 for o in options.custom_objects
         if (o.vri_code or "").strip().startswith("3.4")
@@ -470,7 +527,7 @@ def compute_tep_for_kit(
     eng_result = engineering.compute_engineering(
         apartments_area=apartments_area_v,
         population=pop_v,
-        n_social_objects=n_kg_obj + n_sch_obj + n_med_custom,
+        n_social_objects=n_kg_obj + n_sch_obj + n_ae_obj + n_med_custom,
         norms=norms,
         spec=options.engineering,
     )
@@ -488,7 +545,7 @@ def compute_tep_for_kit(
     green_quarter_req_v = greening.quarter_greening_required(
         site.area_m2,
         kg_plot_in_balance + sch_plot_in_balance + sport_plot_in_balance
-        + soc_park_area + eng_plot_in_balance,
+        + ae_plot_in_balance + soc_park_area + eng_plot_in_balance,
         quarter_share,
     )
 
@@ -627,7 +684,8 @@ def compute_tep_for_kit(
     # ЗУ жилья = площадь застройки + проезды на ЗУ + озеленение жилого
     #            + озеленение ВПП + открытые парковки (если учитываются)
     housing_lot_v = (
-        footprint_v + drive_lot_v + green_housing_v + bi_greening_v + parking_open_in_lot
+        footprint_v + drive_lot_v + green_housing_v + bi_greening_v
+        + ae_greening_builtin + parking_open_in_lot
     )
 
     # === КИТ ПЗЗ = площадь квартир / ЗУ жилой застройки ===
@@ -726,13 +784,16 @@ def compute_tep_for_kit(
         "parking_multilevel": parking_ml_footprint_in_balance,
         "engineering_plot": eng_plot_in_balance,
     }
+    if ae_plot_in_balance > 0:
+        components["add_education_plot"] = ae_plot_in_balance
     if custom_total_plot > 0:
         components["custom_objects"] = custom_total_plot
     # Фактическое озеленение квартала: ЗНОП + озеленение жилого ЗУ + ВПП + кастомные.
     # ЗНОП учитывается, только если include_znop=True.
     # Норматив (25% площади квартала за вычетом ДОО/СОШ) — обязательная проверка.
     greening_actual_total = (
-        znop_in_balance + green_housing_v + bi_greening_v + custom_total_greening
+        znop_in_balance + green_housing_v + bi_greening_v
+        + ae_greening_builtin + custom_total_greening
     )
     # v0.12.2: стилобатный двор (75% деки) над открытой землёй квартала, но по
     # ПЗЗ озеленения на стилобате ≤70%. Земля под декой иначе зачлась бы как
@@ -1022,6 +1083,78 @@ def compute_tep_for_kit(
             ),
         ),
         school_building_area=_F(sch_bld_total, unit="m2"),
+        # ── Организации доп. образования (ВРИ 3.5.1, v0.12.15) ────────────
+        add_education_places_required=_F(
+            ae_required_raw,
+            unit="мест",
+            formula=(
+                f"население × {norms.resolve('social_objects.add_education.places_per_1000')} / 1000"
+                if options.include_add_education else "Доп. образование отключено"
+            ),
+            source=(
+                norms.source_of("social_objects.add_education.places_per_1000")
+                if options.include_add_education else None
+            ),
+        ),
+        add_education_places_accepted=_F(
+            ae_res.places if ae_res else 0,
+            unit="мест",
+            normative=ae_required_raw if options.include_add_education else None,
+            formula=(
+                (
+                    f"вверх кратно {norms.resolve('social_objects.add_education.rounding')} → "
+                    + ("встроенное (ВПП)" if ae_res and ae_res.built_in else "отдельно стоящее")
+                    + (" — только потребность" if _ae_only_demand else "")
+                )
+                if ae_res else None
+            ),
+        ),
+        add_education_plot_area=_F(
+            ae_res.plot_area if ae_res else 0.0,
+            unit="m2",
+            formula=(
+                (
+                    f"15 м²/место × {ae_res.places} (отд. стоящее, РМД 15-26-2017)"
+                    + (" — только потребность, в баланс не входит" if _ae_only_demand else "")
+                )
+                if ae_res and not ae_res.built_in
+                else "встроенное (ВПП) — ЗУ не выделяется"
+                if ae_res else "—"
+            ),
+            source=(
+                norms.source_of("social_objects.add_education.plot_area_per_place")
+                if ae_res and not ae_res.built_in else None
+            ),
+        ),
+        add_education_building_area=_F(
+            ae_res.building_area if ae_res else 0.0,
+            unit="m2",
+            formula=(
+                (
+                    f"17 м²/место × {ae_res.places}"
+                    + (" — вычтено из жилой GFA (встроенное)"
+                       if ae_res.built_in and not _ae_only_demand else "")
+                )
+                if ae_res else "—"
+            ),
+            source=(
+                norms.source_of("social_objects.add_education.building_area_per_place")
+                if ae_res else None
+            ),
+        ),
+        add_education_parking_places=_F(
+            ae_parking_places,
+            unit="м/м",
+            formula=(
+                f"max(2, ⌈{ae_res.workers}/5⌉ + ⌈{ae_res.places}/100⌉) (формула соцобъектов)"
+                if ae_res and ae_parking_places > 0 else "—"
+            ),
+            source=(
+                norms.source_of("parking.social_objects.per_worker")
+                if ae_parking_places > 0 else None
+            ),
+        ),
+        add_education_built_in=bool(ae_res.built_in) if ae_res else False,
         # ── Парковки соцобъектов (v0.7.0) ────────────────────────────────
         social_parking_total=_F(
             soc_park.total_places,
@@ -1061,9 +1194,9 @@ def compute_tep_for_kit(
             soc_park_area,
             unit="m2",
             formula=(
-                f"{soc_park.total_places} м/м × {open_space_per_place} м²/место "
-                f"(открытые на ЗУ соцобъекта)"
-                if soc_park.total_places > 0 else "—"
+                f"{soc_park_places_total} м/м × {open_space_per_place} м²/место "
+                f"(открытые на ЗУ соцобъекта; вкл. доп. образование)"
+                if soc_park_places_total > 0 else "—"
             ),
             source=(
                 norms.source_of("parking.open_space_per_place")

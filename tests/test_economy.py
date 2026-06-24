@@ -82,7 +82,11 @@ class TestEconomyInResult:
 
     def test_cost_residential_formula(self, spb, site):
         """Жильё: residential_gfa × C_base(floors)."""
-        res = verify_kit(1.5, site, CalculationOptions(floors=12), spb)
+        # include_add_education=False: встроенное доп. обр. иначе вычло бы своё
+        # здание из жилой GFA (v0.12.15) и формула residential_gfa = gfa−bi сломалась.
+        res = verify_kit(
+            1.5, site, CalculationOptions(floors=12, include_add_education=False), spb
+        )
         # Для 12 эт. C_base = 1.10
         gfa = res.gfa.value
         bi = res.built_in_area.value or 0.0

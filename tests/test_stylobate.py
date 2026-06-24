@@ -59,9 +59,13 @@ def test_stylobate_taken_from_housing_pool(spb, site):
 
 
 def test_stylobate_reduces_apartments(spb, site):
-    """25% деки под домами → −1 этаж жилья → меньше квартир."""
-    base = solve_max_kit(site, _cfg(0.0), spb)
-    styl = solve_max_kit(site, _cfg(0.7), spb)
+    """25% деки под домами → −1 этаж жилья → меньше квартир.
+
+    include_add_education=False: изолируем эффект стилобата от доп. обр., иначе
+    при разном КИТ баланс с доп. обр. (отд. стоящее) смещает сравнение (v0.12.15).
+    """
+    base = solve_max_kit(site, _cfg(0.0, include_add_education=False), spb)
+    styl = solve_max_kit(site, _cfg(0.7, include_add_education=False), spb)
     assert styl.apartments_area.value < base.apartments_area.value
 
 

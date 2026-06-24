@@ -11,7 +11,12 @@ from urban_model.models.cluster import FloorCluster
 from urban_model.models.custom_object import CustomObject
 from urban_model.models.engineering import EngineeringSpec
 from urban_model.models.parking import ParkingConfig
-from urban_model.models.social import KindergartenSpec, SchoolSpec, SportFacilitiesSpec
+from urban_model.models.social import (
+    AdditionalEducationSpec,
+    KindergartenSpec,
+    SchoolSpec,
+    SportFacilitiesSpec,
+)
 
 
 class CalculationOptions(BaseModel):
@@ -104,6 +109,15 @@ class CalculationOptions(BaseModel):
 
     kindergarten: KindergartenSpec = Field(default_factory=KindergartenSpec)
     school: SchoolSpec = Field(default_factory=SchoolSpec)
+
+    # Организации доп. образования (ВРИ 3.5.1, v0.12.15) — вынесены из ВПП в
+    # отдельный объект. По умолчанию включены (как ДОО/СОШ).
+    include_add_education: bool = Field(
+        default=True, description="Учитывать организации доп. образования (ВРИ 3.5.1)"
+    )
+    add_education: AdditionalEducationSpec = Field(
+        default_factory=AdditionalEducationSpec
+    )
 
     # Плоскостные спортивные сооружения (ВРИ 5.1.3, v0.6.8) — по умолчанию включены.
     include_sport_facilities: bool = Field(

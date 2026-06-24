@@ -105,8 +105,23 @@ def calc_cost(tep, options, norms: Normatives) -> CostBreakdown:
         float(tep.kindergarten_building_area.value or 0.0)
         if (kg_btype == "built_in" and not kg_only_demand) else 0.0
     )
-    # GFA жилья = общая GFA − площадь ВПП − площадь здания встроенного ДОО
-    residential_gfa = max(0.0, gfa_v - bi_area - kg_bld_in_gfa)
+    # v0.12.15: здание встроенного доп. образования также входит в gfa_v и
+    # вычитается из жилой GFA (симметрично built-in ДОО — иначе оболочка
+    # облагается и как жильё ×C_base, и как доп. обр. ×c_add_edu).
+    _ae_included = getattr(options, "include_add_education", True)
+    _ae_only_demand0 = (
+        bool(getattr(options.add_education, "only_demand", False))
+        if _ae_included else True
+    )
+    ae_bld_in_gfa = (
+        float(getattr(tep, "add_education_building_area", None).value or 0.0)
+        if (_ae_included and not _ae_only_demand0
+            and bool(getattr(tep, "add_education_built_in", False))
+            and getattr(tep, "add_education_building_area", None) is not None)
+        else 0.0
+    )
+    # GFA жилья = общая GFA − ВПП − здание встроенного ДОО − здание встроенного доп.обр
+    residential_gfa = max(0.0, gfa_v - bi_area - kg_bld_in_gfa - ae_bld_in_gfa)
     # v0.9.28: при кластерах этажности себестоимость считается покластерно
     # (C_base нелинейна по этажам): residential_gfa делится по долям GFA,
     # каждая часть умножается на ставку своей этажности.
@@ -150,6 +165,20 @@ def calc_cost(tep, options, norms: Normatives) -> CostBreakdown:
         if getattr(options, "include_school", True) else True
     cost_kg = 0.0 if kg_only_demand else kg_bld * c_kg
     cost_sch = 0.0 if sch_only_demand else sch_bld * c_sch
+
+    # --- Доп. образование (ВРИ 3.5.1, v0.12.15) ---
+    # Здание строит застройщик (и для ВПП, и для отд. стоящего), кроме режима
+    # «только потребность». Для встроенного оболочка вычтена из жилой GFA в
+    # forward.py → двойного счёта нет (здесь добавляем спец-ставку доп. обр.).
+    ae_bld = float(getattr(tep, "add_education_building_area", None).value or 0.0) \
+        if getattr(tep, "add_education_building_area", None) is not None else 0.0
+    ae_only_demand = bool(getattr(options.add_education, "only_demand", False)) \
+        if getattr(options, "include_add_education", True) else True
+    try:
+        c_add_edu = float(norms.resolve("economy.construction.add_education"))
+    except KeyError:
+        c_add_edu = c_sch
+    cost_add_edu = 0.0 if ae_only_demand else ae_bld * c_add_edu
 
     # --- Парковки ---
     n_open = int(tep.parking_open_places.value or 0)
@@ -229,7 +258,7 @@ def calc_cost(tep, options, norms: Normatives) -> CostBreakdown:
 
     # --- Подытоги ---
     shell_total = (
-        cost_residential + cost_vpp + cost_kg + cost_sch
+        cost_residential + cost_vpp + cost_kg + cost_sch + cost_add_edu
         + cost_open + cost_ml + cost_ug + cost_stylobate
         + cost_soc_park + cost_sport + cost_custom + cost_engineering
     )
@@ -251,6 +280,7 @@ def calc_cost(tep, options, norms: Normatives) -> CostBreakdown:
         vpp=cost_vpp,
         kindergarten=cost_kg,
         school=cost_sch,
+        add_education=cost_add_edu,
         parking_open=cost_open,
         parking_multilevel=cost_ml,
         parking_underground=cost_ug,

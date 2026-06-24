@@ -159,7 +159,12 @@ class TestSocialParkingInResult:
 
     def test_social_parking_area_in_balance(self, spb, site):
         """social_parking_plot = отдельный компонент в balance."""
-        res = verify_kit(1.5, site, CalculationOptions(floors=12), spb)
+        # include_add_education=False: парковка доп. обр. иначе вливается в
+        # social_parking_area, и равенство с social_parking_total (только ДОО+СОШ)
+        # перестаёт держаться (v0.12.15).
+        res = verify_kit(
+            1.5, site, CalculationOptions(floors=12, include_add_education=False), spb
+        )
         assert "social_parking_plot" in res.balance.components
         assert res.balance.components["social_parking_plot"] > 0
         # Площадь = м/м × 20.75 (СПб норматив открытой парковки)

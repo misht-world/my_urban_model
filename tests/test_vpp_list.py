@@ -5,10 +5,9 @@
 - 4.6 (общепит):   105.20 посад.мест/1000 чел × 6 м²/место = 631.2 м²/1000
 - 3.3 (быт.обсл.): 19.00 раб.мест/1000 чел × 20 м²/раб.место = 380 м²/1000
 - 3.4.1 (поликл.): 26.33 посещ.в смену/1000 × 8 м²/посещ. = 210.64 м²/1000
-- 3.5.1 (искусство): 7.20 мест/1000 × 15 м²/место = 108 м²/1000
 
-Парковки 3.4.1 (1 м/м на 5 раб + 1 м/м на 40 посет) и 3.5.1
-(1 м/м на 5 раб + 1 м/м на 100 учащ, min 2) — отдельная формула.
+v0.12.15: ВРИ 3.5.1 (доп. образование) вынесен из ВПП в отдельный соцобъект
+(social_objects.add_education) — в обязательных ВПП теперь 4 ВРИ.
 """
 
 from __future__ import annotations
@@ -43,12 +42,11 @@ class TestMandatoryAreas:
         assert m.catering_4_6 == pytest.approx(105.20 * 6)
         assert m.domestic_3_3 == pytest.approx(19.0 * 20)
         assert m.medical_3_4_1 == pytest.approx(26.33 * 8)
-        assert m.arts_3_5_1 == pytest.approx(7.20 * 15)
 
     def test_total_1000_people(self, spb):
-        """Сумма обязательных ВПП для 1000 чел ≈ 1789.94 м²."""
+        """Сумма обязательных ВПП (4 ВРИ) для 1000 чел ≈ 1681.94 м²."""
         m = vpp.compute_mandatory_areas(1000.0, spb)
-        assert m.total == pytest.approx(460.10 + 631.2 + 380 + 210.64 + 108, abs=0.01)
+        assert m.total == pytest.approx(460.10 + 631.2 + 380 + 210.64, abs=0.01)
 
     def test_zero_population(self, spb):
         m = vpp.compute_mandatory_areas(0.0, spb)
@@ -61,12 +59,12 @@ class TestMandatoryAreas:
 
 class TestVppModes:
     def test_min_only(self, spb):
-        """Вариант 3: только обязательный минимум по всем 5 ВРИ."""
+        """Вариант 3: только обязательный минимум по всем 4 ВРИ (без 3.5.1)."""
         res = vpp.build_built_ins("min_only", population=1000, footprint=0, norms=spb)
-        # 5 объектов
-        assert len(res.built_ins) == 5
+        # 4 объекта (3.5.1 вынесен в отдельный соцобъект, v0.12.15)
+        assert len(res.built_ins) == 4
         vri_codes = sorted([b.vri_code for b in res.built_ins])
-        assert vri_codes == ["3.3", "3.4.1", "3.5.1", "4.4", "4.6"]
+        assert vri_codes == ["3.3", "3.4.1", "4.4", "4.6"]
         # 4.4 должен быть ровно 460.10
         s_44 = next(b.area_m2 for b in res.built_ins if b.vri_code == "4.4")
         assert s_44 == pytest.approx(460.10)

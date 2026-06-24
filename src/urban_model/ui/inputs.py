@@ -21,7 +21,12 @@ from urban_model.models.engineering import (
     EngineeringSpec,
 )
 from urban_model.models.parking import ParkingConfig
-from urban_model.models.social import KindergartenSpec, SchoolSpec, SportFacilitiesSpec
+from urban_model.models.social import (
+    AdditionalEducationSpec,
+    KindergartenSpec,
+    SchoolSpec,
+    SportFacilitiesSpec,
+)
 
 
 @dataclass
@@ -183,8 +188,28 @@ def render_params_tab() -> UserInputs:
         with st.container(border=True, key="param_left_card_include"):
             st.markdown("##### Учитывать в расчёте")
             st.caption("Включите компоненты — справа появятся их настройки.")
+            # ─── Объекты по НГП (соцобъекты с нормативной потребностью) ───
+            st.markdown(
+                '<div style="color:#475569;font-size:0.74rem;font-weight:700;'
+                'margin:2px 0 2px;letter-spacing:0.04em;text-transform:uppercase;">'
+                'Объекты по НГП</div>',
+                unsafe_allow_html=True,
+            )
             include_kg = st.checkbox(":material/child_care: ДОО — детские сады", value=True, key="include_kg")
             include_school = st.checkbox(":material/school: СОШ — школы", value=True, key="include_school")
+            include_add_education = st.checkbox(
+                ":material/palette: Организации доп. образования",
+                value=True, key="include_add_education",
+                help=(
+                    "ВРИ 3.5.1 (РМД 15-26-2017): 65 мест/1000 чел. По нормативу "
+                    "< 150 мест — встроенное (ВПП), ≥ 150 — отдельно стоящее "
+                    "(ЗУ 15 м²/место + 30% озеленения)."
+                ),
+            )
+            st.markdown(
+                '<hr style="margin:6px 0 6px;border:none;border-top:1px solid #EDEDED;">',
+                unsafe_allow_html=True,
+            )
             include_sport = st.checkbox(
                 ":material/directions_run: Плоскостные спортивные сооружения",
                 value=True, key="include_sport",
@@ -230,6 +255,7 @@ def render_params_tab() -> UserInputs:
     # Дефолты ставим заранее — на случай если тайл не активен.
     kg_spec = KindergartenSpec()
     school_spec = SchoolSpec()
+    add_edu_spec = AdditionalEducationSpec()
     sport_spec = SportFacilitiesSpec()
     parking = ParkingConfig(mode="min_open")
     znop_pp_override = None
@@ -247,6 +273,7 @@ def render_params_tab() -> UserInputs:
     active_tiles: list[tuple[str, "callable"]] = []
     if include_kg:       active_tiles.append(("kg", _render_kg_tile))
     if include_school:   active_tiles.append(("school", _render_school_tile))
+    if include_add_education: active_tiles.append(("add_edu", _render_add_education_tile))
     if include_sport:    active_tiles.append(("sport", _render_sport_tile))
     if include_parking:  active_tiles.append(("parking", _render_parking_tile))
     if include_znop:     active_tiles.append(("znop", _render_znop_tile))
@@ -291,6 +318,7 @@ def render_params_tab() -> UserInputs:
 
             kg_spec = results.get("kg", kg_spec)
             school_spec = results.get("school", school_spec)
+            add_edu_spec = results.get("add_edu", add_edu_spec)
             sport_spec = results.get("sport", sport_spec)
             parking = results.get("parking", parking)
             if "znop" in results:
@@ -318,6 +346,8 @@ def render_params_tab() -> UserInputs:
         engineering=engineering_spec,
         kindergarten=kg_spec,
         school=school_spec,
+        include_add_education=include_add_education,
+        add_education=add_edu_spec,
         sport_facilities=sport_spec,
         parking=parking,
         built_in=built_in,
@@ -684,7 +714,7 @@ def _render_vpp_tile() -> VppRequest:
         _tile_header(":material/storefront: Встроенно-пристроенные помещения (ВПП)", "include_vpp")
         st.caption(
             "Обязательные ВПП по НГП СПб: 4.4 торговля, 4.6 общепит, "
-            "3.3 быт.обсл., 3.4.1 поликлиника, 3.5.1 школа искусств. "
+            "3.3 быт.обсл., 3.4.1 поликлиника. "
             "Выберите вариант размещения:"
         )
 
@@ -748,8 +778,8 @@ def _render_vpp_tile() -> VppRequest:
                     f"• 4.6 общепит: {m.catering_4_6:.0f} м²  \n"
                     f"• 3.3 быт.обсл.: {m.domestic_3_3:.0f} м²  \n"
                     f"• 3.4.1 поликлиника: {m.medical_3_4_1:.0f} м²  \n"
-                    f"• 3.5.1 школа искусств: {m.arts_3_5_1:.0f} м²  \n"
-                    f"**Итого min:** {m.total:.0f} м²"
+                    f"**Итого min:** {m.total:.0f} м²  \n"
+                    f"_(доп. образование 3.5.1 — отдельная карточка «Доп. образование»)_"
                 )
 
     return VppRequest(mode=mode, custom_4_4_m2=custom_44, custom_4_6_m2=custom_46)
@@ -832,17 +862,16 @@ def _render_kg_tile() -> KindergartenSpec:
                 "за пределами квартала или уже существует."
             ),
         )
-        kg_btype_label = st.selectbox(
-            "Тип здания ДОО",
-            ["Отдельно стоящее", "Встроенно-пристроенное"],
-            index=0,
+        kg_in_vpp = st.toggle(
+            "Разместить в ВПП (встроенно-пристроенное)",
+            value=False, key="kg_in_vpp",
             help=(
-                "Отдельно стоящее: 160–350 мест (РМД). "
-                "Встроенно-пристроенное: до 120 мест на 1-м этаже жилого дома."
+                "Выкл — отдельно стоящее ДОО (160–350 мест, РМД). "
+                "Вкл — встроенно-пристроенное (до 120 мест на 1-м этаже жилого "
+                "дома, ЗУ 24 м²/место; здание вычитается из жилой GFA)."
             ),
-            key="kg_btype_label",
         )
-        kg_btype = "detached" if kg_btype_label == "Отдельно стоящее" else "built_in"
+        kg_btype = "built_in" if kg_in_vpp else "detached"
         kg_strict = st.toggle(
             "Только нормативная наполняемость",
             value=False, key="kg_strict_capacity",
@@ -887,6 +916,63 @@ def _render_kg_tile() -> KindergartenSpec:
         capacity_per_object=int(kg_capacity) if kg_capacity else None,
         only_demand=bool(kg_only_demand),
         strict_capacity=bool(kg_strict),
+    )
+
+
+def _render_add_education_tile() -> AdditionalEducationSpec:
+    """Плитка организаций доп. образования (ВРИ 3.5.1, v0.12.15)."""
+    with st.container(border=True):
+        _tile_header(
+            ":material/palette: Организации доп. образования",
+            "include_add_education",
+        )
+        ae_only_demand = _only_demand_toggle(
+            "Только рассчитать потребность",
+            key="ae_only_demand",
+            help_text=(
+                "Показать число мест и площади, но НЕ учитывать ЗУ/здание "
+                "в балансе квартала. Полезно, если объект размещается за "
+                "пределами квартала или уже существует."
+            ),
+        )
+        ae_mode_label = st.radio(
+            "Способ расчёта",
+            ["По нормативу", "Задать вручную"],
+            index=0, horizontal=True, key="ae_mode_label",
+            help=(
+                "По нормативу — 65 мест/1000 чел, размещение авто по порогу "
+                "150 мест. Вручную — задать число мест и размещение."
+            ),
+        )
+        ae_places_override = None
+        ae_in_vpp = False
+        if ae_mode_label == "Задать вручную":
+            ae_mode = "manual"
+            ae_places_override = int(st.number_input(
+                "Число мест", min_value=0, max_value=5000, value=150, step=5,
+                key="ae_places_override",
+            ))
+            ae_in_vpp = st.toggle(
+                "Разместить в ВПП (встроенно-пристроенное)",
+                value=False, key="ae_in_vpp",
+                help=(
+                    "Вкл — здание (17 м²/место) в составе жилого дома, ЗУ не "
+                    "выделяется. Выкл — отдельно стоящее (ЗУ 15 м²/место + 30% "
+                    "озеленения)."
+                ),
+            )
+        else:
+            ae_mode = "norm"
+            st.caption(
+                "По РМД 15-26-2017: < 150 мест → встроенное (ВПП); "
+                "≥ 150 → отдельно стоящее (ЗУ 15 м²/место + 30% озеленения). "
+                "Здание — 17 м²/место, до 4 эт. Парковка — как у ДОУ/СОШ."
+            )
+    return AdditionalEducationSpec(
+        mode=ae_mode,
+        places_override=ae_places_override,
+        in_vpp=bool(ae_in_vpp),
+        only_demand=bool(ae_only_demand),
     )
 
 
