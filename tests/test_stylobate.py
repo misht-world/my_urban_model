@@ -158,7 +158,9 @@ def test_parking_caps_matrix_loads(spb):
 
 
 def test_economy_recommendations_respect_underground_cap(spb, site):
-    """Эконом-рекомендации не предлагают много подземки (потолок 20%)."""
+    """v0.12.26: потолки парковок соблюдают ТОЛЬКО реалистичные карточки
+    (Пороговый/Девелоперский). «Максимум площади»/«Максимум эконом-индекса»
+    намеренно ищут предельные значения БЕЗ потолков класса."""
     from urban_model.optimize.pareto import generate_pareto_recommendations, _parking_shares
     base = solve_max_kit(site, CalculationOptions(floors=14, residential_class="economy"), spb)
     bundle = generate_pareto_recommendations(
@@ -166,7 +168,10 @@ def test_economy_recommendations_respect_underground_cap(spb, site):
         spb, base, n_trials=120, seed=7,
     )
     cap = spb.resolve("economy.parking_caps", residential_class="economy")["underground"]
+    REALISTIC = {"Пороговый", "Девелоперский"}
     for r in bundle.recommendations:
+        if r.label not in REALISTIC:
+            continue
         ug_share = _parking_shares(r.tep)["underground"]
         assert ug_share <= cap + 0.03, f"{r.label}: подземка {ug_share:.2f} > потолка {cap}"
 

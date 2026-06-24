@@ -317,18 +317,9 @@ def _format_key_changes(base_options: CalculationOptions, scenario_params: dict)
         old_s = float(getattr(base_options.parking, "stylobate_share", 0.0) or 0.0)
         if abs(new_s - old_s) > 0.05:
             changes.append(f"Стилобат: {old_s*100:.0f}% → {new_s*100:.0f}%")
-    # ВПП-режим
-    if "vpp_mode" in scenario_params:
-        vm = scenario_params["vpp_mode"]
-        if vm != "off":
-            ru = {
-                "min_only": "минимум",
-                "min_plus": "минимум + допы",
-                "custom_only": "вручную",
-                "full_floor": "весь 1 этаж",
-                "half_floor": "50% 1 этажа",
-            }
-            changes.append(f"ВПП: {ru.get(vm, vm)}")
+    # ВПП-режим: НЕ показываем как «изменение» — режим ВПП фиксирован из
+    # «Параметров» (vpp_fixed_mode), одинаков у базы и всех рекомендаций
+    # (v0.12.26). Раньше ошибочно писалось «ВПП: 50% 1 этажа» в каждой карточке.
     # ЗНОП
     if "znop_per_person" in scenario_params:
         new_z = float(scenario_params["znop_per_person"])
@@ -458,9 +449,21 @@ def _select_three(
         if filtered:
             feasible = filtered
 
-    # v0.12.7: жёсткие потолки долей по классу жилья — отсев нереалистичных
-    # миксов (напр. много подземки в Экономе). С откатом: если на плотном
-    # участке иначе невозможно (пул опустел) — оставляем как есть.
+    # v0.12.11: отсев сценариев с нарушением минимума ЗНОП по ПЗЗ — ДО
+    # разделения на пулы (актуально при ручном override площади ЗНОП). С откатом.
+    _ok_znop = [
+        r for r in feasible
+        if not any("ZNOP_BELOW_MIN" in w for w in (r.tep.warnings or []))
+    ]
+    if _ok_znop:
+        feasible = _ok_znop
+
+    # v0.12.26: потолки долей парковки по классу применяем ТОЛЬКО к
+    # «реалистичным» карточкам (Пороговый/Девелоперский). «Максимум площади» и
+    # «Максимум эконом-индекса» ищут ПРЕДЕЛЬНЫЕ значения БЕЗ потолков — иначе
+    # «Макс. площади» оказывался < Базы (если База использует мимо-потолочный
+    # микс, напр. min_open 88% подземки в Экономе), а индекс не мог превысить
+    # естественный максимум застройки.
     _caps = None
     if norms is not None:
         try:
@@ -470,36 +473,30 @@ def _select_three(
             )
         except (KeyError, TypeError, ValueError):
             _caps = None
+    pool_uncapped = feasible
     if _caps:
-        capped = [r for r in feasible if not _violates_parking_caps(r.tep, _caps)]
-        if capped:
-            feasible = capped
+        _capped = [r for r in feasible if not _violates_parking_caps(r.tep, _caps)]
+        pool_capped = _capped if _capped else feasible
+    else:
+        pool_capped = feasible
 
-    # v0.12.11: отсев сценариев с нарушением минимума ЗНОП по ПЗЗ (актуально
-    # при ручном override площади ЗНОП: при росте КИТ/падении населения
-    # фиксированная площадь может стать ниже норматива). С откатом.
-    _ok_znop = [
-        r for r in feasible
-        if not any("ZNOP_BELOW_MIN" in w for w in (r.tep.warnings or []))
-    ]
-    if _ok_znop:
-        feasible = _ok_znop
+    with_econ = [r for r in pool_uncapped if r.tep.economy is not None]       # экстремумы
+    with_econ_real = [r for r in pool_capped if r.tep.economy is not None]    # реалистичные
 
-    with_econ = [r for r in feasible if r.tep.economy is not None]
-
-    # Заготовим отсортированные пулы для каждого критерия
-    apt_sorted = sorted(feasible, key=lambda r: r.apartments_area, reverse=True)
-    # v0.12.1: ранжируем по СТАБИЛЬНОМУ экономическому индексу
-    # (100 × выручка / себестоимость), а не по сырой прибыли в у.е.
+    # Экстремальные карточки — по НЕограниченному пулу (площадь / индекс).
+    apt_sorted = sorted(pool_uncapped, key=lambda r: r.apartments_area, reverse=True)
+    # v0.12.1: ранжируем по СТАБИЛЬНОМУ эконом-индексу (100 × выручка / себест.).
     index_sorted = (
         sorted(with_econ, key=lambda r: r.tep.economy.economy_index, reverse=True)
         if with_econ else apt_sorted
     )
 
     # Нормировки apt и economy_index (min-max по пулу) — для blended-скоров.
-    if with_econ and len(with_econ) >= 2:
-        apts = [r.apartments_area for r in with_econ]
-        idxs = [r.tep.economy.economy_index for r in with_econ]
+    # v0.12.26: Пороговый/Девелоперский считаются по РЕАЛИСТИЧНОМУ пулу
+    # (с потолками класса), поэтому нормировки — по нему же.
+    if with_econ_real and len(with_econ_real) >= 2:
+        apts = [r.apartments_area for r in with_econ_real]
+        idxs = [r.tep.economy.economy_index for r in with_econ_real]
         apt_min, apt_max = min(apts), max(apts)
         i_min, i_max = min(idxs), max(idxs)
         apt_range = apt_max - apt_min if apt_max > apt_min else 1.0
@@ -513,7 +510,7 @@ def _select_three(
 
         # v0.12.4: соц-эффективность (ЗУ/место) — нормировка по пулу для
         # тай-брейка в developer_score (ниже ЗУ/место → лучше → меньше штраф).
-        _spps = [_social_plot_per_place(r.tep) for r in with_econ]
+        _spps = [_social_plot_per_place(r.tep) for r in with_econ_real]
         _spp_min, _spp_max = min(_spps), max(_spps)
         _spp_range = _spp_max - _spp_min if _spp_max > _spp_min else 1.0
 
@@ -525,7 +522,7 @@ def _select_three(
         # Малый положительный вес как тай-брейк в developer_score.
         def _znop_pp(r: OptimizationResult) -> float:
             return float(r.tep.znop_per_person.value or 0.0)
-        _znops = [_znop_pp(r) for r in with_econ]
+        _znops = [_znop_pp(r) for r in with_econ_real]
         _znop_min, _znop_max = min(_znops), max(_znops)
         _znop_range = _znop_max - _znop_min if _znop_max > _znop_min else 1.0
 
@@ -536,7 +533,7 @@ def _select_three(
         # ближе всего к 100 (выручка ≈ себестоимость). Это «потолок застройки
         # при нулевом запасе экономики».
         threshold_sorted = sorted(
-            with_econ, key=lambda r: abs(r.tep.economy.economy_index - 100.0)
+            with_econ_real, key=lambda r: abs(r.tep.economy.economy_index - 100.0)
         )
         # Девелоперский (v0.12.2) — полноценный developer_score (аудит-формула):
         #   0.50·эконом-индекс + 0.25·площадь + 0.15·парк.рациональность
@@ -566,7 +563,7 @@ def _select_three(
                 + znop_bonus
             )
 
-        developer_sorted = sorted(with_econ, key=_dev_score, reverse=True)
+        developer_sorted = sorted(with_econ_real, key=_dev_score, reverse=True)
     else:
         threshold_sorted = apt_sorted
         developer_sorted = apt_sorted
@@ -610,18 +607,35 @@ def _select_three(
     recs: list[Recommendation] = []
     seen_fps: set[tuple] = set()
     seen_ids: set[int] = set()
+    _index_top_id = id(index_sorted[0]) if index_sorted else None
     for i, (label, pool) in enumerate([
         ("Максимум площади", apt_sorted),
         ("Максимум эконом-индекса", index_sorted),
         ("Пороговый", threshold_sorted),
         ("Девелоперский", developer_sorted),
     ]):
-        picked = _pick(pool, seen_fps, seen_ids)
+        if label == "Пороговый" and pool:
+            # v0.12.26: «Пороговый» — ЧЕСТНО ближайший к 100, БЕЗ дедупа.
+            # Может совпасть с «Макс. индекса», если проект сабокупаемый (макс.
+            # индекс < 100 → ближайший к 100 = максимум). Это корректно: раньше
+            # дедуп толкал Пороговый на худший вариант (напр. 92 вместо 97).
+            picked = pool[0]
+            seen_ids.add(id(picked))
+            seen_fps.add(_params_fingerprint(picked))
+        else:
+            picked = _pick(pool, seen_fps, seen_ids)
         if picked is None:
             continue
+        rationale = rationales[label]
+        if (label == "Пороговый" and _index_top_id is not None
+                and id(picked) == _index_top_id):
+            rationale += (
+                " Проект сабокупаемый (макс. индекс < 100), поэтому ближайший "
+                "к 100 совпал с «Максимумом эконом-индекса»."
+            )
         recs.append(Recommendation(
             label=label,
-            rationale=rationales[label],
+            rationale=rationale,
             params=dict(picked.params),
             tep=picked.tep,
             delta_vs_base=_delta(base_tep, picked.tep, base_options, picked.params),

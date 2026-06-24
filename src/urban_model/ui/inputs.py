@@ -1251,37 +1251,38 @@ def _render_share_slider(
         else "Доля, %"
     )
 
-    # v0.10.18: замок-чекбокс ПОД слайдером (раньше был сбоку, нагромождал
-    # узкую колонку). Слайдер теперь на всю ширину карточки.
-    c_slider = st.container()
-    c_lock = st.container()
-
-    with c_slider:
-        if not interactive:
-            # Компактная замена st.metric (которая давала слишком крупный шрифт):
-            # серый лейбл + значение того же размера, что и у обычного слайдера.
-            st.markdown(
-                f"<div style='padding:0.25rem 0 0.5rem 0;line-height:1.3;'>"
-                f"<span style='color:#6B7280;font-size:0.85rem;'>{slider_label}</span><br>"
-                f"<span style='font-weight:500;font-size:1rem;'>"
-                f"{st.session_state[pct_key]:.1f}%</span>"
-                f"</div>",
-                unsafe_allow_html=True,
-            )
-        else:
-            st.slider(
-                slider_label,
-                min_value=0.0, max_value=100.0, step=0.5,
-                key=pct_key,
-                disabled=is_locked,
-                on_change=(_on_share_change if not is_locked else None),
-                args=((type_key,) if not is_locked else None),
-            )
-
-    # v0.10.18: чекбокс-замок под слайдером (компактнее, на всю ширину).
-    # v0.12.8: эмодзи 🔒 → material-иконка (единообразие с прочими иконками).
-    with c_lock:
-        st.checkbox(":material/lock: Зафиксировать долю", key=lock_key)
+    # v0.12.26: замок-чекбокс с лейблом «Доля, %» ВМЕСТО отдельного
+    # «Зафиксировать долю» — смысл замка = фиксация процента, карточка
+    # поджимается (одна строка вместо двух). Слайдер ниже без своего лейбла.
+    lock_label = (
+        ":material/lock: Доля в остатке, %"
+        if is_remainder_mode else ":material/lock: Доля, %"
+    )
+    if not interactive:
+        # disabled/metric: компактный лейбл + значение (без чекбокса).
+        st.markdown(
+            f"<div style='padding:0.25rem 0 0.5rem 0;line-height:1.3;'>"
+            f"<span style='color:#6B7280;font-size:0.85rem;'>{slider_label}</span><br>"
+            f"<span style='font-weight:500;font-size:1rem;'>"
+            f"{st.session_state[pct_key]:.1f}%</span>"
+            f"</div>",
+            unsafe_allow_html=True,
+        )
+    else:
+        st.checkbox(
+            lock_label, key=lock_key,
+            help="Зафиксировать эту долю — при изменении других типов парковок "
+                 "она пересчитываться не будет.",
+        )
+        st.slider(
+            slider_label,
+            min_value=0.0, max_value=100.0, step=0.5,
+            key=pct_key,
+            disabled=is_locked,
+            label_visibility="collapsed",
+            on_change=(_on_share_change if not is_locked else None),
+            args=((type_key,) if not is_locked else None),
+        )
 
     if show_norm_warning and st.session_state[pct_key] < NORM_MIN_OPEN:
         st.markdown(
