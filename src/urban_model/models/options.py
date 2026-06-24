@@ -146,6 +146,21 @@ class CalculationOptions(BaseModel):
         description="Класс жилья — влияет на цену продажи м² квартир.",
     )
 
+    # v0.12.27: за чей счёт соцобъекты (ДОО/СОШ/доп.обр здания + соц-парковки).
+    #   compensated — город компенсирует долю себестоимости (share, дефолт 0.7);
+    #   developer   — полностью застройщик (компенсация 0);
+    #   city        — полностью город (себестоимость соц-зданий = 0 у застройщика);
+    #   at_cost     — передача по себестоимости (компенсация = 100%, нейтрально).
+    social_funding: Literal["compensated", "developer", "city", "at_cost"] = Field(
+        default="compensated",
+        description="За чей счёт соцобъекты: город % / застройщик / город / по себестоимости",
+    )
+    # Доля компенсации города для режима 'compensated'. None → норматив из YAML (0.7).
+    social_compensation_share: float | None = Field(
+        default=None, ge=0.0, le=1.0,
+        description="Доля компенсации города (режим compensated); None = норматив YAML",
+    )
+
     # Бисекция КИТ
     kit_search_min: float = 0.1
     kit_search_max: float | None = None  # если None — берём из норматива

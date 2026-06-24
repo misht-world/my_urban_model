@@ -279,6 +279,8 @@ def render_params_tab() -> UserInputs:
     custom_objects_list: list = []
     engineering_spec = EngineeringSpec()
     residential_class = "economy"
+    social_funding = "compensated"
+    social_comp_share = None
 
     # Активные тайлы: (key, render-callable). Раскладываются по 2 столбцам.
     active_tiles: list[tuple[str, "callable"]] = []
@@ -338,7 +340,8 @@ def render_params_tab() -> UserInputs:
             intra_override = results.get("intra", intra_override)
             engineering_spec = results.get("engineering", engineering_spec)
             custom_objects_list = results.get("custom", custom_objects_list)
-            residential_class = results.get("economy", residential_class)
+            if "economy" in results:
+                residential_class, social_funding, social_comp_share = results["economy"]
 
     # ==================================================================
     # Сборка опций
@@ -370,6 +373,8 @@ def render_params_tab() -> UserInputs:
         driveways_lot_share_override=lot_override,
         include_economy=include_economy,
         residential_class=residential_class,
+        social_funding=social_funding,
+        social_compensation_share=social_comp_share,
         enforce_quarter_greening_norm=enforce_greening_norm,
         enforce_density_norm=enforce_density_norm,
     )
@@ -1472,8 +1477,11 @@ def _render_parking_custom() -> ParkingConfig:
         return ParkingConfig(mode="min_open")
 
 
-def _render_economy_tile() -> str:
-    """Плитка экономических параметров (v0.8.0). Возвращает residential_class."""
+def _render_economy_tile() -> tuple[str, str, float | None]:
+    """Плитка экономических параметров (v0.8.0).
+
+    Возвращает (residential_class, social_funding, social_compensation_share).
+    """
     with st.container(border=True):
         _tile_header(":material/payments: Экономика (условные единицы)", "include_economy")
         st.caption(
@@ -1491,7 +1499,32 @@ def _render_economy_tile() -> str:
             key="residential_class",
             help="Влияет на цену продажи м² квартир и себестоимость отделки.",
         )
-    return cls_label
+        # v0.12.27: за чей счёт соцобъекты (ДОО/СОШ/доп.обр здания).
+        _FUND_RU = {
+            "compensated": "Город компенсирует %",
+            "developer": "Полностью застройщик",
+            "city": "Полностью город",
+            "at_cost": "Передача по себестоимости",
+        }
+        fund = st.selectbox(
+            "Соцобъекты — за чей счёт",
+            list(_FUND_RU.keys()), index=0,
+            format_func=lambda v: _FUND_RU[v],
+            key="social_funding",
+            help=(
+                "Как учитывать ДОО/СОШ/доп.образование в экономике: "
+                "город компенсирует долю себестоимости / целиком застройщик / "
+                "целиком город (себест. соц = 0) / передача по себестоимости (нейтрально)."
+            ),
+        )
+        comp_share: float | None = None
+        if fund == "compensated":
+            comp_share = st.slider(
+                "Доля компенсации города, %", 0, 100, 70, 5,
+                key="social_comp_share_pct",
+                help="Какую долю себестоимости соц-зданий компенсирует город.",
+            ) / 100.0
+    return cls_label, fund, comp_share
 
 
 def _render_custom_objects_tile() -> list[CustomObject]:

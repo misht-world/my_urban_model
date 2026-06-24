@@ -1123,6 +1123,7 @@ def _render_social_count_card(scan: ScanResult) -> None:
             f"{min(buckets)}–{max(buckets)}" if buckets and min(buckets) != max(buckets)
             else (str(buckets[0]) if buckets else "—")
         )
+        apt = float(tep.apartments_area.value or 0.0)
         invalid = any(
             has_code(w, WC.SOC_CAP_MIN_BELOW, WC.SOC_CAP_MAX_ABOVE)
             for w in tep.warnings
@@ -1134,27 +1135,30 @@ def _render_social_count_card(scan: ScanResult) -> None:
             status = "⚠ нетиповая"
         else:
             status = "✅ ок"
-            valid_counts.append(int(p.x_value))
+            valid_counts.append((int(p.x_value), apt))
         rows.append({
             "Объектов": int(p.x_value),
-            "Мест всего": accepted,
-            "Вместимость/объект": cap_str,
-            "Площадь ЗУ, м²": f"{plot:,.0f}".replace(",", " "),
+            "Вместимости": cap_str,
+            "ЗУ, м²": f"{plot:,.0f}".replace(",", " "),
+            "Площадь квартир, м²": f"{apt:,.0f}".replace(",", " "),
             "Статус": status,
         })
 
     st.dataframe(pd.DataFrame(rows), hide_index=True, use_container_width=True)
     if valid_counts:
-        rec_n = min(valid_counts)
+        # v0.12.27: рекомендуем вариант с МАКС. площадью квартир среди валидных
+        # (= минимум ЗУ соцобъектов). Для СОШ это обычно минимум корпусов
+        # (каждый тянет бассейн+спорт-ядро); для ДОО ЗУ почти не зависит от числа.
+        best_n, best_apt = max(valid_counts, key=lambda t: t[1])
         st.markdown(
-            f":material/check_circle: **Рекомендуется:** {rec_n} {obj_word} "
-            f"(минимум объектов с допустимой вместимостью)."
+            f":material/check_circle: **Лучше: {best_n} {obj_word}** — "
+            f"наибольшая площадь квартир ({best_apt:,.0f} м²) при допустимых "
+            f"вместимостях.".replace(",", " ")
         )
-    # Вывод под таблицей (#1): пояснение, что число объектов не влияет на площадь.
     st.caption(
-        f"Площадь квартир от числа {obj_word} **не зависит** (суммарный ЗУ ≈ "
-        f"const × число мест). Выбор — по **реализуемости**: вместимость "
-        f"объекта должна быть в нормативных границах."
+        f"Больше {obj_word} → больше суммарного ЗУ → меньше площади квартир "
+        f"(для СОШ заметнее: бассейн + спорт-ядро на каждый корпус). "
+        f"Вместимости выбираются по минимуму ЗУ из типовых (v0.12.22)."
     )
 
 
@@ -1201,8 +1205,8 @@ def _render_what_to_improve_section(
         (":material/apartment: Р — доля многоуровневых", _cached_scan_parking_ml),
         (":material/park: ЗНОП: норматив м²/чел", _cached_scan_znop),
         ("🏢 Этажность", _cached_scan_floors),
-        (":material/child_care: ДОО: число объектов", _cached_scan_kg),
-        (":material/school: СОШ: число объектов", _cached_scan_sch),
+        (":material/child_care: ДОО: наполняемость и ЗУ", _cached_scan_kg),
+        (":material/school: СОШ: наполняемость и ЗУ", _cached_scan_sch),
     ]
     for row_start in range(0, len(scan_configs), 2):
         cols = st.columns(2, gap="medium")

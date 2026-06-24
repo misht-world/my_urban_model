@@ -59,9 +59,20 @@ def calc_revenue(tep, options, norms: Normatives) -> RevenueBreakdown:
     # При `only_demand=True` объект НЕ строится застройщиком — компенсация
     # не применяется (как и cost этого объекта).
     try:
-        comp_share = float(norms.resolve("economy.social_compensation.share"))
+        _norm_share = float(norms.resolve("economy.social_compensation.share"))
     except (KeyError, TypeError, ValueError):
+        _norm_share = 0.0
+    # v0.12.27: доля компенсации зависит от режима финансирования соцобъектов.
+    _funding = getattr(options, "social_funding", "compensated")
+    if _funding == "developer":
         comp_share = 0.0
+    elif _funding == "at_cost":
+        comp_share = 1.0
+    elif _funding == "city":
+        comp_share = 0.0   # соц строит город → себестоимость соц у застройщика 0 (cost.py)
+    else:  # compensated
+        _user = getattr(options, "social_compensation_share", None)
+        comp_share = float(_user) if _user is not None else _norm_share
     c_kg = float(norms.resolve("economy.construction.kindergarten"))
     c_sch = float(norms.resolve("economy.construction.school"))
     kg_bld = float(tep.kindergarten_building_area.value or 0.0)

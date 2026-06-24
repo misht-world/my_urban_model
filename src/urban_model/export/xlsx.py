@@ -351,8 +351,16 @@ def _variant_sections(result: TEPResult, options) -> list[tuple[str, list[tuple[
     # --- Экономика ---
     if r.economy is not None:
         e = r.economy
+        _FUND_RU = {
+            "compensated": "Город компенсирует %",
+            "developer": "Полностью застройщик",
+            "city": "Полностью город",
+            "at_cost": "Передача по себестоимости",
+        }
+        _fund = getattr(options, "social_funding", "compensated") if options else "compensated"
         secs.append(("Экономика (условные баллы)", [
             ("Эконом-индекс (100 = окупаемость)", _num(e.economy_index)),
+            ("Соцобъекты — финансирование", _FUND_RU.get(_fund, _fund)),
             ("Выход жилья, %", _num(e.sellable_ratio * 100, 1)),
             ("Себестоимость итого", _num(e.cost.total)),
             ("Выручка итого", _num(e.revenue.total)),

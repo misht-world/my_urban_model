@@ -178,8 +178,11 @@ def calc_cost(tep, options, norms: Normatives) -> CostBreakdown:
     # kg_only_demand уже вычислен выше (для вычета здания встроенного ДОО).
     sch_only_demand = bool(getattr(options.school, "only_demand", False)) \
         if getattr(options, "include_school", True) else True
-    cost_kg = 0.0 if kg_only_demand else kg_bld * c_kg
-    cost_sch = 0.0 if sch_only_demand else sch_bld * c_sch
+    # v0.12.27: режим «полностью город» — соц-здания строит город, их
+    # себестоимость у застройщика = 0 (компенсация в revenue тоже 0).
+    _city_funded = getattr(options, "social_funding", "compensated") == "city"
+    cost_kg = 0.0 if (kg_only_demand or _city_funded) else kg_bld * c_kg
+    cost_sch = 0.0 if (sch_only_demand or _city_funded) else sch_bld * c_sch
 
     # --- Доп. образование (ВРИ 3.5.1, v0.12.15) ---
     # Здание строит застройщик (и для ВПП, и для отд. стоящего), кроме режима
@@ -193,7 +196,7 @@ def calc_cost(tep, options, norms: Normatives) -> CostBreakdown:
         c_add_edu = float(norms.resolve("economy.construction.add_education"))
     except KeyError:
         c_add_edu = c_sch
-    cost_add_edu = 0.0 if ae_only_demand else ae_bld * c_add_edu
+    cost_add_edu = 0.0 if (ae_only_demand or _city_funded) else ae_bld * c_add_edu
 
     # --- Парковки ---
     n_open = int(tep.parking_open_places.value or 0)
