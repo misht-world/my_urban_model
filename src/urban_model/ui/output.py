@@ -198,7 +198,9 @@ def render_main_kpi_grid(result: TEPResult, options=None) -> None:
     kit_max = result.kit_normative_max.value or 0
 
     # ── Ряд 1 (эконом-индекс перенесён в ряд 3, v0.12.21) ────────────────
-    c1, c2, c3, c4 = st.columns(4)
+    # v0.12.24: 5 колонок (5-я пустая) — чтобы КИТ/Население/Площадь/Этажность
+    # стояли РОВНО под ДОО/СОШ/Доп.обр/Парковки ряда 2 (тоже 5 колонок).
+    c1, c2, c3, c4, _c5 = st.columns(5)
     c1.metric(
         "КИТ (ПЗЗ)", f"{result.kit.value:.3f}",
         help=(
