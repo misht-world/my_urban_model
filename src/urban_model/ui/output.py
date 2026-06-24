@@ -622,6 +622,26 @@ def render_details(result: TEPResult) -> None:
                              result.add_education_parking_places, fmt_int))
             _show_rows(rows)
 
+    # 🏥 Амбулаторно-поликлинические учреждения (ВРИ 3.4.1, v0.12.28)
+    if (result.polyclinic_visits_accepted.value or 0) > 0:
+        _poly_bi = bool(getattr(result, "polyclinic_built_in", False))
+        _poly_label = "ВПП (офис врача)" if _poly_bi else "отдельно стоящая"
+        with st.expander(
+            f":material/local_hospital: Поликлиника — {_poly_label}", expanded=False,
+        ):
+            rows = [
+                _row("Посещений требуется", result.polyclinic_visits_required, fmt_float),
+                _row("Посещений принято", result.polyclinic_visits_accepted, fmt_int),
+                _row(f"Площадь здания ({8 if _poly_bi else 23} м²/посещ.)",
+                     result.polyclinic_building_area, fmt_m2),
+            ]
+            if not _poly_bi:
+                rows.append(_row("Площадь ЗУ (10 м²/посещ., мин. 2000)",
+                                 result.polyclinic_plot_area, fmt_m2))
+            rows.append(_row("Парковка (5 раб + 40 посетит.)",
+                             result.polyclinic_parking_places, fmt_int))
+            _show_rows(rows)
+
     # Плоскостные спортивные сооружения
     if (result.sport_facilities_plot_area.value or 0) > 0:
         with st.expander(":material/directions_run: Плоскостные спортивные сооружения", expanded=False):
@@ -681,6 +701,9 @@ def render_details(result: TEPResult) -> None:
             if (result.add_education_parking_places.value or 0) > 0:
                 rows.append(_row("В т.ч. доп. образование (та же формула)",
                                  result.add_education_parking_places, fmt_int))
+            if (result.polyclinic_parking_places.value or 0) > 0:
+                rows.append(_row("В т.ч. поликлиника (5 раб + 40 посетит.)",
+                                 result.polyclinic_parking_places, fmt_int))
             rows.append(_row("Площадь парковок соцобъектов на квартале",
                              result.social_parking_area, fmt_m2))
         _show_rows(rows)
@@ -760,6 +783,7 @@ def render_details(result: TEPResult) -> None:
             "sport_facilities": result.sport_facilities_plot_area.value,
             "social_parking_plot": result.social_parking_area.value,
             "add_education_plot": result.add_education_plot_area.value,
+            "polyclinic_plot": result.polyclinic_plot_area.value,
             "znop": result.znop_area.value,
             "intra_quarter_driveways": result.driveways_intra_quarter_area.value,
             "parking_multilevel": result.parking_multilevel_area.value,
@@ -777,6 +801,7 @@ def render_details(result: TEPResult) -> None:
                 "sport_facilities": "Спортивные сооружения",
                 "social_parking_plot": "Парковки соцобъектов (ДОО/СОШ)",
                 "add_education_plot": "Доп. образование (ЗУ)",
+                "polyclinic_plot": "Поликлиника (ЗУ)",
                 "znop": "ЗНОП",
                 "intra_quarter_driveways": "Внутриквартальные проезды",
                 "parking_multilevel": "Многоуровневые паркинги",
@@ -1058,6 +1083,7 @@ def _render_balance_bar(result: TEPResult) -> None:
         "sport_facilities": "Спорт. пл.",
         "social_parking_plot": "Р. соц.",
         "add_education_plot": "Доп. обр.",
+        "polyclinic_plot": "Поликлиника",
         "znop": "ЗНОП",
         "intra_quarter_driveways": "Проезды",
         "parking_multilevel": "Р. многоур.",
@@ -1072,6 +1098,7 @@ def _render_balance_bar(result: TEPResult) -> None:
         "Спорт. пл.":              "#7ED321",
         "Р. соц.":                 "#9B9B9B",
         "Доп. обр.":               "#00ACC1",
+        "Поликлиника":             "#D0021B",
         "ЗНОП":                    "#417505",
         "Проезды":                 "#B8B8B8",
         "Р. многоур.":             "#50E3C2",

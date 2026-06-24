@@ -89,6 +89,33 @@ class AdditionalEducationSpec(BaseModel):
     )
 
 
+class PolyclinicSpec(BaseModel):
+    """Амбулаторно-поликлинические учреждения (ВРИ 3.4.1), v0.12.28.
+
+    Единица — посещения в смену (26.33/1000 чел). Размещение по порогу 150
+    посещений (условно):
+      < 150 → ВПП («офис врача общей практики», 1 объект ≤ 100 посещений →
+              дробление): здание вычитается из жилой GFA;
+      ≥ 150 → отдельно стоящая поликлиника: ЗУ 10 м²/посещ. (мин. 2000) + 15%.
+
+    Режимы:
+      mode="norm"   — посещения и размещение по нормативу;
+      mode="manual" — пользователь задаёт число посещений и `in_vpp`.
+    """
+    model_config = ConfigDict(extra="forbid")
+
+    mode: Literal["norm", "manual"] = "norm"
+    visits_override: int | None = Field(default=None, ge=0)
+    in_vpp: bool = Field(
+        default=False,
+        description="Ручной режим: разместить в ВПП (офис врача общей практики)",
+    )
+    only_demand: bool = Field(
+        default=False,
+        description="Поликлиника только для расчёта потребности; ЗУ/здание не в балансе",
+    )
+
+
 class SportFacilitiesSpec(BaseModel):
     """Плоскостные спортивные сооружения (ВРИ 5.1.3, v0.6.8).
 

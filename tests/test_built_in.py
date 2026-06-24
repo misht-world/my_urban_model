@@ -53,16 +53,16 @@ class TestBuiltInImpactOnApartments:
     def test_built_in_subtracts_from_gfa(self, spb, site_5ga):
         # КИТ=1.5, GFA = 75 000. Без ВПП: квартиры = 75000 × 0.75 = 56 250
         # С ВПП 5 000: квартиры = (75000 − 5000) × 0.75 = 52 500
-        # include_add_education=False: изолируем формулу ВПП от доп. образования
+        # include_add_education=False, include_polyclinic=False: изолируем формулу ВПП от доп. образования
         # (встроенное доп. обр. также вычитает здание из GFA, v0.12.15).
         res_no = verify_kit(
             1.5, site_5ga,
-            CalculationOptions(floors=12, include_add_education=False), spb,
+            CalculationOptions(floors=12, include_add_education=False, include_polyclinic=False), spb,
         )
         res_yes = verify_kit(
             1.5, site_5ga,
             CalculationOptions(
-                floors=12, include_add_education=False,
+                floors=12, include_add_education=False, include_polyclinic=False,
                 built_in=BuiltInArea(area_m2=5_000),
             ),
             spb,
@@ -75,7 +75,7 @@ class TestBuiltInImpactOnApartments:
         # built_in=None → использует vpp_share как раньше
         res = verify_kit(
             1.5, site_5ga,
-            CalculationOptions(floors=12, vpp_share=0.1, include_add_education=False),
+            CalculationOptions(floors=12, vpp_share=0.1, include_add_education=False, include_polyclinic=False),
             spb,
         )
         # квартиры = 75000 × 0.9 × 0.75 = 50 625
@@ -88,7 +88,7 @@ class TestBuiltInImpactOnApartments:
             1.5, site_5ga,
             CalculationOptions(
                 floors=12,
-                include_add_education=False,
+                include_add_education=False, include_polyclinic=False,
                 built_in=BuiltInArea(area_m2=5_000),
                 vpp_share=0.3,  # должен быть проигнорирован
             ),
@@ -286,7 +286,7 @@ class TestBuiltInKindergarten:
             1.5, site_5ga,
             CalculationOptions(
                 floors=12,
-                include_add_education=False,  # изолируем от встроенного доп. обр.
+                include_add_education=False, include_polyclinic=False,  # изолируем от встроенного доп. обр.
                 kindergarten=KindergartenSpec(building_type="built_in"),
             ),
             spb,
@@ -303,7 +303,7 @@ class TestBuiltInKindergarten:
             1.5, site_5ga,
             CalculationOptions(
                 floors=12,
-                include_add_education=False,  # изолируем от встроенного доп. обр.
+                include_add_education=False, include_polyclinic=False,  # изолируем от встроенного доп. обр.
                 kindergarten=KindergartenSpec(building_type="built_in"),
                 built_in=BuiltInArea(area_m2=2_000, vri_code="4.4"),
             ),

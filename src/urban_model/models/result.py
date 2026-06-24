@@ -122,6 +122,24 @@ class TEPResult(BaseModel):
     )
     add_education_built_in: bool = False
 
+    # Амбулаторно-поликлинические учреждения (ВРИ 3.4.1, v0.12.28).
+    polyclinic_visits_required: TEPField = Field(
+        default_factory=lambda: TEPField(value=0, unit="посещ.")
+    )
+    polyclinic_visits_accepted: TEPField = Field(
+        default_factory=lambda: TEPField(value=0, unit="посещ.")
+    )
+    polyclinic_plot_area: TEPField = Field(
+        default_factory=lambda: TEPField(value=0.0, unit="m2")
+    )
+    polyclinic_building_area: TEPField = Field(
+        default_factory=lambda: TEPField(value=0.0, unit="m2")
+    )
+    polyclinic_parking_places: TEPField = Field(
+        default_factory=lambda: TEPField(value=0, unit="м/м")
+    )
+    polyclinic_built_in: bool = False
+
     # Плоскостные спортивные сооружения (v0.6.8)
     sport_facilities_area: TEPField           # площадь самих спортплощадок, м²
     sport_facilities_plot_area: TEPField      # полный ЗУ (sport + extra greening), м²

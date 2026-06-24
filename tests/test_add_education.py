@@ -165,9 +165,10 @@ class TestIntegration:
             site, CalculationOptions(floors=18, planning_doc=True), spb
         ).economy
         cb, rb = e.cost, e.revenue
-        # net_social_burden включает cost.add_education
+        # net_social_burden включает cost.add_education (и поликлинику, v0.12.28)
         expected = (
-            cb.kindergarten + cb.school + cb.add_education + cb.social_parking
+            cb.kindergarten + cb.school + cb.add_education + cb.polyclinic
+            + cb.social_parking
         ) - rb.social_compensation
         assert e.net_social_burden == pytest.approx(expected)
         # компенсация включает долю от здания доп. обр.

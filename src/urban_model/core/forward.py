@@ -27,6 +27,7 @@ from urban_model.calculations import (
     housing,
     kindergarten,
     parking,
+    polyclinic,
     population,
     school,
     social_parking,
@@ -486,6 +487,59 @@ def compute_tep_for_kit(
         ae_greening_builtin = 0.0
         ae_parking_places = 0
 
+    # === Амбулаторно-поликлинические учреждения (ВРИ 3.4.1, v0.12.28) ===
+    # Вынесены из обязательных ВПП в отдельный соцобъект. Размещение по порогу
+    # 150 посещений: <150 → ВПП (офис врача, 1 объект ≤100 → дробление, здание
+    # из жилой GFA); ≥150 → отд. стоящая поликлиника (ЗУ 10 м²/посещ., мин. 2000,
+    # +15% озеленения, здание 23 м²/посещ.). Парковка: 5 раб + 40 посетителей.
+    poly_res = None
+    poly_required_raw = 0.0
+    _poly_only_demand = (
+        options.include_polyclinic and options.polyclinic.only_demand
+    )
+    if options.include_polyclinic and pop_v > 0:
+        poly_required_raw = polyclinic.required_visits(
+            pop_v, norms.resolve("social_objects.polyclinic.visits_per_1000")
+        )
+        poly_res = polyclinic.compute(
+            pop_v, norms,
+            mode=options.polyclinic.mode,
+            visits_override=options.polyclinic.visits_override,
+            force_vpp=options.polyclinic.in_vpp,
+        )
+        if poly_res.built_in and poly_res.n_objects > 1 and not _poly_only_demand:
+            warnings.append(_wcprefix(
+                WC.POLYCLINIC_VPP_SPLIT,
+                f"Поликлиника во ВПП: {poly_res.visits} посещ. → размещается как "
+                f"{poly_res.n_objects} офиса(ов) врача общей практики "
+                f"(1 объект ≤ 100 посещений)."
+            ))
+        # Встроенный (ВПП) и не «только потребность» → здание из жилой GFA.
+        if poly_res.built_in and poly_res.building_area > 0 and not _poly_only_demand:
+            residential_gfa = max(0.0, residential_gfa - poly_res.building_area)
+            apartments_area_v = residential_gfa * apt_ratio
+            pop_v = population.population(apartments_area_v, hp)
+            pop_check_v = population.population(apartments_area_v, hp_check)
+            density_v = population.density_chel_per_ga(pop_v, site.area_m2)
+            density_check_v = population.density_chel_per_ga(pop_check_v, site.area_m2)
+            _density_over = density_check_v > density_max
+            density_status = (
+                Status.ERROR if (_density_over and options.enforce_density_norm)
+                else Status.OK
+            )
+
+    if poly_res is not None and not _poly_only_demand:
+        poly_plot_in_balance = poly_res.plot_area
+        poly_greening_builtin = (
+            poly_res.building_area * norms.resolve("greening.vpp_per_floor_area")
+            if poly_res.built_in else 0.0
+        )
+        poly_parking_places = poly_res.parking_places if options.include_parking else 0
+    else:
+        poly_plot_in_balance = 0.0
+        poly_greening_builtin = 0.0
+        poly_parking_places = 0
+
     # === Плоскостные спортивные сооружения (ВРИ 5.1.3, v0.6.8) ===
     # Норматив: 1000 м²/1000 чел + озеленение 40% от ЗУ.
     # До 49% озеленения замещается самой спортплощадкой (п.1.9.4 ПЗЗ).
@@ -531,7 +585,7 @@ def compute_tep_for_kit(
     open_space_per_place = norms.resolve("parking.open_space_per_place")
     # Парковка доп. образования (ВРИ 3.5.1) — открытая на своём ЗУ, как у ДОУ/СОШ
     # (по формуле parking.social_objects). Вливается в площадь парковок соцобъектов.
-    soc_park_places_total = soc_park.total_places + ae_parking_places
+    soc_park_places_total = soc_park.total_places + ae_parking_places + poly_parking_places
     soc_park_area = soc_park_places_total * open_space_per_place
 
     # === Инженерная инфраструктура (v0.12) ===
@@ -549,6 +603,12 @@ def compute_tep_for_kit(
               and not _ae_only_demand and ae_res.places > 0)
         else 0
     )
+    # Поликлиника: ТП нужна только отдельно стоящей (ВПП-офис врача — в жилом доме).
+    n_poly_obj = (
+        1 if (poly_res is not None and not poly_res.built_in
+              and not _poly_only_demand and poly_res.visits > 0)
+        else 0
+    )
     n_med_custom = sum(
         1 for o in options.custom_objects
         if (o.vri_code or "").strip().startswith("3.4")
@@ -556,7 +616,7 @@ def compute_tep_for_kit(
     eng_result = engineering.compute_engineering(
         apartments_area=apartments_area_v,
         population=pop_v,
-        n_social_objects=n_kg_obj + n_sch_obj + n_ae_obj + n_med_custom,
+        n_social_objects=n_kg_obj + n_sch_obj + n_ae_obj + n_poly_obj + n_med_custom,
         norms=norms,
         spec=options.engineering,
     )
@@ -574,7 +634,7 @@ def compute_tep_for_kit(
     green_quarter_req_v = greening.quarter_greening_required(
         site.area_m2,
         kg_plot_in_balance + sch_plot_in_balance + sport_plot_in_balance
-        + ae_plot_in_balance + soc_park_area + eng_plot_in_balance,
+        + ae_plot_in_balance + poly_plot_in_balance + soc_park_area + eng_plot_in_balance,
         quarter_share,
     )
 
@@ -714,7 +774,7 @@ def compute_tep_for_kit(
     #            + озеленение ВПП + открытые парковки (если учитываются)
     housing_lot_v = (
         footprint_v + drive_lot_v + green_housing_v + bi_greening_v
-        + ae_greening_builtin + parking_open_in_lot
+        + ae_greening_builtin + poly_greening_builtin + parking_open_in_lot
     )
 
     # === КИТ ПЗЗ = площадь квартир / ЗУ жилой застройки ===
@@ -815,6 +875,8 @@ def compute_tep_for_kit(
     }
     if ae_plot_in_balance > 0:
         components["add_education_plot"] = ae_plot_in_balance
+    if poly_plot_in_balance > 0:
+        components["polyclinic_plot"] = poly_plot_in_balance
     if custom_total_plot > 0:
         components["custom_objects"] = custom_total_plot
     # Фактическое озеленение квартала: ЗНОП + озеленение жилого ЗУ + ВПП + кастомные.
@@ -822,7 +884,7 @@ def compute_tep_for_kit(
     # Норматив (25% площади квартала за вычетом ДОО/СОШ) — обязательная проверка.
     greening_actual_total = (
         znop_in_balance + green_housing_v + bi_greening_v
-        + ae_greening_builtin + custom_total_greening
+        + ae_greening_builtin + poly_greening_builtin + custom_total_greening
     )
     # v0.12.2: стилобатный двор (75% деки) над открытой землёй квартала, но по
     # ПЗЗ озеленения на стилобате ≤70%. Земля под декой иначе зачлась бы как
@@ -1189,6 +1251,79 @@ def compute_tep_for_kit(
             ),
         ),
         add_education_built_in=bool(ae_res.built_in) if ae_res else False,
+        # ── Амбулаторно-поликлинические учреждения (ВРИ 3.4.1, v0.12.28) ──
+        polyclinic_visits_required=_F(
+            poly_required_raw,
+            unit="посещ.",
+            formula=(
+                f"население × {norms.resolve('social_objects.polyclinic.visits_per_1000')} / 1000"
+                if options.include_polyclinic else "Поликлиника отключена"
+            ),
+            source=(
+                norms.source_of("social_objects.polyclinic.visits_per_1000")
+                if options.include_polyclinic else None
+            ),
+        ),
+        polyclinic_visits_accepted=_F(
+            poly_res.visits if poly_res else 0,
+            unit="посещ.",
+            normative=poly_required_raw if options.include_polyclinic else None,
+            formula=(
+                (
+                    (f"ВПП (офис врача, {poly_res.n_objects} об.)"
+                     if poly_res.n_objects > 1 else "встроенное (ВПП, офис врача)")
+                    if poly_res.built_in else "отдельно стоящая поликлиника"
+                )
+                + (" — только потребность" if _poly_only_demand else "")
+                if poly_res else None
+            ),
+        ),
+        polyclinic_plot_area=_F(
+            poly_res.plot_area if poly_res else 0.0,
+            unit="m2",
+            formula=(
+                (
+                    f"max(2000, 10 м²/посещ. × {poly_res.visits}) (отд. стоящее, СП 158.13330)"
+                    + (" — только потребность, в баланс не входит" if _poly_only_demand else "")
+                )
+                if poly_res and not poly_res.built_in
+                else "ВПП (офис врача) — ЗУ не выделяется"
+                if poly_res else "—"
+            ),
+            source=(
+                norms.source_of("social_objects.polyclinic.plot_per_visit")
+                if poly_res and not poly_res.built_in else None
+            ),
+        ),
+        polyclinic_building_area=_F(
+            poly_res.building_area if poly_res else 0.0,
+            unit="m2",
+            formula=(
+                (
+                    f"{8 if poly_res.built_in else 23} м²/посещ. × {poly_res.visits}"
+                    + (" — вычтено из жилой GFA (ВПП)"
+                       if poly_res.built_in and not _poly_only_demand else "")
+                )
+                if poly_res else "—"
+            ),
+            source=(
+                norms.source_of("social_objects.polyclinic.building_area_per_visit_vpp")
+                if poly_res else None
+            ),
+        ),
+        polyclinic_parking_places=_F(
+            poly_parking_places,
+            unit="м/м",
+            formula=(
+                f"max(2, ⌈{poly_res.workers}/5⌉ + ⌈{poly_res.visits}/40⌉) (раб + посетители)"
+                if poly_res and poly_parking_places > 0 else "—"
+            ),
+            source=(
+                norms.source_of("social_objects.polyclinic.parking_per_worker")
+                if poly_parking_places > 0 else None
+            ),
+        ),
+        polyclinic_built_in=bool(poly_res.built_in) if poly_res else False,
         # ── Парковки соцобъектов (v0.7.0) ────────────────────────────────
         social_parking_total=_F(
             soc_park_places_total,

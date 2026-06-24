@@ -14,6 +14,7 @@ from urban_model.models.parking import ParkingConfig
 from urban_model.models.social import (
     AdditionalEducationSpec,
     KindergartenSpec,
+    PolyclinicSpec,
     SchoolSpec,
     SportFacilitiesSpec,
 )
@@ -118,6 +119,13 @@ class CalculationOptions(BaseModel):
     add_education: AdditionalEducationSpec = Field(
         default_factory=AdditionalEducationSpec
     )
+
+    # Амбулаторно-поликлинические учреждения (ВРИ 3.4.1, v0.12.28) — вынесены
+    # из обязательных ВПП в отдельный объект.
+    include_polyclinic: bool = Field(
+        default=True, description="Учитывать поликлинику (ВРИ 3.4.1)"
+    )
+    polyclinic: PolyclinicSpec = Field(default_factory=PolyclinicSpec)
 
     # Плоскостные спортивные сооружения (ВРИ 5.1.3, v0.6.8) — по умолчанию включены.
     include_sport_facilities: bool = Field(

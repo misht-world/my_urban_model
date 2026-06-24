@@ -297,6 +297,13 @@ def _variant_sections(result: TEPResult, options) -> list[tuple[str, list[tuple[
         soc.append(("Доп. образование: мест / размещение", f"{_num(ae)} — {place}"))
         soc.append(("Доп. образование: ЗУ / здание, м²",
                     f"{_num(r.add_education_plot_area.value)} / {_num(r.add_education_building_area.value)}"))
+    poly = int(getattr(r, "polyclinic_visits_accepted", None).value or 0) \
+        if getattr(r, "polyclinic_visits_accepted", None) is not None else 0
+    if poly > 0:
+        pplace = "ВПП (офис врача)" if getattr(r, "polyclinic_built_in", False) else "отд. стоящая"
+        soc.append(("Поликлиника: посещений / размещение", f"{_num(poly)} — {pplace}"))
+        soc.append(("Поликлиника: ЗУ / здание, м²",
+                    f"{_num(r.polyclinic_plot_area.value)} / {_num(r.polyclinic_building_area.value)}"))
     if (r.sport_facilities_area.value or 0) > 0:
         soc.append(("Спорт. сооружения: площадь / ЗУ, м²",
                     f"{_num(r.sport_facilities_area.value)} / {_num(r.sport_facilities_plot_area.value)}"))
@@ -305,6 +312,8 @@ def _variant_sections(result: TEPResult, options) -> list[tuple[str, list[tuple[
                 f"{_num(r.social_parking_kindergarten.value)} / {_num(r.social_parking_school.value)}"))
     if ae > 0:
         soc.append(("   в т.ч. доп. образование, м/м", _num(r.add_education_parking_places.value)))
+    if poly > 0:
+        soc.append(("   в т.ч. поликлиника, м/м", _num(r.polyclinic_parking_places.value)))
     secs.append(("Социальные объекты", soc))
 
     # --- Парковки ---

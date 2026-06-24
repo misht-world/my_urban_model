@@ -293,6 +293,87 @@ social_objects:
       unit: "floors"
       source: "РМД 15-26-2017"
 
+  # === Амбулаторно-поликлинические учреждения (ВРИ 3.4.1) — v0.12.28 ===
+  # Поликлиника (отд. стоящее) / офис врача общей практики (ВПП). НГП СПб +
+  # СП 158.13330.2014. Единица — посещения в смену. Размещение по порогу 150
+  # посещений (принято условно): < 150 → ВПП (1 объект ≤ 100 посещений →
+  # дробление), ≥ 150 → отдельно стоящая поликлиника.
+  polyclinic:
+    vri_code: "3.4.1"
+    visits_per_1000:
+      type: scalar
+      value: 26.33
+      unit: "visits_per_shift_per_1000_people"
+      note: "посещений в смену на 1000 жителей"
+      source: "НГП СПб (приложение)"
+    workers_ratio:
+      type: scalar
+      value: 6
+      note: "работники = посещения / 6 (принято условно)"
+      source: "принято условно"
+    rounding:
+      type: scalar
+      value: 1
+      unit: "visits"
+      note: "округление посещений вверх до целого"
+      source: "принято условно"
+    built_in_threshold:
+      type: scalar
+      value: 150
+      unit: "visits"
+      note: "< порога — ВПП (офис врача); ≥ — отдельно стоящая поликлиника (условно)"
+      source: "принято условно"
+    vpp_object_max:
+      type: scalar
+      value: 100
+      unit: "visits"
+      note: "1 объект ВПП (офис врача) ≤ 100 посещений → дробление на N объектов"
+      source: "СП 158.13330.2014"
+    building_area_per_visit_vpp:
+      type: scalar
+      value: 8
+      unit: "m2_per_visit"
+      note: "площадь здания ВПП (офис врача) на 1 посещение"
+      source: "СНиП 2.08.02-89 / СП 158.13330 (как старый ВПП 3.4.1)"
+    building_area_per_visit_detached:
+      type: scalar
+      value: 23
+      unit: "m2_per_visit"
+      note: "площадь здания отдельно стоящей поликлиники на 1 посещение"
+      source: "принято условно"
+    plot_per_visit:
+      type: scalar
+      value: 10
+      unit: "m2_per_visit"
+      note: "ЗУ отд. стоящего = 1000 м² на 100 посещений = 10 м²/посещение"
+      source: "СП 158.13330.2014 (Табл. 5.1)"
+    plot_min:
+      type: scalar
+      value: 2000
+      unit: "m2"
+      note: "минимальный ЗУ отдельно стоящей поликлиники"
+      source: "СП 158.13330.2014 (Табл. 5.1)"
+    greening_share:
+      type: scalar
+      value: 0.15
+      note: "озеленение 15% ЗУ (только отд. стоящее; для ВПП — по правилу ВПП)"
+      source: "ПЗЗ СПб (ВРИ 3.4.1)"
+    parking_per_worker:
+      type: scalar
+      value: 5
+      note: "1 м/м на 5 работников в максимальную смену"
+      source: "ПЗЗ СПб"
+    parking_per_visitor:
+      type: scalar
+      value: 40
+      note: "1 м/м на 40 единовременных посетителей"
+      source: "ПЗЗ СПб"
+    parking_min:
+      type: scalar
+      value: 2
+      unit: "places"
+      source: "ПЗЗ СПб"
+
 # === Парковки ===
 parking:
   housing:
@@ -571,20 +652,9 @@ mandatory_vpp:
       unit: "m2_per_workplace"
       note: "1 рабочее место быт.обсл. ≈ 20 м² (с учётом подсобок), принято условно"
       source: "СП 31-110-2003, прил. Б"
-  # ВРИ 3.4.1 — Амбулаторно-поликлинические организации
-  medical_3_4_1:
-    vri_code: "3.4.1"
-    visits_per_shift_per_1000:
-      type: scalar
-      value: 26.33
-      unit: "visits_per_shift_per_1000_people"
-      source: "НГП СПб (приложение)"
-    m2_per_visit_per_shift:
-      type: scalar
-      value: 8
-      unit: "m2_per_visit_per_shift"
-      note: "1 посещение в смену ≈ 8 м², принято условно"
-      source: "СНиП 2.08.02-89 / СП 158.13330"
+  # v0.12.28: ВРИ 3.4.1 (поликлиника) вынесен из обязательных ВПП в отдельный
+  # объект social_objects.polyclinic (карточка «Поликлиника» с режимами
+  # норматив/вручную, ВПП-офис врача / отдельно стоящая, порог 150 посещений).
   # v0.12.15: ВРИ 3.5.1 (доп. образование) вынесен из обязательных ВПП в
   # отдельный объект social_objects.add_education (карточка «Доп. образование»
   # с режимами «по нормативу»/«вручную» и порогом 150 мест ВПП↔отд. стоящее).
@@ -671,6 +741,12 @@ economy:
       value: 1.30
       unit: "unit_per_m2_building"
       note: "доп. образование (ВРИ 3.5.1) — близко к СОШ по спецтребованиям"
+      source: "SPEC.md (оценка)"
+    polyclinic:
+      type: scalar
+      value: 1.45
+      unit: "unit_per_m2_building"
+      note: "поликлиника (ВРИ 3.4.1) — спецтребования (медоборудование/инженерия)"
       source: "SPEC.md (оценка)"
     # v0.9.8: калибровка себестоимости под реальные цены СПб 2024.
     # Раньше 0.20/0.50/1.00 — взято из SPEC.md без привязки к рынку,

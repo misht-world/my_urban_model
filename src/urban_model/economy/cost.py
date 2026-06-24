@@ -133,9 +133,23 @@ def calc_cost(tep, options, norms: Normatives) -> CostBreakdown:
     except (KeyError, TypeError, ValueError):
         _styl_under = 0.25
     styl_deck_in_gfa = _styl_under * styl_area_in_gfa
-    # GFA жилья = общая GFA − ВПП − встроенный ДОО − встроенный доп.обр − дека стилобата
+    # v0.12.28: встроенная поликлиника (офис врача) — здание из жилой GFA.
+    _poly_included = getattr(options, "include_polyclinic", True)
+    _poly_only_demand0 = (
+        bool(getattr(options.polyclinic, "only_demand", False))
+        if _poly_included else True
+    )
+    poly_bld_in_gfa = (
+        float(getattr(tep, "polyclinic_building_area", None).value or 0.0)
+        if (_poly_included and not _poly_only_demand0
+            and bool(getattr(tep, "polyclinic_built_in", False))
+            and getattr(tep, "polyclinic_building_area", None) is not None)
+        else 0.0
+    )
+    # GFA жилья = общая GFA − ВПП − ДОО − доп.обр − поликлиника − дека стилобата
     residential_gfa = max(
-        0.0, gfa_v - bi_area - kg_bld_in_gfa - ae_bld_in_gfa - styl_deck_in_gfa
+        0.0, gfa_v - bi_area - kg_bld_in_gfa - ae_bld_in_gfa
+        - poly_bld_in_gfa - styl_deck_in_gfa
     )
     # v0.9.28: при кластерах этажности себестоимость считается покластерно
     # (C_base нелинейна по этажам): residential_gfa делится по долям GFA,
@@ -197,6 +211,17 @@ def calc_cost(tep, options, norms: Normatives) -> CostBreakdown:
     except KeyError:
         c_add_edu = c_sch
     cost_add_edu = 0.0 if (ae_only_demand or _city_funded) else ae_bld * c_add_edu
+
+    # --- Поликлиника (ВРИ 3.4.1, v0.12.28) ---
+    poly_bld = float(getattr(tep, "polyclinic_building_area", None).value or 0.0) \
+        if getattr(tep, "polyclinic_building_area", None) is not None else 0.0
+    poly_only_demand = bool(getattr(options.polyclinic, "only_demand", False)) \
+        if getattr(options, "include_polyclinic", True) else True
+    try:
+        c_poly = float(norms.resolve("economy.construction.polyclinic"))
+    except KeyError:
+        c_poly = c_sch
+    cost_poly = 0.0 if (poly_only_demand or _city_funded) else poly_bld * c_poly
 
     # --- Парковки ---
     n_open = int(tep.parking_open_places.value or 0)
@@ -276,7 +301,7 @@ def calc_cost(tep, options, norms: Normatives) -> CostBreakdown:
 
     # --- Подытоги ---
     shell_total = (
-        cost_residential + cost_vpp + cost_kg + cost_sch + cost_add_edu
+        cost_residential + cost_vpp + cost_kg + cost_sch + cost_add_edu + cost_poly
         + cost_open + cost_ml + cost_ug + cost_stylobate
         + cost_soc_park + cost_sport + cost_custom + cost_engineering
     )
@@ -299,6 +324,7 @@ def calc_cost(tep, options, norms: Normatives) -> CostBreakdown:
         kindergarten=cost_kg,
         school=cost_sch,
         add_education=cost_add_edu,
+        polyclinic=cost_poly,
         parking_open=cost_open,
         parking_multilevel=cost_ml,
         parking_underground=cost_ug,

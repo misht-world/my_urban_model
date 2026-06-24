@@ -82,10 +82,14 @@ class TestEconomyInResult:
 
     def test_cost_residential_formula(self, spb, site):
         """Жильё: residential_gfa × C_base(floors)."""
-        # include_add_education=False: встроенное доп. обр. иначе вычло бы своё
-        # здание из жилой GFA (v0.12.15) и формула residential_gfa = gfa−bi сломалась.
+        # include_add_education/polyclinic=False: встроенные соцобъекты иначе
+        # вычли бы свои здания из жилой GFA (v0.12.15/28) и формула
+        # residential_gfa = gfa−bi сломалась бы.
         res = verify_kit(
-            1.5, site, CalculationOptions(floors=12, include_add_education=False), spb
+            1.5, site,
+            CalculationOptions(floors=12, include_add_education=False,
+                               include_polyclinic=False),
+            spb,
         )
         # Для 12 эт. C_base = 1.10
         gfa = res.gfa.value
@@ -238,9 +242,10 @@ class TestSocialMetrics:
     def test_net_social_burden_definition(self, spb, site):
         e = verify_kit(1.5, site, CalculationOptions(floors=12), spb).economy
         cb, rb = e.cost, e.revenue
-        # v0.12.19: доп. образование (ВРИ 3.5.1) входит в соцнагрузку.
+        # v0.12.19/28: доп. образование (3.5.1) и поликлиника (3.4.1) — в соцнагрузке.
         expected = (
-            cb.kindergarten + cb.school + cb.add_education + cb.social_parking
+            cb.kindergarten + cb.school + cb.add_education + cb.polyclinic
+            + cb.social_parking
         ) - rb.social_compensation
         assert e.net_social_burden == pytest.approx(expected)
 

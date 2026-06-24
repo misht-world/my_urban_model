@@ -24,6 +24,7 @@ from urban_model.models.parking import ParkingConfig
 from urban_model.models.social import (
     AdditionalEducationSpec,
     KindergartenSpec,
+    PolyclinicSpec,
     SchoolSpec,
     SportFacilitiesSpec,
 )
@@ -214,9 +215,15 @@ def render_params_tab() -> UserInputs:
                     value=True, key="include_add_education", disabled=not include_ngp,
                     help="ВРИ 3.5.1 (РМД 15-26-2017): 65 мест/1000 чел.",
                 )
+                _inc_poly = st.checkbox(
+                    ":material/local_hospital: Поликлиника",
+                    value=True, key="include_polyclinic", disabled=not include_ngp,
+                    help="ВРИ 3.4.1 (НГП СПб + СП 158.13330): 26.33 посещ./1000 чел.",
+                )
             include_kg = bool(_inc_kg) and include_ngp
             include_school = bool(_inc_sch) and include_ngp
             include_add_education = bool(_inc_ae) and include_ngp
+            include_polyclinic = bool(_inc_poly) and include_ngp
             st.markdown(
                 '<hr style="margin:6px 0 6px;border:none;border-top:1px solid #EDEDED;">',
                 unsafe_allow_html=True,
@@ -267,6 +274,7 @@ def render_params_tab() -> UserInputs:
     kg_spec = KindergartenSpec()
     school_spec = SchoolSpec()
     add_edu_spec = AdditionalEducationSpec()
+    poly_spec = PolyclinicSpec()
     sport_spec = SportFacilitiesSpec()
     parking = ParkingConfig(mode="min_open")
     znop_pp_override = None
@@ -287,6 +295,7 @@ def render_params_tab() -> UserInputs:
     if include_kg:       active_tiles.append(("kg", _render_kg_tile))
     if include_school:   active_tiles.append(("school", _render_school_tile))
     if include_add_education: active_tiles.append(("add_edu", _render_add_education_tile))
+    if include_polyclinic: active_tiles.append(("poly", _render_polyclinic_tile))
     if include_sport:    active_tiles.append(("sport", _render_sport_tile))
     if include_parking:  active_tiles.append(("parking", _render_parking_tile))
     if include_znop:     active_tiles.append(("znop", _render_znop_tile))
@@ -332,6 +341,7 @@ def render_params_tab() -> UserInputs:
             kg_spec = results.get("kg", kg_spec)
             school_spec = results.get("school", school_spec)
             add_edu_spec = results.get("add_edu", add_edu_spec)
+            poly_spec = results.get("poly", poly_spec)
             sport_spec = results.get("sport", sport_spec)
             parking = results.get("parking", parking)
             if "znop" in results:
@@ -362,6 +372,8 @@ def render_params_tab() -> UserInputs:
         school=school_spec,
         include_add_education=include_add_education,
         add_education=add_edu_spec,
+        include_polyclinic=include_polyclinic,
+        polyclinic=poly_spec,
         sport_facilities=sport_spec,
         parking=parking,
         built_in=built_in,
@@ -975,6 +987,45 @@ def _render_add_education_tile() -> AdditionalEducationSpec:
         places_override=ae_places_override,
         in_vpp=bool(ae_in_vpp),
         only_demand=bool(ae_only_demand),
+    )
+
+
+def _render_polyclinic_tile() -> PolyclinicSpec:
+    """Плитка амбулаторно-поликлинических учреждений (ВРИ 3.4.1, v0.12.28)."""
+    with st.container(border=True):
+        _tile_header(":material/local_hospital: Поликлиника", "include_polyclinic")
+        poly_only_demand = _only_demand_toggle(
+            "Только рассчитать потребность",
+            key="poly_only_demand",
+            help_text=(
+                "Показать число посещений и площади, но НЕ учитывать ЗУ/здание "
+                "в балансе квартала (объект вне квартала / уже существует)."
+            ),
+        )
+        poly_in_vpp = st.toggle(
+            "Разместить в ВПП (офис врача общей практики)",
+            value=False, key="poly_in_vpp",
+            help=(
+                "Встроить в жилой дом (ЗУ не выделяется). 1 объект ≤ 100 "
+                "посещений → при большем числе делится на несколько офисов. "
+                "Выкл — по нормативу: < 150 посещений встроенное, ≥ 150 "
+                "отдельно стоящая поликлиника."
+            ),
+        )
+        poly_manual = st.checkbox(
+            "Задать число посещений вручную", value=False, key="poly_manual",
+        )
+        poly_visits_override = None
+        if poly_manual:
+            poly_visits_override = int(st.number_input(
+                "Посещений в смену", min_value=0, max_value=5000, value=150, step=1,
+                key="poly_visits_override",
+            ))
+    return PolyclinicSpec(
+        mode="manual" if poly_manual else "norm",
+        visits_override=poly_visits_override,
+        in_vpp=bool(poly_in_vpp),
+        only_demand=bool(poly_only_demand),
     )
 
 

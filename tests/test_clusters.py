@@ -334,8 +334,12 @@ class TestClusterConsistencyAndZnopWall:
     def test_znop_step_creates_interior_apt_peak(self, spb, site60):
         """С ЗНОП максимум площади — на СРЕДНИХ этажах (не на максимуме),
         и на пике ЗНОП=0 (КИТ ниже порога 1.6)."""
+        # include_add_education/polyclinic=False: изолируем эффект ступени ЗНОП
+        # от шума встроенных соцобъектов, вычитающих GFA (v0.12.28).
         res = {
-            f: solve_max_kit(site60, CalculationOptions(floors=f, planning_doc=True), spb)
+            f: solve_max_kit(site60, CalculationOptions(
+                floors=f, planning_doc=True,
+                include_add_education=False, include_polyclinic=False), spb)
             for f in range(4, 16)
         }
         apts = {f: (r.apartments_area.value or 0.0) for f, r in res.items()}

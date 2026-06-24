@@ -60,6 +60,9 @@ class WC(str, Enum):
     # встроенных объектов (информационное; не делает сценарий невозможным).
     ADD_EDU_VPP_SPLIT = "ADD_EDU_VPP_SPLIT"
 
+    # Поликлиника в ВПП > 100 посещений → дробление на несколько офисов врача.
+    POLYCLINIC_VPP_SPLIT = "POLYCLINIC_VPP_SPLIT"
+
 
 def prefix(code: WC, message: str) -> str:
     """Префиксирует сообщение тегом `[CODE] `."""

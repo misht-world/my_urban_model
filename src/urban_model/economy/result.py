@@ -15,6 +15,7 @@ class CostBreakdown(BaseModel):
     kindergarten: float = Field(0.0, description="Здания ДОО")
     school: float = Field(0.0, description="Здания СОШ")
     add_education: float = Field(0.0, description="Здание доп. образования (ВРИ 3.5.1)")
+    polyclinic: float = Field(0.0, description="Здание поликлиники (ВРИ 3.4.1)")
     parking_open: float = Field(0.0, description="Открытые парковки (пятно)")
     parking_multilevel: float = Field(0.0, description="Многоуровневые наземные паркинги")
     parking_underground: float = Field(0.0, description="Подземные паркинги (с прогрессией уровней)")

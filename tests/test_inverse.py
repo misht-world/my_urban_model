@@ -138,7 +138,7 @@ def test_density_norm_identified_as_limiting_factor():
             include_engineering=False,
             # v0.12.15: доп. обр. (отд. стоящее на крупном участке) иначе
             # заполняет высвобождённый плотностью резерв — изолируем сценарий.
-            include_add_education=False,
+            include_add_education=False, include_polyclinic=False,
         ),
         n,
     )
@@ -174,7 +174,7 @@ def test_no_stale_density_warning_with_builtin_doo():
             floors=12, planning_doc=True,
             kindergarten=KindergartenSpec(building_type="built_in"),
             school=SchoolSpec(only_demand=True),
-            include_add_education=False,  # изолируем эффект встроенного ДОО
+            include_add_education=False, include_polyclinic=False,  # изолируем эффект встроенного ДОО
         ),
         n,
     )

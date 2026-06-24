@@ -94,7 +94,17 @@ def calc_revenue(tep, options, norms: Normatives) -> RevenueBreakdown:
     except (KeyError, TypeError, ValueError):
         c_add_edu = c_sch
     ae_billable = 0.0 if ae_only_demand else ae_bld * c_add_edu
-    r_social_comp = (kg_billable + sch_billable + ae_billable) * comp_share
+    # v0.12.28: поликлиника — соцобъект, компенсируется симметрично ДОО/СОШ.
+    poly_bld = float(getattr(tep, "polyclinic_building_area", None).value or 0.0) \
+        if getattr(tep, "polyclinic_building_area", None) is not None else 0.0
+    poly_only_demand = bool(getattr(options.polyclinic, "only_demand", False)) \
+        if getattr(options, "include_polyclinic", True) else True
+    try:
+        c_poly = float(norms.resolve("economy.construction.polyclinic"))
+    except (KeyError, TypeError, ValueError):
+        c_poly = c_sch
+    poly_billable = 0.0 if poly_only_demand else poly_bld * c_poly
+    r_social_comp = (kg_billable + sch_billable + ae_billable + poly_billable) * comp_share
 
     # v0.9.8 (AUDIT P0-2): кастомные объекты дают выручку по любому
     # ВРИ КРОМЕ 3.x (социальные — поликлиника/ФОК — соцнагрузка, 0).

@@ -37,7 +37,8 @@ def calc_metrics(
     # v0.9.14: социальная нагрузка отдельным блоком.
     # v0.12.19: доп. образование (ВРИ 3.5.1) входит в соцнагрузку наравне с ДОО/СОШ.
     social_cost = (
-        cost.kindergarten + cost.school + cost.add_education + cost.social_parking
+        cost.kindergarten + cost.school + cost.add_education + cost.polyclinic
+        + cost.social_parking
     )
     social_revenue = revenue.social_compensation
     net_social_burden = social_cost - social_revenue

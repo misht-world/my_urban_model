@@ -22,14 +22,14 @@ def _econ(spb, **kw):
 def test_compensated_default_share(spb):
     """compensated без share → норматив YAML (0.7) от себестоимости соц-зданий."""
     e = _econ(spb, social_funding="compensated")
-    soc = e.cost.kindergarten + e.cost.school + e.cost.add_education
+    soc = e.cost.kindergarten + e.cost.school + e.cost.add_education + e.cost.polyclinic
     share = spb.resolve("economy.social_compensation.share")
     assert e.revenue.social_compensation == pytest.approx(soc * share, rel=1e-3)
 
 
 def test_compensated_custom_share(spb):
     e = _econ(spb, social_funding="compensated", social_compensation_share=0.5)
-    soc = e.cost.kindergarten + e.cost.school + e.cost.add_education
+    soc = e.cost.kindergarten + e.cost.school + e.cost.add_education + e.cost.polyclinic
     assert e.revenue.social_compensation == pytest.approx(soc * 0.5, rel=1e-3)
 
 
@@ -37,7 +37,7 @@ def test_developer_no_compensation(spb):
     """developer → компенсация 0, вся соц-себестоимость в нагрузке."""
     e = _econ(spb, social_funding="developer")
     assert e.revenue.social_compensation == 0.0
-    soc = e.cost.kindergarten + e.cost.school + e.cost.add_education
+    soc = e.cost.kindergarten + e.cost.school + e.cost.add_education + e.cost.polyclinic
     assert soc > 0
     assert e.net_social_burden >= soc - 1e-6  # + соц-парковки
 
@@ -48,13 +48,14 @@ def test_city_zero_social_cost(spb):
     assert e.cost.kindergarten == 0.0
     assert e.cost.school == 0.0
     assert e.cost.add_education == 0.0
+    assert e.cost.polyclinic == 0.0
     assert e.revenue.social_compensation == 0.0
 
 
 def test_at_cost_neutral(spb):
     """at_cost → компенсация = 100% себестоимости → соц-нагрузка ≈ соц-парковки."""
     e = _econ(spb, social_funding="at_cost")
-    soc = e.cost.kindergarten + e.cost.school + e.cost.add_education
+    soc = e.cost.kindergarten + e.cost.school + e.cost.add_education + e.cost.polyclinic
     assert e.revenue.social_compensation == pytest.approx(soc, rel=1e-3)
     # нагрузка близка к нулю (остаются только соц-парковки)
     assert abs(e.net_social_burden) <= e.cost.social_parking + 1e-3

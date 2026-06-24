@@ -41,12 +41,13 @@ class TestMandatoryAreas:
         assert m.shopping_4_4 == pytest.approx(460.10)
         assert m.catering_4_6 == pytest.approx(105.20 * 6)
         assert m.domestic_3_3 == pytest.approx(19.0 * 20)
-        assert m.medical_3_4_1 == pytest.approx(26.33 * 8)
+        # v0.12.28: ВРИ 3.4.1 (поликлиника) вынесен из ВПП
+        assert not hasattr(m, "medical_3_4_1")
 
     def test_total_1000_people(self, spb):
-        """Сумма обязательных ВПП (4 ВРИ) для 1000 чел ≈ 1681.94 м²."""
+        """Сумма обязательных ВПП (3 ВРИ: 4.4/4.6/3.3) для 1000 чел ≈ 1471.30 м²."""
         m = vpp.compute_mandatory_areas(1000.0, spb)
-        assert m.total == pytest.approx(460.10 + 631.2 + 380 + 210.64, abs=0.01)
+        assert m.total == pytest.approx(460.10 + 631.2 + 380, abs=0.01)
 
     def test_zero_population(self, spb):
         m = vpp.compute_mandatory_areas(0.0, spb)
@@ -59,12 +60,12 @@ class TestMandatoryAreas:
 
 class TestVppModes:
     def test_min_only(self, spb):
-        """Вариант 3: только обязательный минимум по всем 4 ВРИ (без 3.5.1)."""
+        """Вариант 3: только обязательный минимум по 3 ВРИ (без 3.5.1 и 3.4.1)."""
         res = vpp.build_built_ins("min_only", population=1000, footprint=0, norms=spb)
-        # 4 объекта (3.5.1 вынесен в отдельный соцобъект, v0.12.15)
-        assert len(res.built_ins) == 4
+        # 3 объекта (3.5.1 и 3.4.1 вынесены в отдельные соцобъекты, v0.12.15/28)
+        assert len(res.built_ins) == 3
         vri_codes = sorted([b.vri_code for b in res.built_ins])
-        assert vri_codes == ["3.3", "3.4.1", "4.4", "4.6"]
+        assert vri_codes == ["3.3", "4.4", "4.6"]
         # 4.4 должен быть ровно 460.10
         s_44 = next(b.area_m2 for b in res.built_ins if b.vri_code == "4.4")
         assert s_44 == pytest.approx(460.10)

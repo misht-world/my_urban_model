@@ -132,12 +132,13 @@ class TestSocialParkingInResult:
         assert res.social_parking_total.value > 0
         assert res.social_parking_kindergarten.value > 0
         assert res.social_parking_school.value > 0
-        # v0.12.21: total включает и доп. образование (ВРИ 3.5.1).
+        # v0.12.21/28: total включает доп. образование (3.5.1) и поликлинику (3.4.1).
         assert (
             res.social_parking_total.value
             == res.social_parking_kindergarten.value
             + res.social_parking_school.value
             + (res.add_education_parking_places.value or 0)
+            + (res.polyclinic_parking_places.value or 0)
         )
 
     def test_separate_from_housing_pool(self, spb, site):
@@ -150,10 +151,19 @@ class TestSocialParkingInResult:
                 include_kindergarten=False,
                 include_school=False,
                 include_add_education=False,  # v0.12.21: иначе доп.обр даёт соц.парк
+                include_polyclinic=False,     # v0.12.28: и поликлиника
             ),
             spb,
         )
-        res_yes = verify_kit(1.5, site, CalculationOptions(floors=12), spb)
+        # res_yes: ДОО/СОШ (detached, не трогают GFA) — соц.парк > 0; доп.обр и
+        # поликлинику тоже off, иначе встроенные вычтут GFA и жилищная парковка
+        # разойдётся с res_no (v0.12.28).
+        res_yes = verify_kit(
+            1.5, site,
+            CalculationOptions(floors=12, include_add_education=False,
+                               include_polyclinic=False),
+            spb,
+        )
         # Жилищные парковки одинаковы (зависят только от apartments_area)
         # Соц-парковки идут отдельно: смотрим social_parking_total
         assert res_yes.parking_required_places.value == res_no.parking_required_places.value

@@ -138,7 +138,11 @@ def test_social_objects_use_post_stylobate_population(spb):
     """v0.12.10: ДОО/СОШ считаются от населения ПОСЛЕ потери квартир под
     стилобатом (требуемые места соответствуют итоговому населению)."""
     site = Site(area_m2=120_000)
-    r = solve_max_kit(site, _cfg(0.7), spb)
+    # include_add_education/polyclinic=False: встроенные соцобъекты вычитают GFA
+    # ПОСЛЕ расчёта ДОО → r.population (итоговое) разойдётся с базой ДОО (v0.12.28).
+    r = solve_max_kit(
+        site, _cfg(0.7, include_add_education=False, include_polyclinic=False), spb
+    )
     kg_per_1000 = spb.resolve("social_objects.kindergarten.places_per_1000")
     expected = r.population.value * kg_per_1000 / 1000
     # требуемые места ДОО соответствуют ИТОГОВОМУ населению (а не «дострилоб.»)
