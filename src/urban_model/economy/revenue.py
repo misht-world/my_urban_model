@@ -72,7 +72,18 @@ def calc_revenue(tep, options, norms: Normatives) -> RevenueBreakdown:
         if getattr(options, "include_school", True) else True
     kg_billable = 0.0 if kg_only_demand else kg_bld * c_kg
     sch_billable = 0.0 if sch_only_demand else sch_bld * c_sch
-    r_social_comp = (kg_billable + sch_billable) * comp_share
+    # v0.12.19: доп. образование (ВРИ 3.5.1) — соцобъект, компенсируется городом
+    # симметрично ДОО/СОШ (иначе его здание было чистой соцнагрузкой без зачёта).
+    ae_bld = float(getattr(tep, "add_education_building_area", None).value or 0.0) \
+        if getattr(tep, "add_education_building_area", None) is not None else 0.0
+    ae_only_demand = bool(getattr(options.add_education, "only_demand", False)) \
+        if getattr(options, "include_add_education", True) else True
+    try:
+        c_add_edu = float(norms.resolve("economy.construction.add_education"))
+    except (KeyError, TypeError, ValueError):
+        c_add_edu = c_sch
+    ae_billable = 0.0 if ae_only_demand else ae_bld * c_add_edu
+    r_social_comp = (kg_billable + sch_billable + ae_billable) * comp_share
 
     # v0.9.8 (AUDIT P0-2): кастомные объекты дают выручку по любому
     # ВРИ КРОМЕ 3.x (социальные — поликлиника/ФОК — соцнагрузка, 0).

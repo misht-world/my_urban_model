@@ -238,7 +238,10 @@ class TestSocialMetrics:
     def test_net_social_burden_definition(self, spb, site):
         e = verify_kit(1.5, site, CalculationOptions(floors=12), spb).economy
         cb, rb = e.cost, e.revenue
-        expected = (cb.kindergarten + cb.school + cb.social_parking) - rb.social_compensation
+        # v0.12.19: доп. образование (ВРИ 3.5.1) входит в соцнагрузку.
+        expected = (
+            cb.kindergarten + cb.school + cb.add_education + cb.social_parking
+        ) - rb.social_compensation
         assert e.net_social_burden == pytest.approx(expected)
 
     def test_sellable_ratio_in_range(self, spb, site):

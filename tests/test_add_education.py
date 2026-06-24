@@ -156,3 +156,22 @@ class TestIntegration:
         r = solve_max_kit(site, CalculationOptions(floors=18, planning_doc=True), spb)
         assert r.economy is not None
         assert r.economy.cost.add_education > 0
+
+    def test_economy_social_symmetry(self, spb):
+        """Доп. обр. симметричен ДОО/СОШ: входит и в соцнагрузку, и в
+        компенсацию города (v0.12.19)."""
+        site = Site(area_m2=200_000)
+        e = solve_max_kit(
+            site, CalculationOptions(floors=18, planning_doc=True), spb
+        ).economy
+        cb, rb = e.cost, e.revenue
+        # net_social_burden включает cost.add_education
+        expected = (
+            cb.kindergarten + cb.school + cb.add_education + cb.social_parking
+        ) - rb.social_compensation
+        assert e.net_social_burden == pytest.approx(expected)
+        # компенсация включает долю от здания доп. обр.
+        comp_share = spb.resolve("economy.social_compensation.share")
+        c_ae = spb.resolve("economy.construction.add_education")
+        ae_comp = cb.add_education * comp_share  # cost.add_education = bld × c_ae
+        assert rb.social_compensation >= ae_comp - 1e-6
