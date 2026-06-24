@@ -119,10 +119,7 @@ def _render_base_snapshot(
     значений, плохо использует горизонтальное пространство.
     В карточках рекомендаций таблица остаётся (там ширина 1/3 экрана).
     """
-    def _fmt_int(v) -> str:
-        if v is None:
-            return "—"
-        return f"{int(v):,}".replace(",", " ")
+    from urban_model.ui.output import render_main_kpi_grid
 
     with st.container(border=True):
         if synced:
@@ -135,53 +132,9 @@ def _render_base_snapshot(
                 "результатом на «Расчёте». Откройте «Расчёт» для синхронизации."
             )
 
-        # Ряд 1: главные ТЭП
-        c1, c2, c3, c4, c5 = st.columns(5)
-        c1.metric("КИТ ПЗЗ", f"{base_tep.kit.value:.3f}")
-        c2.metric("Площадь квартир", f"{_fmt_int(base_tep.apartments_area.value)} м²")
-        c3.metric("Этажность", _floors_label(base_tep, base_options))
-        c4.metric("Население", f"{_fmt_int(base_tep.population.value)} чел")
-        if base_tep.economy is not None:
-            c5.metric(
-                "Эконом-индекс",
-                f"{base_tep.economy.economy_index:.0f} / 100",
-                help=(
-                    "Условный экономический индекс = 100 × выручка ÷ "
-                    "себестоимость. 100 = окупаемость; выше — эффективнее. "
-                    "Стабильная метрика модели, не зависит от набора найденных "
-                    "вариантов."
-                ),
-            )
-        else:
-            c5.metric("Эконом-индекс", "—")
-
-        # Ряд 2: парковки по типам
-        op = int(base_tep.parking_open_places.value or 0)
-        ml = int(base_tep.parking_multilevel_places.value or 0)
-        ug = int(base_tep.parking_underground_places.value or 0)
-        c6, c7, c8, c9, c10 = st.columns(5)
-        c6.metric("Парковки — открытые", f"{op} м/м")
-        c7.metric("   — многоуровневые", f"{ml} м/м")
-        c8.metric("   — подземные", f"{ug} м/м")
-        c9.metric("ДОО", f"{_fmt_int(base_tep.kindergarten_places_accepted.value)} мест"
-                  if (base_tep.kindergarten_places_accepted.value or 0) > 0 else "—")
-        c10.metric("СОШ", f"{_fmt_int(base_tep.school_places_accepted.value)} мест"
-                   if (base_tep.school_places_accepted.value or 0) > 0 else "—")
-
-        # Ряд 3: технические эконом-метрики + ЗНОП
-        c11, c12, c13, c14, c15 = st.columns(5)
-        if base_tep.economy is not None:
-            c11.metric("Маржа", f"{base_tep.economy.margin*100:.1f}%")
-            c12.metric("ROI", f"{base_tep.economy.roi*100:.1f}%")
-            c13.metric("", "")
-            c14.metric("", "")
-        else:
-            c11.metric("Маржа", "—")
-            c12.metric("ROI", "—")
-            c13.metric("", "")
-            c14.metric("", "")
-        zpp = base_tep.znop_per_person.value or 0
-        c15.metric("ЗНОП", f"{zpp:.0f} м²/чел" if zpp > 0 else "0 м²/чел")
+        # v0.12.16: единый KPI-блок — тот же компонент, что «Основные показатели»
+        # на вкладке «Расчёт» (одинаковое наполнение по запросу заказчика).
+        render_main_kpi_grid(base_tep, base_options)
 
 
 # ---------------------------------------------------------------------------

@@ -151,6 +151,169 @@ def render_header(result: TEPResult) -> None:
 # KPI-карточки
 # ---------------------------------------------------------------------------
 
+def _kpi_floors_label(result: TEPResult, options=None) -> str:
+    """Подпись этажности с учётом кластеров (дубль _floors_label из optimizer,
+    чтобы не вводить импорт-связность). При зонах: «9 / 21 эт. (ср. 15.0)»."""
+    if result.floor_clusters_detail:
+        fl = " / ".join(str(d["floors"]) for d in result.floor_clusters_detail)
+        eff = result.effective_floors or 0.0
+        return f"{fl} эт. (ср. {eff:.1f})"
+    if options is not None and getattr(options, "floors", None):
+        return f"{int(options.floors)} эт."
+    if result.effective_floors:
+        return f"{result.effective_floors:.0f} эт."
+    return "—"
+
+
+def _buckets_delta(formula_str: str | None, total: int) -> str | None:
+    """«N объектов по lo–hi мест» из formula-строки ДОО/СОШ (для delta метрики)."""
+    if not formula_str or total == 0:
+        return None
+    m = re.search(r'\[([^\]]+)\]', formula_str)
+    if not m:
+        return None
+    try:
+        vals = [int(x.strip()) for x in m.group(1).split(",") if x.strip()]
+    except ValueError:
+        return None
+    n = len(vals)
+    if n == 0:
+        return None
+    lo, hi = min(vals), max(vals)
+    per_str = f"{lo} мест" if lo == hi else f"{lo}–{hi} мест"
+    ending = "объект" if n == 1 else ("объекта" if 2 <= n <= 4 else "объектов")
+    return f"{n} {ending} по {per_str}"
+
+
+def render_main_kpi_grid(result: TEPResult, options=None) -> None:
+    """Единый KPI-блок (v0.12.16): одинаков на «Расчёте» («Основные показатели»)
+    и в «Оптимизации» («База»).
+
+    2 ряда по 5 метрик:
+      КИТ (ПЗЗ) · Население · Площадь квартир · Этажность · Эконом-индекс
+      ДОО · СОШ · Доп. образование · Парковки · ЗНОП
+    + (при наличии экономики) ряд «Выход жилья / Соц. нагрузка».
+    Технический expander с сырыми баллами не выводится (по запросу).
+    """
+    kit_max = result.kit_normative_max.value or 0
+
+    # ── Ряд 1 ───────────────────────────────────────────────────────────
+    c1, c2, c3, c4, c5 = st.columns(5)
+    c1.metric(
+        "КИТ (ПЗЗ)", f"{result.kit.value:.3f}",
+        help=(
+            "КИТ по ПЗЗ СПб = площадь квартир / ЗУ жилой застройки. "
+            f"Норм. потолок: {kit_max} (ДПТ: {'да' if kit_max == 2.5 else 'нет'})"
+        ),
+    )
+    if result.floor_clusters_detail:
+        _zk = " · ".join(
+            f"**{d['label']}**: {d['kit']:.3f}" for d in result.floor_clusters_detail
+        )
+        c1.caption(f":material/apartment: КИТ зон: {_zk}")
+    c2.metric(
+        "Население", f"{fmt_int(result.population.value)} чел.",
+        help="Жилищная обеспеченность: 28 м²/чел (НГП СПб).",
+    )
+    c3.metric("Площадь квартир", fmt_m2(result.apartments_area.value))
+    c4.metric("Этажность", _kpi_floors_label(result, options))
+    if result.economy is not None:
+        c5.metric(
+            "Эконом-индекс", f"{result.economy.economy_index:.0f} / 100",
+            help=(
+                "100 × выручка / себестоимость. 100 = окупаемость; выше — "
+                "эффективнее. Стабильный показатель модели."
+            ),
+        )
+    else:
+        c5.metric("Эконом-индекс", "—")
+
+    # ── Ряд 2 ───────────────────────────────────────────────────────────
+    c6, c7, c8, c9, c10 = st.columns(5)
+    kg_total = int(result.kindergarten_places_accepted.value or 0)
+    c6.metric(
+        "ДОО", f"{kg_total} мест" if kg_total > 0 else "—",
+        delta=_buckets_delta(result.kindergarten_places_accepted.formula, kg_total),
+        delta_color="off", help="Принятая вместимость и число объектов ДОО.",
+    )
+    sch_total = int(result.school_places_accepted.value or 0)
+    c7.metric(
+        "СОШ", f"{sch_total} мест" if sch_total > 0 else "—",
+        delta=_buckets_delta(result.school_places_accepted.formula, sch_total),
+        delta_color="off", help="Принятая вместимость и число объектов СОШ.",
+    )
+    ae_total = int(result.add_education_places_accepted.value or 0)
+    ae_place = (
+        "встроенное (ВПП)" if getattr(result, "add_education_built_in", False)
+        else "отд. стоящее"
+    )
+    c8.metric(
+        "Доп. образование", f"{ae_total} мест" if ae_total > 0 else "—",
+        delta=(ae_place if ae_total > 0 else None), delta_color="off",
+        help="Организации доп. образования (ВРИ 3.5.1).",
+    )
+    op_pl = int(result.parking_open_places.value or 0)
+    ml_pl = int(result.parking_multilevel_places.value or 0)
+    ug_pl = int(result.parking_underground_places.value or 0)
+    styl_pl = int(getattr(result, "parking_stylobate_places", None).value or 0) \
+        if getattr(result, "parking_stylobate_places", None) is not None else 0
+    total_pl = int(result.parking_required_places.value or 0)
+    _parts = []
+    if op_pl:   _parts.append(f"откр. {op_pl}")
+    if ml_pl:   _parts.append(f"многоур. {ml_pl}")
+    if styl_pl: _parts.append(f"стилоб. {styl_pl}")
+    if ug_pl:   _parts.append(f"подз. {ug_pl}")
+    c9.metric(
+        "Парковки", f"{total_pl} м/м" if total_pl > 0 else "—",
+        delta=" · ".join(_parts) or None, delta_color="off",
+        help="Всего машино-мест и разбивка по типам.",
+    )
+    znop_pp = result.znop_per_person.value or 0
+    znop_area = int(result.znop_area.value or 0)
+    c10.metric(
+        "ЗНОП", f"{znop_area:,} м²".replace(",", " ") if znop_area > 0 else "—",
+        delta=f"{znop_pp:.1f} м²/чел" if znop_pp > 0 else None, delta_color="off",
+        help="Общая площадь ЗНОП и норма на жителя.",
+    )
+    if result.floor_clusters_detail and any(
+        "znop_per_person" in d for d in result.floor_clusters_detail
+    ):
+        _zz = " · ".join(
+            f"**{d['label']}**: {d.get('znop_per_person', 0):.0f}"
+            for d in result.floor_clusters_detail
+        )
+        c10.caption(f":material/park: ЗНОП зон, м²/чел: {_zz}")
+
+    # ── Ряд 3: экономика (выход жилья / соц. нагрузка) ───────────────────
+    if result.economy is not None:
+        e = result.economy
+        _social_cost = (
+            e.cost.kindergarten + e.cost.school + e.cost.social_parking
+            + getattr(e.cost, "add_education", 0.0)
+        )
+        _has_social = _social_cost > 0.5 or e.revenue.social_compensation > 0.5
+        d1, d2, d3 = st.columns(3)
+        d1.metric(
+            "Выход жилья",
+            f"{e.sellable_ratio * 100:.0f}%" if e.sellable_ratio else "—",
+            help="Площадь квартир / общая GFA — доля продаваемого жилья.",
+        )
+        if _has_social:
+            d2.metric(
+                "Соц. нагрузка",
+                f"{-e.net_social_burden:+,.0f}".replace(",", " "),
+                delta=("в минус" if e.net_social_burden > 0 else "плюс"),
+                delta_color=("inverse" if e.net_social_burden > 0 else "normal"),
+                help="Себестоимость ДОО/СОШ/доп.обр/соц.парковок за вычетом "
+                     "компенсации города (условные баллы).",
+            )
+        else:
+            d2.metric(
+                "ROI", f"{e.roi * 100:.1f}%" if e.cost.total > 0 else "—",
+                help="profit / cost (условные баллы).",
+            )
+
+
 def render_kpi(result: TEPResult, *, scenario_default_name: str | None = None,
                options=None) -> None:
     """KPI-блок с возможностью встроить кнопки «Добавить в сравнение» и xlsx.
@@ -288,124 +451,13 @@ def render_kpi(result: TEPResult, *, scenario_default_name: str | None = None,
         # отдельно в donut_col, на одном вертикальном уровне.
         # v0.10.18: KPI занимают всю ширину, treemap «Баланс территории»
         # рендерится отдельной секцией НИЖЕ (как в утверждённом макете).
+        # v0.12.16: единый KPI-блок (render_main_kpi_grid) — идентичен «Базе»
+        # на вкладке «Оптимизация». Метрики — слева (kpi_col), treemap
+        # «Баланс территории» — отдельной секцией ниже (donut_col).
         kpi_col = st.container()
         donut_col = st.container()
         with kpi_col:
-            c1, c2, c3, c4 = st.columns(4)  # ряд 1
-            c5, c6, c7, c8 = st.columns(4)  # ряд 2
-        kit_help = (
-            "КИТ по ПЗЗ СПб = площадь квартир / ЗУ жилой застройки. "
-            f"Норматив. потолок: {result.kit_normative_max.value} "
-            f"(ДПТ: {'да' if result.kit_normative_max.value == 2.5 else 'нет'})"
-        )
-        c1.metric("КИТ (ПЗЗ)", f"{result.kit.value:.3f}", help=kit_help)
-        # v0.10.10 (#1): КИТ по зонам — сразу под метрикой КИТ (в её колонке).
-        if result.floor_clusters_detail:
-            _zk = " · ".join(
-                f"**{d['label']}**: {d['kit']:.3f}"
-                for d in result.floor_clusters_detail
-            )
-            c1.caption(f":material/apartment: КИТ зон: {_zk}")
-        c2.metric(
-            "Население", f"{fmt_int(result.population.value)} чел.",
-            help="Жилищная обеспеченность: 28 м²/чел (НГП СПб).",
-        )
-        c3.metric("Площадь квартир", fmt_m2(result.apartments_area.value))
-        surplus = result.balance.surplus
-        delta_color = "normal" if surplus >= 0 else "inverse"
-        c4.metric(
-            "Резерв баланса",
-            fmt_m2(surplus),
-            delta=("OK" if surplus >= 0 else "ДЕФИЦИТ"),
-            delta_color=delta_color,
-            help=(
-                "Свободная часть квартала после вычета всех компонентов "
-                "(жильё, ДОО/СОШ, парковки, проезды, ЗНОП). "
-                "Эта территория автоматически засчитывается как зелёное "
-                "открытое пространство в нормативе 25% озеленения. "
-                "0 = квартал использован полностью; положительный = "
-                "запас под манёвр (двор/площадка/благоустройство)."
-            ),
-        )
-
-        # === Ряд 2: социалка / парковки / ЗНОП ===
-        # c5..c8 уже созданы выше внутри kpi_col.
-
-        # Вспомогательная функция: парсим список вместимостей из formula-строки
-        def _buckets_delta(formula_str: str, total: int) -> str | None:
-            m = re.search(r'\[([^\]]+)\]', formula_str)
-            if not m or total == 0:
-                return None
-            try:
-                vals = [int(x.strip()) for x in m.group(1).split(",") if x.strip()]
-            except ValueError:
-                return None
-            n = len(vals)
-            if n == 0:
-                return None
-            lo, hi = min(vals), max(vals)
-            per_str = f"{lo} мест" if lo == hi else f"{lo}–{hi} мест"
-            ending = "объект" if n == 1 else ("объекта" if 2 <= n <= 4 else "объектов")
-            return f"{n} {ending} по {per_str}"
-
-        kg_buckets_str = result.kindergarten_places_accepted.formula or ""
-        kg_total = int(result.kindergarten_places_accepted.value or 0)
-        c5.metric(
-            "ДОО",
-            f"{kg_total} мест" if kg_total > 0 else "—",
-            delta=_buckets_delta(kg_buckets_str, kg_total),
-            delta_color="off",
-            help="Принятая суммарная вместимость и число объектов ДОО.",
-        )
-
-        sch_buckets_str = result.school_places_accepted.formula or ""
-        sch_total = int(result.school_places_accepted.value or 0)
-        c6.metric(
-            "СОШ",
-            f"{sch_total} мест" if sch_total > 0 else "—",
-            delta=_buckets_delta(sch_buckets_str, sch_total),
-            delta_color="off",
-            help="Принятая суммарная вместимость и число объектов СОШ.",
-        )
-
-        # Парковки — сводка по типам
-        open_pl = int(result.parking_open_places.value or 0)
-        ml_pl = int(result.parking_multilevel_places.value or 0)
-        ug_pl = int(result.parking_underground_places.value or 0)
-        styl_pl = int(getattr(result, "parking_stylobate_places", None).value or 0) \
-            if getattr(result, "parking_stylobate_places", None) is not None else 0
-        total_pl = int(result.parking_required_places.value or 0)
-        breakdown_parts = []
-        if open_pl: breakdown_parts.append(f"откр. {open_pl}")
-        if ml_pl:   breakdown_parts.append(f"многоур. {ml_pl}")
-        if styl_pl: breakdown_parts.append(f"стилоб. {styl_pl}")
-        if ug_pl:   breakdown_parts.append(f"подз. {ug_pl}")
-        c7.metric(
-            "Парковки",
-            f"{total_pl} м/м" if total_pl > 0 else "—",
-            delta=" · ".join(breakdown_parts) or None,
-            delta_color="off",
-            help="Всего машино-мест и разбивка по типам.",
-        )
-
-        znop_pp = result.znop_per_person.value or 0
-        znop_area = int(result.znop_area.value or 0)
-        c8.metric(
-            "ЗНОП",
-            f"{znop_area:,} м²".replace(",", " ") if znop_area > 0 else "—",
-            delta=f"{znop_pp:.1f} м²/чел" if znop_pp > 0 else None,
-            delta_color="off",
-            help="Общая площадь ЗНОП и норма на жителя.",
-        )
-        # v0.11.0: ЗНОП по зонам — мелким caption под метрикой (как КИТ зон).
-        if result.floor_clusters_detail and any(
-            "znop_per_person" in d for d in result.floor_clusters_detail
-        ):
-            _zz = " · ".join(
-                f"**{d['label']}**: {d.get('znop_per_person', 0):.0f}"
-                for d in result.floor_clusters_detail
-            )
-            c8.caption(f":material/park: ЗНОП зон, м²/чел: {_zz}")
+            render_main_kpi_grid(result, options)
 
         # v0.10.18: donut/treemap — теперь отдельной секцией под KPI,
         # с собственным заголовком в стиле «Спецификация».
@@ -413,62 +465,8 @@ def render_kpi(result: TEPResult, *, scenario_default_name: str | None = None,
             st.markdown("##### :material/balance: Баланс территории")
             _render_balance_bar(result)
 
-        # === Ряд 3: экономика — ВНУТРИ kpi_col, под метриками ===
-        # v0.9.26: раньше «Оценка выгодности» рендерилась на всю ширину
-        # под обеими колонками, оставляя пустое пространство под ДОО/СОШ
-        # рядом с donut'ом. Теперь блок встаёт В ЛЕВУЮ колонку, заполняя
-        # вертикаль на одном уровне с treemap'ом справа.
-        if result.economy is not None:
-            with kpi_col:
-                st.markdown("---")
-                e = result.economy
-                # v0.12.8: headline — стабильный ЭКОНОМ-ИНДЕКС (100=окупаемость).
-                # Сырые «баллы выгодности»/маржа/ROI убраны в раскрывающийся блок.
-                _social_cost = (
-                    e.cost.kindergarten + e.cost.school + e.cost.social_parking
-                )
-                _has_social = _social_cost > 0.5 or e.revenue.social_compensation > 0.5
-                ec1, ec2, ec3 = st.columns(3)
-                ec1.metric(
-                    ":material/payments: Эконом-индекс",
-                    f"{e.economy_index:.0f} / 100",
-                    help="100 × выручка / себестоимость. 100 = окупаемость; "
-                         "выше — эффективнее. Стабильный показатель модели.",
-                )
-                ec2.metric(
-                    "Выход жилья",
-                    f"{e.sellable_ratio * 100:.0f}%" if e.sellable_ratio else "—",
-                    help="Площадь квартир / общая GFA — доля продаваемого жилья.",
-                )
-                if _has_social:
-                    ec3.metric(
-                        "Соц. нагрузка",
-                        f"{-e.net_social_burden:+,.0f}".replace(",", " "),
-                        delta=("в минус" if e.net_social_burden > 0 else "плюс"),
-                        delta_color=("inverse" if e.net_social_burden > 0 else "normal"),
-                        help="Себестоимость ДОО/СОШ/соц.парковок за вычетом "
-                             "компенсации города (условные баллы).",
-                    )
-                else:
-                    ec3.metric(
-                        "ROI",
-                        f"{e.roi * 100:.1f}%" if e.cost.total > 0 else "—",
-                        help="profit / cost (условные баллы).",
-                    )
-                with st.expander("Технические метрики (условные баллы)"):
-                    st.caption(
-                        "Безразмерные баллы для сравнения вариантов (1 балл ≈ м² "
-                        "жилья 9 эт. монолит). Не денежный прогноз в рублях."
-                    )
-                    st.markdown(
-                        f"• Условная прибыль: **{e.profit:+,.0f}** "
-                        f"(без соц. нагрузки: {e.profit_before_social:+,.0f})  \n"
-                        f"• Маржа: **{e.margin * 100:.1f}%**  ·  ROI: "
-                        f"**{e.roi * 100:.1f}%**  \n"
-                        f"• Себестоимость / Выручка: "
-                        f"**{int(e.cost.total):,} / {int(e.revenue.total):,}**"
-                        .replace(",", " ")
-                    )
+        # (Экономический ряд «Выход жилья / Соц. нагрузка» — внутри
+        #  render_main_kpi_grid; технический expander убран по запросу v0.12.16.)
 
         # === Inline-actions: «Добавить в сравнение» + xlsx (внутри блока) ===
         if scenario_default_name is not None:
