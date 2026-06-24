@@ -10,7 +10,7 @@ import tempfile
 import pandas as pd
 import streamlit as st
 
-from urban_model.export import results_to_dataframe, to_xlsx
+from urban_model.export import build_variant_xlsx, results_to_dataframe, to_xlsx
 from urban_model.export.table import results_to_audit_dataframe
 from urban_model.models.result import Status, TEPField, TEPResult
 from urban_model.ui.formatting import (
@@ -1184,6 +1184,24 @@ def _result_sig(result: TEPResult) -> tuple:
     )
 
 
+def _variant_xlsx_bytes(name: str, result: TEPResult, options) -> bytes:
+    """Комплексный «паспорт варианта» (xlsx) → байты для download_button.
+
+    Лёгкий (без matplotlib), мемоизация не нужна — генерится быстро.
+    """
+    with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False) as tmp:
+        tmp_path = tmp.name
+    try:
+        build_variant_xlsx(name, result, options, tmp_path)
+        with open(tmp_path, "rb") as f:
+            return f.read()
+    finally:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+
+
 def _variant_album_bytes(name: str, result: TEPResult, options) -> bytes:
     """PPTX-альбом по варианту с мемоизацией по (имя + сигнатура расчёта +
     опции). Пересобирается только при изменении расчёта — download_button
@@ -1241,17 +1259,9 @@ def _render_actions_inline(result: TEPResult, default_name: str, options=None) -
             st.toast(f"Сценарий «{scenario_name}» добавлен", icon="✅")
             st.rerun()
     with b_xlsx:
-        with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False) as tmp:
-            tmp_path = tmp.name
-        try:
-            to_xlsx([(scenario_name, result)], tmp_path)
-            with open(tmp_path, "rb") as f:
-                xlsx_bytes = f.read()
-        finally:
-            try:
-                os.unlink(tmp_path)
-            except OSError:
-                pass
+        # v0.12.25: комплексный «паспорт варианта» (Сводка по категориям +
+        # Баланс территории) вместо узкого to_xlsx.
+        xlsx_bytes = _variant_xlsx_bytes(scenario_name, result, options)
         st.download_button(
             ":material/download: Скачать xlsx",
             xlsx_bytes,

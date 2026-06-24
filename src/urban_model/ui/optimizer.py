@@ -781,6 +781,31 @@ def _render_recommendation_card(
     rec: Recommendation, idx: int, base_options: CalculationOptions,
 ) -> None:
     """Одна карточка рекомендации — единый формат KPI (v0.9.6)."""
+    return _render_recommendation_card_impl(rec, idx, base_options)
+
+
+def _rec_xlsx_bytes(label: str, tep, options) -> bytes:
+    """«Паспорт варианта» (xlsx) рекомендации → байты для download_button."""
+    import os
+    import tempfile
+
+    from urban_model.export import build_variant_xlsx
+    with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False) as tmp:
+        _p = tmp.name
+    try:
+        build_variant_xlsx(label, tep, options, _p)
+        with open(_p, "rb") as f:
+            return f.read()
+    finally:
+        try:
+            os.unlink(_p)
+        except OSError:
+            pass
+
+
+def _render_recommendation_card_impl(
+    rec: Recommendation, idx: int, base_options: CalculationOptions,
+) -> None:
     with st.container(border=True):
         # v0.12.3: невидимый маркер — по нему CSS растягивает карточку до
         # высоты соседней в ряду (равная высота сетки 2×2).
@@ -812,7 +837,8 @@ def _render_recommendation_card(
 
         # v0.10.15: кнопки одинаковой ширины (use_container_width в равных
         # колонках), стоят вплотную — единый стиль с вкладкой «Расчёт».
-        bcol1, bcol2 = st.columns(2)
+        # v0.12.25: 3-я кнопка — «паспорт варианта» xlsx (Сводка + Баланс).
+        bcol1, bcol2, bcol3 = st.columns(3)
         if bcol1.button(":material/add: В сравнение", key=f"add_rec_{idx}",
                         use_container_width=True):
             st.session_state.scenarios.append((f"opt:{rec.label}", rec.tep))
@@ -827,6 +853,14 @@ def _render_recommendation_card(
             st.session_state["applied_label"] = rec.label
             st.toast(f"Применено: {rec.label} → вкладка «Расчёт»", icon="📥")
             st.rerun()
+        with bcol3:
+            st.download_button(
+                ":material/download: xlsx",
+                _rec_xlsx_bytes(rec.label, rec.tep, rec_options),
+                file_name=f"{rec.label}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                key=f"xlsx_rec_{idx}", use_container_width=True,
+            )
 
 
 # ---------------------------------------------------------------------------
