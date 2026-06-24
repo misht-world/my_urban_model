@@ -282,8 +282,10 @@ def render_main_kpi_grid(result: TEPResult, options=None) -> None:
             + getattr(e.cost, "add_education", 0.0)
         )
         _has_social = _social_cost > 0.5 or e.revenue.social_compensation > 0.5
-        # v0.12.21: эконом-индекс — здесь, в ряду экономики (а не в ряду 1).
-        d1, d2, d3 = st.columns(3)
+        # v0.12.23: ряд экономики — та же 5-колоночная сетка, что ряды 1 и 2
+        # (первые 3 ячейки), чтобы метрики стояли РОВНО под колонками сверху,
+        # а не «разъезжались» по третям ширины (st.columns(3)).
+        d1, d2, d3, _d4, _d5 = st.columns(5)
         d1.metric(
             "Эконом-индекс", f"{e.economy_index:.0f} / 100",
             help=(
