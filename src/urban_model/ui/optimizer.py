@@ -11,6 +11,8 @@
 
 from __future__ import annotations
 
+import re
+
 import pandas as pd
 import streamlit as st
 
@@ -214,23 +216,44 @@ def _render_pareto_constraints(base_options: CalculationOptions) -> ParetoConstr
 
         with c2:
             st.markdown("**Разрешённые типы парковок**")
+            # v0.12.17 (#5): дефолт = набор парковок из «Параметров». Тип включён
+            # по умолчанию, если его доля в базе > 0 (стилобат выключен в базе →
+            # снят и здесь). При смене базового набора пушим новые дефолты в
+            # session_state (как у floors_range); ручные правки сохраняются.
+            _p = base_options.parking
+            _styl0 = float(getattr(_p, "stylobate_share", 0.0) or 0.0)
+            if _p.mode == "all_open":
+                _d = (True, False, False, False)
+            elif _p.mode == "custom":
+                _d = (_p.open_share > 0, _p.multilevel_share > 0,
+                      _p.underground_share > 0, _styl0 > 0)
+            else:  # min_open: открытые (минимум) + подземные (остаток)
+                _d = (True, False, True, False)
+            _psig = f"{_p.mode}|{_d}"
+            if st.session_state.get("_pareto_park_base") != _psig:
+                st.session_state["pareto_allow_open"] = _d[0]
+                st.session_state["pareto_allow_ml"] = _d[1]
+                st.session_state["pareto_allow_ug"] = _d[2]
+                st.session_state["pareto_allow_styl"] = _d[3]
+                st.session_state["_pareto_park_base"] = _psig
+            st.caption("По умолчанию — как на вкладке «Параметры»; можно расширить.")
             allow_open = st.checkbox(
-                ":material/local_parking: Открытые наземные", value=True, key="pareto_allow_open",
+                ":material/local_parking: Открытые наземные", key="pareto_allow_open",
                 help="Самые дешёвые, но требуют пятна на квартале (≥12.5% по нормативу).",
             )
             allow_multilevel = st.checkbox(
-                ":material/vertical_align_top: Многоуровневые наземные", value=True, key="pareto_allow_ml",
+                ":material/vertical_align_top: Многоуровневые наземные", key="pareto_allow_ml",
                 help="Компактнее открытых, средняя себестоимость.",
             )
             allow_underground = st.checkbox(
-                ":material/vertical_align_bottom: Подземные", value=True, key="pareto_allow_ug",
+                ":material/vertical_align_bottom: Подземные", key="pareto_allow_ug",
                 help=(
                     "Не занимают пятно квартала, но дороже всех. Можно исключить, "
                     "если по проекту или нормативам не разрешены."
                 ),
             )
             allow_stylobate = st.checkbox(
-                ":material/last_page: Стилобатные", value=True, key="pareto_allow_styl",
+                ":material/last_page: Стилобатные", key="pareto_allow_styl",
                 help=(
                     "Поднятый стилобат-паркинг (не заглубляется, не занимает ЗУ "
                     "квартала). 25% деки под домами = −1 этаж жилья там; "
@@ -622,9 +645,25 @@ def _extract_kpi_fields(
     ug = int(tep.parking_underground_places.value or 0)
     styl = int(getattr(tep, "parking_stylobate_places", None).value or 0) \
         if getattr(tep, "parking_stylobate_places", None) is not None else 0
+    ml_obj = int(tep.parking_multilevel_objects.value or 0)
     kg = int(tep.kindergarten_places_accepted.value or 0)
     sch = int(tep.school_places_accepted.value or 0)
     zpp = tep.znop_per_person.value or 0
+
+    # v0.12.17: число объектов ДОО/СОШ из formula-строки (как на «Расчёте»).
+    def _nobj(formula: str | None) -> int:
+        if not formula:
+            return 0
+        m = re.search(r'\[([^\]]+)\]', formula)
+        if not m:
+            return 0
+        return len([x for x in m.group(1).split(",") if x.strip()])
+    kg_n = _nobj(tep.kindergarten_places_accepted.formula)
+    sch_n = _nobj(tep.school_places_accepted.formula)
+    # Доп. образование (ВРИ 3.5.1, v0.12.15)
+    ae = int(getattr(tep, "add_education_places_accepted", None).value or 0) \
+        if getattr(tep, "add_education_places_accepted", None) is not None else 0
+    ae_bi = bool(getattr(tep, "add_education_built_in", False))
     # v0.9.29: этажность берём из TEP (учитывает кластеры). При зонах —
     # «9 / 21 (ср. 15.0)»; иначе — одиночная этажность.
     floors = _floors_label(tep, options)
@@ -649,11 +688,12 @@ def _extract_kpi_fields(
         ("КИТ ПЗЗ",              f"{(tep.kit.value or 0):.3f}"),
         ("Этажность",            str(floors)),
         ("Парковки — открытые",  f"{op} м/м" if op + ml + ug + styl > 0 else "—"),
-        ("    многоуровневые",   f"{ml} м/м"),
+        ("    многоуровневые",   f"{ml} м/м ({ml_obj} об.)" if ml > 0 else f"{ml} м/м"),
         ("    подземные",        f"{ug} м/м"),
         ("    стилобатные",      f"{styl} м/м"),
-        ("ДОО",                  f"{kg} мест" if kg > 0 else "—"),
-        ("СОШ",                  f"{sch} мест" if sch > 0 else "—"),
+        ("ДОО",                  f"{kg} мест ({kg_n} об.)" if kg > 0 else "—"),
+        ("СОШ",                  f"{sch} мест ({sch_n} об.)" if sch > 0 else "—"),
+        ("Доп. образование",     f"{ae} мест ({'ВПП' if ae_bi else 'отд.'})" if ae > 0 else "—"),
         ("ЗНОП",                 f"{zpp:.0f} м²/чел" if zpp > 0 else "0 м²/чел"),
         ("Инженерия",            eng_str),
         ("Эконом-индекс",        econ_index),
@@ -761,19 +801,8 @@ def _render_recommendation_card(
         rec_options = _rec_options_from_params(base_options, rec.params)
         _render_kpi_block(rec.tep, rec_options)
 
-        # Технические (условные) метрики модели — по запросу аудита спрятаны
-        # в expander: сырые баллы прибыли могут быть «в минус», что путает.
-        if rec.tep.economy is not None:
-            with st.expander(":material/calculate: Технические метрики (условные)", expanded=False):
-                e = rec.tep.economy
-                st.caption(
-                    "Безразмерные баллы модели для сравнения вариантов "
-                    "(1.0 ≈ м² жилья 9 эт. монолит). Не денежный прогноз."
-                )
-                st.markdown(
-                    f"• Эконом-индекс: **{e.economy_index:.0f}** (100 = окупаемость)  \n"
-                    f"• ROI: **{e.roi*100:.1f}%**"
-                )
+        # v0.12.17: технический expander с сырыми баллами убран (эконом-индекс
+        # уже в KPI-таблице карточки) — короче карточка, меньше скролла.
 
         # Что отличается от базы (текстом, как было)
         if d.key_changes:
