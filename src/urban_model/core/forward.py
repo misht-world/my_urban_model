@@ -212,6 +212,13 @@ def compute_tep_for_kit(
             norms.resolve("social_objects.kindergarten.allowed_capacities")
             if options.kindergarten.strict_capacity else None
         )
+        # v0.12.22: ЗУ-функция для выбора типовых вместимостей по минимуму ЗУ
+        # (а не профицита) — учитывает ступени plot_area_per_place.
+        _kg_cost_fn = (
+            lambda caps: sum(
+                kindergarten.plot_area_for_capacity(c, norms, kg_btype) for c in caps
+            )
+        )
         kg_buckets = kindergarten.split_into_objects(
             total_places=kg_accepted,
             spec_capacity=options.kindergarten.capacity_per_object,
@@ -220,6 +227,7 @@ def compute_tep_for_kit(
             capacity_max=kg_cap_max,
             multiple=int(kg_round),
             allowed_capacities=kg_allowed_strict,
+            cost_fn=_kg_cost_fn,
         )
         kg_plot_total, kg_bld_total = kindergarten.total_areas(kg_buckets, norms, kg_btype)
         # v0.12.4: «принято мест» = фактическая вместимость корпусов (Σ buckets).
@@ -357,6 +365,17 @@ def compute_tep_for_kit(
             norms.resolve("social_objects.school.allowed_capacities")
             if options.school.strict_capacity else None
         )
+        # v0.12.22: ЗУ-функция (с бассейном/спорт-ядром) для выбора типовых
+        # вместимостей по минимуму ЗУ — крупная школа в ступени 22 м²/место
+        # может дать меньше ЗУ, чем пара средних по 24.
+        _sch_cost_fn = (
+            lambda caps: sum(
+                school.plot_area_with_extras(
+                    c, norms, options.school.has_pool, options.school.has_sport_core
+                )
+                for c in caps
+            )
+        )
         sch_buckets = school.split_into_objects(
             total_places=sch_accepted,
             spec_capacity=options.school.capacity_per_object,
@@ -365,6 +384,7 @@ def compute_tep_for_kit(
             capacity_max=sch_cap_max,
             multiple=int(sch_round),
             allowed_capacities=sch_allowed_strict,
+            cost_fn=_sch_cost_fn,
         )
         sch_plot_total = sum(
             school.plot_area_with_extras(

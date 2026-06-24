@@ -28,6 +28,7 @@ def split_into_objects(
     capacity_max: int | None,
     multiple: int = 10,
     allowed_capacities: list[int] | None = None,
+    cost_fn=None,
 ) -> list[int]:
     """Разбить общее число мест СОШ на отдельные корпуса максимально равномерно.
 
@@ -47,13 +48,16 @@ def split_into_objects(
         # игнорировался при заданном числе → выдавал нетиповые, напр. 1125).
         if allowed_capacities:
             return split_to_allowed_capacities_n(
-                total_places, allowed_capacities, int(spec_count), capacity_min
+                total_places, allowed_capacities, int(spec_count), capacity_min,
+                cost_fn=cost_fn,
             )
         return distribute_places_evenly(total_places, int(spec_count), multiple)
     # v0.12.4: «только нормативная наполняемость» — корпуса строго типовых
     # вместимостей (СП/КОБр), а не произвольным кратным 10.
     if allowed_capacities:
-        return split_to_allowed_capacities(total_places, allowed_capacities, capacity_min)
+        return split_to_allowed_capacities(
+            total_places, allowed_capacities, capacity_min, cost_fn=cost_fn
+        )
     cap_max = capacity_max if capacity_max is not None else total_places
     n = choose_n_objects(total_places, capacity_min, cap_max)
     return distribute_places_evenly(total_places, n, multiple)

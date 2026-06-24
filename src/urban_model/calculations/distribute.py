@@ -61,18 +61,18 @@ def split_to_allowed_capacities(
     total_places: int,
     allowed: list[int],
     capacity_min: int | None = None,
+    cost_fn=None,
 ) -> list[int]:
     """Разбить спрос на объекты СТАНДАРТНЫХ вместимостей (СП / письмо КОБр).
 
     Используется в режиме «только нормативная наполняемость»: вместимость
-    каждого объекта берётся ТОЛЬКО из списка `allowed` (типовые размеры),
-    а не произвольным кратным. Цель — минимум объектов с минимальным
-    профицитом мест, при вместимости ≥ capacity_min.
+    каждого объекта берётся ТОЛЬКО из списка `allowed` (типовые размеры).
+    Число объектов минимизируется (меньше объектов → меньше «надбавок»
+    бассейн/спорт-ядро), затем среди комбинаций этого числа выбирается лучшая.
 
-    Логика:
-      n = ceil(target / max_allowed), где target = max(спрос, capacity_min);
-      на каждый объект — наименьшая разрешённая вместимость ≥ target/n
-      (и ≥ capacity_min). Объекты одинаковой типовой вместимости.
+    cost_fn: если задана (`list[int] → float`) — комбинация выбирается по
+    МИНИМУМУ cost_fn (обычно ЗУ объектов, м²), т.е. с учётом ступеней
+    норматива площади (v0.12.22). Иначе — по минимальному профициту мест.
     """
     if total_places <= 0 or not allowed:
         return []
@@ -80,12 +80,10 @@ def split_to_allowed_capacities(
     cap_max = allowed_sorted[-1]
     floor = capacity_min or 0
     target = max(int(total_places), floor)
-    n = max(1, -(-target // cap_max))  # ceil
-    per = -(-target // n)              # ceil(target / n)
-    need = max(per, floor)
-    # наименьшая разрешённая вместимость ≥ need (иначе максимальная)
-    cap = next((a for a in allowed_sorted if a >= need), cap_max)
-    return [cap] * n
+    n = max(1, -(-target // cap_max))  # минимум объектов (ceil)
+    return split_to_allowed_capacities_n(
+        total_places, allowed, n, capacity_min, cost_fn=cost_fn
+    )
 
 
 def split_to_allowed_capacities_n(
@@ -93,16 +91,23 @@ def split_to_allowed_capacities_n(
     allowed: list[int],
     n_objects: int,
     capacity_min: int | None = None,
+    cost_fn=None,
 ) -> list[int]:
     """Разбить спрос на РОВНО `n_objects` объектов СТАНДАРТНЫХ вместимостей.
 
-    Режим «только нормативная наполняемость» + заданное пользователем число
-    объектов: каждый корпус — из списка `allowed` (типовые СП/КОБр), а суммарная
-    вместимость ≥ спроса при МИНИМАЛЬНОМ профиците (и максимальной равномерности
-    при равном профиците). В отличие от `split_to_allowed_capacities` число
-    объектов здесь фиксировано пользователем, а не минимизируется.
+    Перебирает ВСЕ комбинации типовых вместимостей (с повторениями) размера
+    `n_objects` с суммой ≥ спроса и выбирает лучшую:
 
-    Пример: спрос 2250, n=2, типовые [550..2475] → [1375, 1100] (Σ=2475).
+      - если задана `cost_fn` (`list[int] → float`) — по МИНИМУМУ cost_fn,
+        обычно ЗУ объектов в м² (учитывает ступени норматива площади на место:
+        крупная школа в дешёвой ступени 22 м²/место может дать меньше ЗУ, чем
+        пара средних по 24 — v0.12.22, по запросу заказчика «сравнить
+        пограничные значения»); тай-брейк — меньше суммарных мест;
+      - иначе — по минимальному профициту мест, затем по равномерности.
+
+    Примеры (СОШ, типовые [550..2475]):
+      спрос 2250, n=2 → [1375, 1100] (Σ=2475);
+      спрос 2500, n=2, cost_fn=ЗУ → [1650, 1100] (ЗУ < [1375,1375]).
     """
     from itertools import combinations_with_replacement
 
@@ -118,8 +123,12 @@ def split_to_allowed_capacities_n(
         s = sum(combo)
         if s < total_places:
             continue
-        # минимум суммы (профицита), затем минимум разброса (равномернее)
-        key = (s, max(combo) - min(combo))
+        if cost_fn is not None:
+            # минимум ЗУ; тай-брейк — меньше мест, затем равномернее
+            key = (cost_fn(list(combo)), s, max(combo) - min(combo))
+        else:
+            # минимум профицита мест, затем равномернее
+            key = (s, max(combo) - min(combo))
         if best_key is None or key < best_key:
             best_key, best_combo = key, combo
 

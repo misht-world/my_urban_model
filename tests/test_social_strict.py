@@ -54,6 +54,22 @@ def test_allowed_n_snaps_to_typical():
     assert sum(res) == 2475  # 1375 + 1100 — минимальный профицит для 2 объектов
 
 
+def test_allowed_n_minimizes_zu_with_cost_fn():
+    """v0.12.22: при cost_fn (ЗУ) выбирается комбинация с МИНИМУМОМ ЗУ, а не
+    профицита. Спрос 2500, 2 СОШ: ЗУ-минимум [1650,1100] (1650 в ступени
+    22 м²/место) лучше [1375,1375] (обе в 24)."""
+    spb = load_normatives("spb")
+    from urban_model.calculations import school as S
+    cost = lambda caps: sum(S.plot_area_with_extras(c, spb, True, True) for c in caps)
+    res = split_to_allowed_capacities_n(2500, SCH_TYPICAL, 2, 550, cost_fn=cost)
+    assert sorted(res, reverse=True) == [1650, 1100]
+    # без cost_fn — минимум профицита/равномернее → [1375, 1375]
+    res2 = split_to_allowed_capacities_n(2500, SCH_TYPICAL, 2, 550)
+    assert sorted(res2, reverse=True) == [1375, 1375]
+    # ЗУ выбранной комбинации действительно меньше
+    assert cost(res) < cost(res2)
+
+
 def test_allowed_n_strict_bug_fixed():
     """Регресс v0.12.21: strict + заданное число СОШ снапается на типовые
     (раньше strict игнорировался при заданном числе → нетиповые, напр. 1125)."""
