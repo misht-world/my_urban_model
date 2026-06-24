@@ -64,27 +64,40 @@ class TestCompute:
         expected = max(2, math.ceil(r.workers / 5) + math.ceil(260 / 100))
         assert r.parking_places == expected
 
-    def test_manual_places_and_vpp(self, spb):
-        """Ручной режим: число мест и принудительное размещение в ВПП."""
+    def test_manual_force_vpp_splits(self, spb):
+        """Ручной режим + force_vpp: ≥150 мест → дробление на N встроенных."""
         r = add_education.compute(
-            999999.0, spb, mode="manual", places_override=300, in_vpp_manual=True
+            999999.0, spb, mode="manual", places_override=300, force_vpp=True
         )
         assert r.places == 300
         assert r.built_in is True          # принудительно в ВПП, несмотря на ≥150
         assert r.plot_area == 0.0
+        assert r.n_objects == 2            # ceil(300/150) = 2 встроенных объекта
 
-    def test_manual_standalone(self, spb):
+    def test_manual_standalone_above_threshold(self, spb):
+        """Ручной режим ≥150 без force_vpp → отдельно стоящее."""
         r = add_education.compute(
-            0.0, spb, mode="manual", places_override=80, in_vpp_manual=False
+            0.0, spb, mode="manual", places_override=200, force_vpp=False
+        )
+        assert r.places == 200
+        assert r.built_in is False
+        assert r.n_objects == 1
+        assert r.plot_area == pytest.approx(200 * 15)
+
+    def test_manual_below_threshold_is_built_in(self, spb):
+        """<150 мест → всегда встроенное (ВПП), даже вручную без force_vpp."""
+        r = add_education.compute(
+            0.0, spb, mode="manual", places_override=80, force_vpp=False
         )
         assert r.places == 80
-        assert r.built_in is False         # вручную отд. стоящее, несмотря на <150
-        assert r.plot_area == pytest.approx(80 * 15)
+        assert r.built_in is True
+        assert r.plot_area == 0.0
 
     def test_zero_population(self, spb):
         r = add_education.compute(0.0, spb)
         assert r.places == 0
         assert r.parking_places == 0
+        assert r.n_objects == 0
 
 
 # ---------------------------------------------------------------------------

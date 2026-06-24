@@ -428,8 +428,16 @@ def compute_tep_for_kit(
             pop_v, norms,
             mode=options.add_education.mode,
             places_override=options.add_education.places_override,
-            in_vpp_manual=options.add_education.in_vpp,
+            force_vpp=options.add_education.in_vpp,
         )
+        # ВПП при местах ≥ порога → дробление на несколько встроенных объектов.
+        if ae_res.built_in and ae_res.n_objects > 1 and not _ae_only_demand:
+            warnings.append(_wcprefix(
+                WC.ADD_EDU_VPP_SPLIT,
+                f"Доп. образование во ВПП: {ae_res.places} мест ≥ "
+                f"{ae_res.threshold} → размещается как {ae_res.n_objects} "
+                f"встроенных объекта(ов) (порог 150 — на один объект)."
+            ))
         # Встроенный (ВПП) и не «только потребность» → здание из жилой GFA.
         if ae_res.built_in and ae_res.building_area > 0 and not _ae_only_demand:
             residential_gfa = max(0.0, residential_gfa - ae_res.building_area)
@@ -1103,7 +1111,11 @@ def compute_tep_for_kit(
             formula=(
                 (
                     f"вверх кратно {norms.resolve('social_objects.add_education.rounding')} → "
-                    + ("встроенное (ВПП)" if ae_res and ae_res.built_in else "отдельно стоящее")
+                    + (
+                        (f"встроенное (ВПП, {ae_res.n_objects} об.)"
+                         if ae_res.n_objects > 1 else "встроенное (ВПП)")
+                        if ae_res.built_in else "отдельно стоящее"
+                    )
                     + (" — только потребность" if _ae_only_demand else "")
                 )
                 if ae_res else None

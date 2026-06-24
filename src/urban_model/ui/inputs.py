@@ -188,24 +188,35 @@ def render_params_tab() -> UserInputs:
         with st.container(border=True, key="param_left_card_include"):
             st.markdown("##### Учитывать в расчёте")
             st.caption("Включите компоненты — справа появятся их настройки.")
-            # ─── Объекты по НГП (соцобъекты с нормативной потребностью) ───
-            st.markdown(
-                '<div style="color:#475569;font-size:0.74rem;font-weight:700;'
-                'margin:2px 0 2px;letter-spacing:0.04em;text-transform:uppercase;">'
-                'Объекты по НГП</div>',
-                unsafe_allow_html=True,
-            )
-            include_kg = st.checkbox(":material/child_care: ДОО — детские сады", value=True, key="include_kg")
-            include_school = st.checkbox(":material/school: СОШ — школы", value=True, key="include_school")
-            include_add_education = st.checkbox(
-                ":material/palette: Организации доп. образования",
-                value=True, key="include_add_education",
+            # ─── Объекты по НГП: мастер-чекбокс + вложенные (со сдвигом) ───
+            # Снятие мастера выключает все вложенные сразу (disabled + эффект.
+            # include = вложенный AND мастер).
+            include_ngp = st.checkbox(
+                ":material/domain: Объекты по НГП",
+                value=True, key="include_ngp",
                 help=(
-                    "ВРИ 3.5.1 (РМД 15-26-2017): 65 мест/1000 чел. По нормативу "
-                    "< 150 мест — встроенное (ВПП), ≥ 150 — отдельно стоящее "
-                    "(ЗУ 15 м²/место + 30% озеленения)."
+                    "Соцобъекты с нормативной потребностью: ДОО, СОШ, доп. "
+                    "образование. Снимите — выключить все сразу."
                 ),
             )
+            _ng_sp, _ng_col = st.columns([0.05, 0.95])
+            with _ng_col:
+                _inc_kg = st.checkbox(
+                    ":material/child_care: ДОО — детские сады",
+                    value=True, key="include_kg", disabled=not include_ngp,
+                )
+                _inc_sch = st.checkbox(
+                    ":material/school: СОШ — школы",
+                    value=True, key="include_school", disabled=not include_ngp,
+                )
+                _inc_ae = st.checkbox(
+                    ":material/palette: Организации доп. образования",
+                    value=True, key="include_add_education", disabled=not include_ngp,
+                    help="ВРИ 3.5.1 (РМД 15-26-2017): 65 мест/1000 чел.",
+                )
+            include_kg = bool(_inc_kg) and include_ngp
+            include_school = bool(_inc_sch) and include_ngp
+            include_add_education = bool(_inc_ae) and include_ngp
             st.markdown(
                 '<hr style="margin:6px 0 6px;border:none;border-top:1px solid #EDEDED;">',
                 unsafe_allow_html=True,
@@ -935,41 +946,27 @@ def _render_add_education_tile() -> AdditionalEducationSpec:
                 "пределами квартала или уже существует."
             ),
         )
-        ae_mode_label = st.radio(
-            "Способ расчёта",
-            ["По нормативу", "Задать вручную"],
-            index=0, horizontal=True, key="ae_mode_label",
+        ae_in_vpp = st.toggle(
+            "Разместить в ВПП (встроенно-пристроенное)",
+            value=False, key="ae_in_vpp",
             help=(
-                "По нормативу — 65 мест/1000 чел, размещение авто по порогу "
-                "150 мест. Вручную — задать число мест и размещение."
+                "Встроить в жилой дом (ЗУ не выделяется). При > 150 мест объект "
+                "делится на несколько встроенных. Выкл — по нормативу: < 150 "
+                "встроенное, ≥ 150 отдельно стоящее."
             ),
         )
+        # «Задать вручную» — как у ДОУ/СОШ: квадратный чекбокс + поле ниже.
+        ae_manual = st.checkbox(
+            "Задать число мест вручную", value=False, key="ae_add_manual",
+        )
         ae_places_override = None
-        ae_in_vpp = False
-        if ae_mode_label == "Задать вручную":
-            ae_mode = "manual"
+        if ae_manual:
             ae_places_override = int(st.number_input(
                 "Число мест", min_value=0, max_value=5000, value=150, step=5,
                 key="ae_places_override",
             ))
-            ae_in_vpp = st.toggle(
-                "Разместить в ВПП (встроенно-пристроенное)",
-                value=False, key="ae_in_vpp",
-                help=(
-                    "Вкл — здание (17 м²/место) в составе жилого дома, ЗУ не "
-                    "выделяется. Выкл — отдельно стоящее (ЗУ 15 м²/место + 30% "
-                    "озеленения)."
-                ),
-            )
-        else:
-            ae_mode = "norm"
-            st.caption(
-                "По РМД 15-26-2017: < 150 мест → встроенное (ВПП); "
-                "≥ 150 → отдельно стоящее (ЗУ 15 м²/место + 30% озеленения). "
-                "Здание — 17 м²/место, до 4 эт. Парковка — как у ДОУ/СОШ."
-            )
     return AdditionalEducationSpec(
-        mode=ae_mode,
+        mode="manual" if ae_manual else "norm",
         places_override=ae_places_override,
         in_vpp=bool(ae_in_vpp),
         only_demand=bool(ae_only_demand),
