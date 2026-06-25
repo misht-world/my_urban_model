@@ -51,6 +51,15 @@ class TestParetoBundle:
         assert bundle.n_trials_total >= 1
         assert bundle.n_trials_feasible >= 1
 
+    def test_max_area_not_below_base(self, bundle, base_tep):
+        """v0.12.31: «Максимум площади» ГАРАНТИРОВАННО ≥ База — детерминированное
+        доуточнение (refine_extrema) стартует в т.ч. от конфига Базы, поэтому
+        даже если случайный Optuna промахнулся, доуточнённый экстремум ≥ Базы."""
+        mx = next((r for r in bundle.recommendations
+                   if r.label == "Максимум площади"), None)
+        if mx is not None:
+            assert mx.tep.apartments_area.value >= base_tep.apartments_area.value - 1.0
+
     def test_returns_recommendations(self, bundle):
         # v0.12.1: до 4 стратегий (площадь / эконом-индекс / сбаланс. /
         # девелоперский). Может быть меньше при дедупе на узком пуле.

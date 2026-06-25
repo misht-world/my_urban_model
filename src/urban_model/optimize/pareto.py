@@ -458,6 +458,12 @@ def _select_three(
     if _ok_znop:
         feasible = _ok_znop
 
+    # v0.12.31: «Базу кандидатом в пул» (костыль v0.12.30) заменило
+    # детерминированное доуточнение экстремумов (refine_extrema) в
+    # generate_pareto_recommendations — оно стартует в т.ч. от конфига Базы,
+    # поэтому «Макс. площади»/«Макс. индекса» ≥ База естественно, и при этом
+    # находит ИСТИННЫЙ максимум (промежуточные доли), а не просто саму Базу.
+
     # v0.12.26: потолки долей парковки по классу применяем ТОЛЬКО к
     # «реалистичным» карточкам (Пороговый/Девелоперский). «Максимум площади» и
     # «Максимум эконом-индекса» ищут ПРЕДЕЛЬНЫЕ значения БЕЗ потолков — иначе
@@ -788,7 +794,35 @@ def generate_pareto_recommendations(
         seed=seed,
         progress_callback=progress_callback,
     )
-    recs = _select_three(report.top_n, base_tep, base_options, constraints, norms)
+
+    # v0.12.31: детерминированное доуточнение экстремумов «Максимум площади» /
+    # «Максимум индекса» координатным спуском (площадь/индекс — гладкие функции
+    # малой размерности; случайный Optuna их разреженно покрывает и промахивается
+    # мимо истинного оптимума). Старты — лучшие кандидаты Optuna + конфиг Базы.
+    # Результаты добавляются в пул наравне с trial'ами (заменяет костыль v0.12.30).
+    # NB: при кластерах этажности (зонах) доуточнение пропускаем — этажность зон
+    # подбирает Optuna (vary_cluster_floors); спуск по долям парковки с
+    # фиксированными зонами дал бы кандидата с базовыми зонами вне диапазонов
+    # перебора (нарушил бы cluster_floors_ranges).
+    pool = report.top_n
+    if not base_options.floor_clusters:
+        try:
+            from urban_model.optimize.refine import refine_extrema
+            _feas = [r for r in report.top_n if r.feasible and r.apartments_area > 0]
+            _seeds = _feas[:1]  # лучший по площади (top_n уже отсортирован)
+            if _feas:
+                _seeds = _feas[:1] + sorted(
+                    (r for r in _feas if r.tep.economy is not None),
+                    key=lambda r: r.tep.economy.economy_index, reverse=True,
+                )[:1]
+            refined = refine_extrema(
+                site, base_options, norms, constraints, base_tep, _seeds, vpp_request,
+            )
+            pool = list(refined) + list(report.top_n)
+        except Exception:  # noqa: BLE001 — доуточнение не должно ронять подбор
+            pool = report.top_n
+
+    recs = _select_three(pool, base_tep, base_options, constraints, norms)
 
     # v0.9.11 (AUDIT S-1/P1-7): диагностика «почему пусто», чтобы UI
     # мог показать прицельное сообщение пользователю.
