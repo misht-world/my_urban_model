@@ -132,13 +132,16 @@ class TestSocialParkingInResult:
         assert res.social_parking_total.value > 0
         assert res.social_parking_kindergarten.value > 0
         assert res.social_parking_school.value > 0
-        # v0.12.21/28: total включает доп. образование (3.5.1) и поликлинику (3.4.1).
+        # v0.12.28.2: соц-парковка (own ЗУ) = ДОО + СОШ + ОТДЕЛЬНО СТОЯЩИЕ
+        # доп.обр/поликлиника. Встроенные (ВПП) паркуются на ЗУ жилья (открытые),
+        # в social_parking_total НЕ входят.
+        ae_in_soc = 0 if res.add_education_built_in else (res.add_education_parking_places.value or 0)
+        poly_in_soc = 0 if res.polyclinic_built_in else (res.polyclinic_parking_places.value or 0)
         assert (
             res.social_parking_total.value
             == res.social_parking_kindergarten.value
             + res.social_parking_school.value
-            + (res.add_education_parking_places.value or 0)
-            + (res.polyclinic_parking_places.value or 0)
+            + ae_in_soc + poly_in_soc
         )
 
     def test_separate_from_housing_pool(self, spb, site):

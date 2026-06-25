@@ -583,9 +583,23 @@ def compute_tep_for_kit(
         sch_include=sp_sch_active,
     )
     open_space_per_place = norms.resolve("parking.open_space_per_place")
-    # Парковка доп. образования (ВРИ 3.5.1) — открытая на своём ЗУ, как у ДОУ/СОШ
-    # (по формуле parking.social_objects). Вливается в площадь парковок соцобъектов.
-    soc_park_places_total = soc_park.total_places + ae_parking_places + poly_parking_places
+    # v0.12.28.2: парковка доп.обр/поликлиники зависит от размещения:
+    #   ВСТРОЕННЫЕ (ВПП) → открытые на ЗУ ЖИЛОЙ застройки (residential lot);
+    #   ОТДЕЛЬНО СТОЯЩИЕ → на собственном ЗУ соцобъекта (как ДОУ/СОШ).
+    _ae_built = bool(ae_res.built_in) if ae_res is not None else False
+    _poly_built = bool(poly_res.built_in) if poly_res is not None else False
+    ae_park_standalone = 0 if _ae_built else ae_parking_places
+    poly_park_standalone = 0 if _poly_built else poly_parking_places
+    builtin_social_park_places = (
+        (ae_parking_places if _ae_built else 0)
+        + (poly_parking_places if _poly_built else 0)
+    )
+    builtin_social_park_area = builtin_social_park_places * open_space_per_place
+    # Соц-парковки на СОБСТВЕННЫХ ЗУ (ДОУ + СОШ + отд. стоящие доп.обр/поликлиника):
+    # отдельный компонент баланса, исключается из знаменателя 25%-озеленения.
+    soc_park_places_total = (
+        soc_park.total_places + ae_park_standalone + poly_park_standalone
+    )
     soc_park_area = soc_park_places_total * open_space_per_place
 
     # === Инженерная инфраструктура (v0.12) ===
@@ -772,9 +786,15 @@ def compute_tep_for_kit(
     # === Площадь жилого ЗУ (ЗУ жилой застройки) ===
     # ЗУ жилья = площадь застройки + проезды на ЗУ + озеленение жилого
     #            + озеленение ВПП + открытые парковки (если учитываются)
+    # v0.12.28.2: + открытые парковки ВСТРОЕННЫХ доп.обр/поликлиники (они
+    # размещаются на ЗУ жилья в открытом исполнении).
+    builtin_social_park_in_lot = (
+        0.0 if not options.include_parking else builtin_social_park_area
+    )
     housing_lot_v = (
         footprint_v + drive_lot_v + green_housing_v + bi_greening_v
         + ae_greening_builtin + poly_greening_builtin + parking_open_in_lot
+        + builtin_social_park_in_lot
     )
 
     # === КИТ ПЗЗ = площадь квартир / ЗУ жилой застройки ===
@@ -802,7 +822,7 @@ def compute_tep_for_kit(
                     "driveways.housing_lot_share", floors=c.floors)
             green_i = green_housing_v * w
             bi_green_i = bi_greening_v * w
-            open_park_i = parking_open_in_lot * w
+            open_park_i = (parking_open_in_lot + builtin_social_park_in_lot) * w
             lot_i = (footprint_i + footprint_i * lot_share_i
                      + green_i + bi_green_i + open_park_i)
             _cluster_kits.append((apt_i / lot_i) if lot_i > 0 else 0.0)

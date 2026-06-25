@@ -664,6 +664,10 @@ def _extract_kpi_fields(
     ae = int(getattr(tep, "add_education_places_accepted", None).value or 0) \
         if getattr(tep, "add_education_places_accepted", None) is not None else 0
     ae_bi = bool(getattr(tep, "add_education_built_in", False))
+    # Поликлиника (ВРИ 3.4.1, v0.12.28)
+    poly = int(getattr(tep, "polyclinic_visits_accepted", None).value or 0) \
+        if getattr(tep, "polyclinic_visits_accepted", None) is not None else 0
+    poly_bi = bool(getattr(tep, "polyclinic_built_in", False))
     # v0.9.29: этажность берём из TEP (учитывает кластеры). При зонах —
     # «9 / 21 (ср. 15.0)»; иначе — одиночная этажность.
     floors = _floors_label(tep, options)
@@ -694,6 +698,7 @@ def _extract_kpi_fields(
         ("ДОО",                  f"{kg} мест ({kg_n} об.)" if kg > 0 else "—"),
         ("СОШ",                  f"{sch} мест ({sch_n} об.)" if sch > 0 else "—"),
         ("Доп. образование",     f"{ae} мест ({'ВПП' if ae_bi else 'отд.'})" if ae > 0 else "—"),
+        ("Поликлиника",          f"{poly} посещ. ({'ВПП' if poly_bi else 'отд.'})" if poly > 0 else "—"),
         ("ЗНОП",                 f"{zpp:.0f} м²/чел" if zpp > 0 else "0 м²/чел"),
         ("Инженерия",            eng_str),
         ("Эконом-индекс",        econ_index),

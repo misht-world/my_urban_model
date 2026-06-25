@@ -185,6 +185,14 @@ def _buckets_delta(formula_str: str | None, total: int) -> str | None:
     return f"{n} {ending} по {per_str}"
 
 
+def _ae_obj_count(formula: str | None) -> int:
+    """Число объектов доп.обр/поликлиники из formula-строки (ВПП-дробление)."""
+    if not formula:
+        return 1
+    m = re.search(r"(\d+)\s*(?:об\.|объект|офис)", formula)
+    return int(m.group(1)) if m else 1
+
+
 def render_main_kpi_grid(result: TEPResult, options=None) -> None:
     """Единый KPI-блок (v0.12.16): одинаков на «Расчёте» («Основные показатели»)
     и в «Оптимизации» («База»).
@@ -197,10 +205,10 @@ def render_main_kpi_grid(result: TEPResult, options=None) -> None:
     """
     kit_max = result.kit_normative_max.value or 0
 
-    # ── Ряд 1 (эконом-индекс перенесён в ряд 3, v0.12.21) ────────────────
-    # v0.12.24: 5 колонок (5-я пустая) — чтобы КИТ/Население/Площадь/Этажность
-    # стояли РОВНО под ДОО/СОШ/Доп.обр/Парковки ряда 2 (тоже 5 колонок).
-    c1, c2, c3, c4, _c5 = st.columns(5)
+    # ── Ряд 1 ────────────────────────────────────────────────────────────
+    # v0.12.28.2: ЗНОП перенесён в ряд 1 (5-я ячейка), освободив место под
+    # Поликлинику в ряду 2.
+    c1, c2, c3, c4, c5 = st.columns(5)
     c1.metric(
         "КИТ (ПЗЗ)", f"{result.kit.value:.3f}",
         help=(
@@ -219,8 +227,23 @@ def render_main_kpi_grid(result: TEPResult, options=None) -> None:
     )
     c3.metric("Площадь квартир", fmt_m2(result.apartments_area.value))
     c4.metric("Этажность", _kpi_floors_label(result, options))
+    znop_pp = result.znop_per_person.value or 0
+    znop_area = int(result.znop_area.value or 0)
+    c5.metric(
+        "ЗНОП", f"{znop_area:,} м²".replace(",", " ") if znop_area > 0 else "—",
+        delta=f"{znop_pp:.1f} м²/чел" if znop_pp > 0 else None, delta_color="off",
+        help="Общая площадь ЗНОП и норма на жителя.",
+    )
+    if result.floor_clusters_detail and any(
+        "znop_per_person" in d for d in result.floor_clusters_detail
+    ):
+        _zz = " · ".join(
+            f"**{d['label']}**: {d.get('znop_per_person', 0):.0f}"
+            for d in result.floor_clusters_detail
+        )
+        c5.caption(f":material/park: ЗНОП зон, м²/чел: {_zz}")
 
-    # ── Ряд 2 ───────────────────────────────────────────────────────────
+    # ── Ряд 2 (соцобъекты + парковки) ────────────────────────────────────
     c6, c7, c8, c9, c10 = st.columns(5)
     kg_total = int(result.kindergarten_places_accepted.value or 0)
     c6.metric(
@@ -244,6 +267,17 @@ def render_main_kpi_grid(result: TEPResult, options=None) -> None:
         delta=(ae_place if ae_total > 0 else None), delta_color="off",
         help="Организации доп. образования (ВРИ 3.5.1).",
     )
+    poly_v = int(getattr(result, "polyclinic_visits_accepted", None).value or 0) \
+        if getattr(result, "polyclinic_visits_accepted", None) is not None else 0
+    poly_place = (
+        "ВПП (офис врача)" if getattr(result, "polyclinic_built_in", False)
+        else "отд. стоящая"
+    )
+    c9.metric(
+        "Поликлиника", f"{poly_v} посещ." if poly_v > 0 else "—",
+        delta=(poly_place if poly_v > 0 else None), delta_color="off",
+        help="Амбулаторно-поликлинические (ВРИ 3.4.1): посещений/смену.",
+    )
     op_pl = int(result.parking_open_places.value or 0)
     ml_pl = int(result.parking_multilevel_places.value or 0)
     ug_pl = int(result.parking_underground_places.value or 0)
@@ -255,26 +289,11 @@ def render_main_kpi_grid(result: TEPResult, options=None) -> None:
     if ml_pl:   _parts.append(f"многоур. {ml_pl}")
     if styl_pl: _parts.append(f"стилоб. {styl_pl}")
     if ug_pl:   _parts.append(f"подз. {ug_pl}")
-    c9.metric(
+    c10.metric(
         "Парковки", f"{total_pl} м/м" if total_pl > 0 else "—",
         delta=" · ".join(_parts) or None, delta_color="off",
         help="Всего машино-мест и разбивка по типам.",
     )
-    znop_pp = result.znop_per_person.value or 0
-    znop_area = int(result.znop_area.value or 0)
-    c10.metric(
-        "ЗНОП", f"{znop_area:,} м²".replace(",", " ") if znop_area > 0 else "—",
-        delta=f"{znop_pp:.1f} м²/чел" if znop_pp > 0 else None, delta_color="off",
-        help="Общая площадь ЗНОП и норма на жителя.",
-    )
-    if result.floor_clusters_detail and any(
-        "znop_per_person" in d for d in result.floor_clusters_detail
-    ):
-        _zz = " · ".join(
-            f"**{d['label']}**: {d.get('znop_per_person', 0):.0f}"
-            for d in result.floor_clusters_detail
-        )
-        c10.caption(f":material/park: ЗНОП зон, м²/чел: {_zz}")
 
     # ── Ряд 3: экономика (выход жилья / соц. нагрузка) ───────────────────
     if result.economy is not None:
@@ -609,7 +628,10 @@ def render_details(result: TEPResult) -> None:
             f":material/palette: Организации доп. образования — {_ae_label}",
             expanded=False,
         ):
+            _ae_n = _ae_obj_count(result.add_education_places_accepted.formula)
+            _ae_place_str = _ae_label + (f", {_ae_n} объект(ов)" if _ae_n > 1 else "")
             rows = [
+                _text_row("Размещение", _ae_place_str),
                 _row("Мест требуется", result.add_education_places_required, fmt_float),
                 _row("Мест принято", result.add_education_places_accepted, fmt_int),
                 _row("Площадь здания (17 м²/место)",
@@ -618,8 +640,11 @@ def render_details(result: TEPResult) -> None:
             if not _ae_built_in:
                 rows.append(_row("Площадь ЗУ (15 м²/место)",
                                  result.add_education_plot_area, fmt_m2))
-            rows.append(_row("Парковка (как у ДОУ/СОШ)",
-                             result.add_education_parking_places, fmt_int))
+            _ae_park_lbl = (
+                "Парковка — открытая на ЗУ жилья" if _ae_built_in
+                else "Парковка — на своём ЗУ (как ДОУ/СОШ)"
+            )
+            rows.append(_row(_ae_park_lbl, result.add_education_parking_places, fmt_int))
             _show_rows(rows)
 
     # 🏥 Амбулаторно-поликлинические учреждения (ВРИ 3.4.1, v0.12.28)
@@ -629,17 +654,23 @@ def render_details(result: TEPResult) -> None:
         with st.expander(
             f":material/local_hospital: Поликлиника — {_poly_label}", expanded=False,
         ):
+            _poly_n = _ae_obj_count(result.polyclinic_visits_accepted.formula)
+            _poly_place_str = _poly_label + (f", {_poly_n} объект(ов)" if _poly_n > 1 else "")
             rows = [
+                _text_row("Размещение", _poly_place_str),
                 _row("Посещений требуется", result.polyclinic_visits_required, fmt_float),
                 _row("Посещений принято", result.polyclinic_visits_accepted, fmt_int),
-                _row(f"Площадь здания ({8 if _poly_bi else 23} м²/посещ.)",
+                _row(f"Площадь здания ({12 if _poly_bi else 23} м²/посещ.)",
                      result.polyclinic_building_area, fmt_m2),
             ]
             if not _poly_bi:
                 rows.append(_row("Площадь ЗУ (10 м²/посещ., мин. 2000)",
                                  result.polyclinic_plot_area, fmt_m2))
-            rows.append(_row("Парковка (5 раб + 40 посетит.)",
-                             result.polyclinic_parking_places, fmt_int))
+            _poly_park_lbl = (
+                "Парковка — открытая на ЗУ жилья" if _poly_bi
+                else "Парковка — на ЗУ поликлиники"
+            )
+            rows.append(_row(_poly_park_lbl, result.polyclinic_parking_places, fmt_int))
             _show_rows(rows)
 
     # Плоскостные спортивные сооружения
