@@ -757,14 +757,12 @@ def generate_pareto_recommendations(
             ]
         })
 
-    # v0.12.7: потолки долей парковки по классу жилья — направляют перебор.
-    try:
-        _pcaps = norms.resolve(
-            "economy.parking_caps",
-            residential_class=getattr(base_options, "residential_class", "comfort"),
-        )
-    except (KeyError, TypeError, ValueError):
-        _pcaps = None
+    # v0.12.29.x: search space БЕЗ потолков класса (caps=None) — Optuna
+    # исследует ВЕСЬ диапазон долей парковки (вкл. мимо-потолочные миксы вроде
+    # min_open 88% подземки, как у Базы). Потолки класса остаются ТОЛЬКО в
+    # фильтре пула (_violates_parking_caps) для «Пороговый»/«Девелоперский».
+    # Так «Максимум площади»/«Максимум индекса» честно ищут предельные значения
+    # (раньше слой диапазонов Optuna втихую ограничивал и их). Раньше: caps=_pcaps.
     # v0.12.14: ВПП — фиксированный режим из «Параметров» (vpp_request), чтобы
     # подбор пересчитывал площадь ВПП каждый trial, но НЕ менял принцип расчёта
     # и не отключал ВПП.
@@ -773,7 +771,7 @@ def generate_pareto_recommendations(
         constraints,
         has_clusters=bool(base_options.floor_clusters),
         vary_zones=vary_zones,
-        caps=_pcaps,
+        caps=None,
         vpp_fixed_mode=_vpp_mode,
         vpp_custom_4_4_m2=getattr(vpp_request, "custom_4_4_m2", None) if vpp_request else None,
         vpp_custom_4_6_m2=getattr(vpp_request, "custom_4_6_m2", None) if vpp_request else None,
