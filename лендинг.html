@@ -157,7 +157,7 @@
 
 <header class="hero">
   <div class="wrap">
-    <div class="eyebrow">Санкт-Петербург · ПЗЗ / СП / НГП</div>
+    <div class="eyebrow">Санкт-Петербург</div>
     <h1>Математическая модель <b>застройки территории</b></h1>
     <div class="accent"></div>
     <p>Задайте площадь квартала и ограничения — система подберёт максимально
@@ -273,12 +273,21 @@
       </figure>
       <figure>
         <div class="frame">
+          <img src="assets/screen-detail.png" alt="Детальная информация"
+               onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+          <div class="ph" style="display:none"><div class="big">🗂️</div>
+            <b>Детальная информация</b><small>assets/screen-detail.png</small></div>
+        </div>
+        <figcaption>Детальная информация<span>жильё, соцобъекты, парковки, инженерия, аудит с источниками</span></figcaption>
+      </figure>
+      <figure>
+        <div class="frame">
           <img src="assets/screen-optimize.png" alt="Подбор сценариев"
                onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
           <div class="ph" style="display:none"><div class="big">🎯</div>
             <b>Подбор сценариев</b><small>assets/screen-optimize.png</small></div>
         </div>
-        <figcaption>Подбор сценариев<span>готовые рекомендации по площади и прибыли</span></figcaption>
+        <figcaption>Подбор сценариев<span>4 стратегии: площадь · эконом-индекс · пороговый · девелоперский</span></figcaption>
       </figure>
       <figure>
         <div class="frame">
@@ -405,6 +414,13 @@
              конкретного правила-источника — результат прозрачен и проверяем.
              Программа не «придумывает» цифры, а применяет официальные требования.
              Сейчас она настроена на нормативы Санкт-Петербурга.</p>
+          <p>Используемые документы:</p>
+          <ul style="margin:0 0 10px 18px;color:#666;font-size:15px;font-weight:300;line-height:1.7">
+            <li><b>ПЗЗ Санкт-Петербурга</b> — предельные параметры (КИТ, озеленение, парковки).</li>
+            <li><b>НГП Санкт-Петербурга</b> — нормативы потребности в соц. и обслуживающих объектах.</li>
+            <li><b>СП 42.13330</b> (градостроительство), <b>СП 158.13330</b> (поликлиники),
+                <b>РМД 15-26-2017</b> — площади и наполняемость объектов.</li>
+          </ul>
         </div></details>
 
       <details class="about"><summary>Чего программа не делает</summary>
@@ -429,7 +445,7 @@
     только с письменного согласия автора.
     По вопросам сотрудничества: <b>misht.cad@gmail.com</b>.
     <span style="display:block;margin-top:10px;color:#bbb;font-size:12px">
-      Версия лендинга <b id="siteVer">v0.12.14</b> · 2026-06-23</span>
+      Версия лендинга <b id="siteVer">v0.12.28</b> · 2026-06-25</span>
   </div>
 </footer>
 
@@ -437,7 +453,7 @@
 // Версионность: метка приписывается к URL скриншотов (?v=…) — браузер
 // всегда тянет свежие картинки, не из кэша. Поднимай SITE_VER при замене
 // картинок/стилей.
-const SITE_VER = "0.12.14";
+const SITE_VER = "0.12.28";
 (function(){
   document.querySelectorAll('.shots img').forEach(img => {
     const src = img.getAttribute('src');
