@@ -44,10 +44,10 @@ class TestCompute:
         assert r.built_in is False
         assert r.plot_area == pytest.approx(max(2000, 10 * 150))  # = 2000
 
-    def test_vpp_building_8(self, spb):
+    def test_vpp_building_12(self, spb):
         r = polyclinic.compute(3000.0, spb)  # ~79 → ВПП
         assert r.built_in is True
-        assert r.building_area == pytest.approx(8 * r.visits)
+        assert r.building_area == pytest.approx(12 * r.visits)
         assert r.plot_area == 0.0
 
     def test_vpp_split_over_100(self, spb):

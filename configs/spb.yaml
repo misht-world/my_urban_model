@@ -331,10 +331,10 @@ social_objects:
       source: "СП 158.13330.2014"
     building_area_per_visit_vpp:
       type: scalar
-      value: 8
+      value: 12
       unit: "m2_per_visit"
       note: "площадь здания ВПП (офис врача) на 1 посещение"
-      source: "СНиП 2.08.02-89 / СП 158.13330 (как старый ВПП 3.4.1)"
+      source: "принято условно с учётом табл. Е.1 СП 158.13330.2014"
     building_area_per_visit_detached:
       type: scalar
       value: 23
