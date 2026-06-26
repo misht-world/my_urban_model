@@ -123,3 +123,52 @@ def test_apply_reproduces_recommendation(site_large, base_options, norms, bundle
         rec.tep.apartments_area.value, rel=1e-3
     )
     assert reproduced.kit.value == pytest.approx(rec.tep.kit.value, rel=1e-3)
+
+
+def test_apply_reproduces_recommendation_with_vpp(site_large, norms):
+    """v0.12.32: при ВПП «Применить к Расчёту» обязан ПЕРЕСОБРАТЬ ВПП под
+    этажность/парковку карточки (rec_options несёт built_in_list базы). Без
+    проброса vpp_request площадь на «Расчёте» разошлась бы с карточкой на
+    десятки м² (баг, найденный аудитом)."""
+    from types import SimpleNamespace
+
+    from urban_model.calculations import vpp as _vpp
+    from urban_model.models.parking import ParkingConfig
+    from urban_model.optimize.pareto import (
+        ParetoConstraints,
+        generate_pareto_recommendations,
+    )
+    from urban_model.ui.optimizer import _rec_options_from_params
+    from urban_model.ui.state import run_calculation
+
+    base = CalculationOptions(
+        floors=12, planning_doc=True,
+        parking=ParkingConfig(mode="custom", open_share=0.5, multilevel_share=0.5,
+                              underground_share=0.0, multilevel_levels=5),
+    )
+    # База как в UI — 2-проход ВПП.
+    o1 = base.model_copy(deep=True); o1.built_in = None; o1.built_in_list = []
+    r0 = solve_max_kit(site_large, o1, norms)
+    build = _vpp.build_built_ins(mode="half_floor", population=r0.population.value or 0,
+                                 footprint=r0.housing_footprint.value or 0, norms=norms)
+    bopts = base.model_copy(deep=True); bopts.built_in = None
+    bopts.built_in_list = build.built_ins
+    btep = solve_max_kit(site_large, bopts, norms)
+
+    vpp_req = SimpleNamespace(mode="half_floor", custom_4_4_m2=None, custom_4_6_m2=None)
+    con = ParetoConstraints(floors_range=(3, 16), allow_underground=False,
+                            allow_stylobate=False)
+    bundle = generate_pareto_recommendations(
+        site_large, bopts, norms, btep, n_trials=200, seed=42,
+        constraints=con, vpp_request=vpp_req,
+    )
+    rec = next((r for r in bundle.recommendations if r.label == "Максимум площади"), None)
+    if rec is None:
+        pytest.skip("нет карточки «Максимум площади»")
+    rec_opts = _rec_options_from_params(bopts, rec.params)
+    # как app.py: vpp_request пробрасывается → ВПП пересобирается под карточку.
+    applied = run_calculation(site=site_large, options=rec_opts, norms=norms,
+                              mode="max_kit", vpp_request=vpp_req)
+    assert applied.apartments_area.value == pytest.approx(
+        rec.tep.apartments_area.value, rel=1e-3
+    )

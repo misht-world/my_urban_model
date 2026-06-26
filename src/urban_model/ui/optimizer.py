@@ -404,7 +404,7 @@ def _render_recommendations_section(
         cols = st.columns(2)
         for j, rec in enumerate(row):
             with cols[j]:
-                _render_recommendation_card(rec, row_start + j, base_options)
+                _render_recommendation_card(rec, row_start + j, base_options, vpp_request)
 
     # v0.12.11: ДИНАМИЧЕСКОЕ пояснение преимуществ «Девелоперского» —
     # конкретные сильные стороны именно этого варианта vs остальные.
@@ -784,9 +784,10 @@ def _rec_options_from_params(
 
 def _render_recommendation_card(
     rec: Recommendation, idx: int, base_options: CalculationOptions,
+    vpp_request=None,
 ) -> None:
     """Одна карточка рекомендации — единый формат KPI (v0.9.6)."""
-    return _render_recommendation_card_impl(rec, idx, base_options)
+    return _render_recommendation_card_impl(rec, idx, base_options, vpp_request)
 
 
 def _rec_xlsx_bytes(label: str, tep, options) -> bytes:
@@ -810,6 +811,7 @@ def _rec_xlsx_bytes(label: str, tep, options) -> bytes:
 
 def _render_recommendation_card_impl(
     rec: Recommendation, idx: int, base_options: CalculationOptions,
+    vpp_request=None,
 ) -> None:
     with st.container(border=True):
         # v0.12.3: невидимый маркер — по нему CSS растягивает карточку до
@@ -861,6 +863,11 @@ def _render_recommendation_card_impl(
                         use_container_width=True):
             st.session_state["applied_options"] = rec_options
             st.session_state["applied_label"] = rec.label
+            # v0.12.32: сохраняем режим ВПП подбора, чтобы вкладка «Расчёт»
+            # ПЕРЕСОБРАЛА ВПП под этажность/парковку карточки (rec_options несёт
+            # built_in_list БАЗЫ — без пересборки площадь разошлась бы на десятки
+            # м² при иной этажности карточки).
+            st.session_state["applied_vpp_request"] = vpp_request
             st.toast(f"Применено: {rec.label} → вкладка «Расчёт»", icon="📥")
             st.rerun()
         with bcol3:

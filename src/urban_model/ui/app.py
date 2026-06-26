@@ -813,10 +813,14 @@ with tab_calc:
         if bc2.button("↩ Вернуть форму"):
             del st.session_state["applied_options"]
             st.session_state.pop("applied_label", None)
+            st.session_state.pop("applied_vpp_request", None)
             st.rerun()
         calc_options = _applied
         calc_mode = "max_kit"
-        calc_vpp_request = None
+        # v0.12.32: ВПП пересобираем под этажность/парковку применённой карточки
+        # (rec_options несёт built_in_list базы; vpp_request подбора сохранён при
+        # «В расчёт»). Без этого площадь на «Расчёте» расходилась бы с карточкой.
+        calc_vpp_request = st.session_state.get("applied_vpp_request")
         calc_vpp_auto = False
     else:
         calc_options = inputs.options
