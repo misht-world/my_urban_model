@@ -20,18 +20,25 @@ from urban_model.export.album import theme as T
 from urban_model.export.table import results_to_dataframe
 from urban_model.export.variant_tables import build_variant_table_blocks
 from urban_model.models.result import TEPResult
+from pptx.enum.text import PP_ALIGN
+
 from urban_model.ui.formatting import fmt_int, fmt_m2
 
 _MARGIN = T.LEFT
 _CONTENT_W = T.CONTENT_W
 
-# Эмодзи для KPI-карточек (как значки на сайте). Рендерятся Segoe UI Emoji.
+# Значки KPI-карточек. База — без селектора эмодзи; при выводе добавляем
+# variation selector U+FE0E (текстовое, МОНОХРОМНОЕ представление), чтобы значок
+# рендерился серым (цветом подписи), а не цветным эмодзи — как в модели.
 _EMO = {
-    "КИТ (ПЗЗ)": "🏢", "Население, чел.": "👥", "Площадь квартир": "🏠",
-    "Этажность": "🏙️", "ЗНОП": "🌳", "ДОО": "🧸", "СОШ": "🏫",
-    "Доп. образование": "🎨", "Поликлиника": "🏥", "Парковки": "🚗",
-    "Эконом-индекс": "💰", "Выход жилья": "📤", "Соц. нагрузка": "⚖️", "ROI": "📈",
+    "КИТ (ПЗЗ)": "\U0001F3E2", "Население, чел.": "\U0001F465",
+    "Площадь квартир": "\U0001F3E0", "Этажность": "\U0001F3D9",
+    "ЗНОП": "\U0001F333", "ДОО": "\U0001F9F8", "СОШ": "\U0001F3EB",
+    "Доп. образование": "\U0001F3A8", "Поликлиника": "\U0001F3E5",
+    "Парковки": "\U0001F697", "Эконом-индекс": "\U0001F4B0",
+    "Выход жилья": "\U0001F4E4", "Соц. нагрузка": "⚖", "ROI": "\U0001F4C8",
 }
+_VS_TEXT = "︎"     # variation selector-15 -> монохромный (серый) значок
 
 
 def _clean_name(name: str) -> str:
@@ -50,7 +57,7 @@ def _kpi_pairs(tep: TEPResult) -> list[tuple[str, str, str | None]]:
     """(значение, подпись с эмодзи, доп.строка) — зеркало render_main_kpi_grid."""
     def lbl(t):
         e = _EMO.get(t)
-        return f"{e} {t}" if e else t
+        return f"{e}{_VS_TEXT} {t}" if e else t
 
     pairs: list[tuple[str, str, str | None]] = []
     pairs.append((f"{tep.kit.value:.3f}", lbl("КИТ (ПЗЗ)"), None))
@@ -98,7 +105,8 @@ def _econ_pairs(tep: TEPResult) -> list[tuple[str, str, str | None]]:
         return []
 
     def lbl(t):
-        return f"{_EMO.get(t, '')} {t}".strip()
+        e = _EMO.get(t)
+        return f"{e}{_VS_TEXT} {t}" if e else t
 
     out: list[tuple[str, str, str | None]] = [
         (f"{e.economy_index:.0f} / 100", lbl("Эконом-индекс"), None),
@@ -119,20 +127,21 @@ def _var_label(v_index: int) -> str:
     return "База" if v_index == 0 else f"Вариант {v_index}"
 
 
-def _chrome(s, v_index: int) -> None:
-    """Общие элементы слайда варианта: бренд справа-сверху + вертикальный ушко."""
+def _chrome(s, rail_labels: list[str], current: int | None) -> None:
+    """Общие элементы слайда: бренд справа-сверху + рейка вариантов справа."""
     T.top_right_brand(s)
-    T.variant_tab(s, _var_label(v_index), v_index)
+    T.variant_rail(s, rail_labels, current)
 
 
-def _card_slide(deck, name: str, tep: TEPResult, kind: str, v_index: int) -> None:
+def _card_slide(deck, name: str, tep: TEPResult, kind: str, v_index: int,
+                rail_labels: list[str]) -> None:
     """Слайд-карточка варианта: KPI-сетка как на сайте (2 ряда × 5 + экономика)."""
     s = deck.slide()
     T.title_band(s, kind, "")
-    _chrome(s, v_index)
-    # Длинное имя — отдельной строкой под чертой (перенос, не вылезает за лист).
+    _chrome(s, rail_labels, v_index)
+    # Длинное имя — отдельной строкой под чертой (перенос), по правому краю.
     T.text(s, _MARGIN, 1.3, _CONTENT_W, 0.6, _clean_name(name),
-           size=12, color=T.MUTED, spacing=1.05)
+           size=12, color=T.MUTED, spacing=1.05, align=PP_ALIGN.RIGHT)
 
     def _draw_row(pairs, top):
         n = len(pairs)
@@ -154,13 +163,14 @@ def _card_slide(deck, name: str, tep: TEPResult, kind: str, v_index: int) -> Non
     T.footer(s)
 
 
-def _table_slide(deck, name: str, block, v_index: int) -> None:
+def _table_slide(deck, name: str, block, v_index: int,
+                 rail_labels: list[str]) -> None:
     """Слайд-таблица одной вкладки варианта (из общего билдера) + итог раздела."""
     s = deck.slide()
     T.title_band(s, block.title, "")
-    _chrome(s, v_index)
+    _chrome(s, rail_labels, v_index)
     T.text(s, _MARGIN, 1.28, _CONTENT_W, 0.35, _clean_name(name),
-           size=11, color=T.SOFT)
+           size=11, color=T.SOFT, align=PP_ALIGN.RIGHT)
     if block.columns is None:
         headers = ["Показатель", "Значение"]
         rows = [(r["Показатель"], r["Значение"]) for r in block.rows]
@@ -173,18 +183,19 @@ def _table_slide(deck, name: str, block, v_index: int) -> None:
     top = 1.75
     T.table(s, _MARGIN, top, _CONTENT_W, headers, rows[:max_rows], col_ratios=ratios)
     note_top = top + 0.4 + 0.32 * min(len(rows), max_rows) + 0.12
-    # Итог раздела (item 10) — выделенной строкой, затем справочные notes.
+    # Итог раздела — мелким серым, как справочные notes (без «ИТОГ», не жирный).
     if block.summary:
-        T.text(s, _MARGIN, note_top, _CONTENT_W, 0.6, f"ИТОГ — {block.summary}",
-               size=10, bold=True, color=T.INK)
-        note_top += 0.5
+        T.text(s, _MARGIN, note_top, _CONTENT_W, 0.6, block.summary,
+               size=9, color=T.MUTED)
+        note_top += 0.42
     for note in block.notes:
         T.text(s, _MARGIN, note_top, _CONTENT_W, 0.6, note, size=9, color=T.MUTED)
         note_top += 0.42
     T.footer(s)
 
 
-def _comparison_slides(deck, scenarios: list[tuple[str, TEPResult]]) -> None:
+def _comparison_slides(deck, scenarios: list[tuple[str, TEPResult]],
+                       rail_labels: list[str]) -> None:
     """Сводная сравнительная таблица (как в xlsx). Разбита по слайдам."""
     clean = [(_clean_name(n), t) for n, t in scenarios]
     df = results_to_dataframe(clean)
@@ -195,7 +206,7 @@ def _comparison_slides(deck, scenarios: list[tuple[str, TEPResult]]) -> None:
         s = deck.slide()
         part = "" if len(labels) <= chunk else f" ({start // chunk + 1})"
         T.title_band(s, "Сравнение", "вариантов" + part)
-        T.top_right_brand(s)
+        _chrome(s, rail_labels, None)   # рейка со всеми вариантами (обзор)
         sub = labels[start:start + chunk]
         headers = ["Показатель"] + names
         rows = []
@@ -227,9 +238,12 @@ def build_concept_album(
     T.title_slide(deck, title_line, title_bold,
                   subtitle="Базовый вариант и варианты оптимизации", meta_line=meta)
 
+    # Фиксированные подписи ушек-рейки: сверху вниз — База, Вариант 1, 2…
+    rail_labels = [_var_label(i) for i in range(n_var)]
+
     # (9) Сначала — сводное сравнение (обзор всех вариантов).
     try:
-        _comparison_slides(deck, scenarios)
+        _comparison_slides(deck, scenarios, rail_labels)
     except Exception:  # noqa: BLE001 — §12: альбом не должен падать
         pass
 
@@ -237,7 +251,7 @@ def build_concept_album(
     for v_idx, (name, tep) in enumerate(scenarios):
         kind = "Базовый вариант" if v_idx == 0 else f"Вариант {v_idx}"
         try:
-            _card_slide(deck, name, tep, kind, v_idx)
+            _card_slide(deck, name, tep, kind, v_idx, rail_labels)
         except Exception:  # noqa: BLE001
             pass
         try:
@@ -246,7 +260,7 @@ def build_concept_album(
             blocks = []
         for blk in blocks:
             try:
-                _table_slide(deck, name, blk, v_idx)
+                _table_slide(deck, name, blk, v_idx, rail_labels)
             except Exception:  # noqa: BLE001
                 pass
 

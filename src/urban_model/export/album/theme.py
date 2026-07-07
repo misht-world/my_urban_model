@@ -27,9 +27,11 @@ EMU = 914400
 SW = int(13.333 * EMU)
 SH = int(7.5 * EMU)
 
-# Шрифт — как в модели/на сайте (-apple-system, "Segoe UI", Roboto…).
-# На Windows/PowerPoint это Segoe UI.
+# Шрифт — как в модели/на сайте. Заголовки: тонкий Light + жирный Black
+# (как «Модель застройки **территории**»); таблицы/текст — обычный Segoe UI.
 FONT = "Segoe UI"
+FONT_LIGHT = "Segoe UI Light"
+FONT_BLACK = "Segoe UI Black"
 
 # Отступы: слева больше (сторона брошюровки), справа — место под вертикальный
 # указатель варианта.
@@ -98,7 +100,8 @@ def rect(slide, left, top, w, h, fill, line=None, line_w=0.75):
 
 
 def text(slide, left, top, w, h, lines, size=13, bold=False, color=INK,
-         align=PP_ALIGN.LEFT, anchor=MSO_ANCHOR.TOP, spacing=1.0):
+         align=PP_ALIGN.LEFT, anchor=MSO_ANCHOR.TOP, spacing=1.0,
+         font_name=None):
     tb = slide.shapes.add_textbox(int(left * EMU), int(top * EMU),
                                   int(w * EMU), int(h * EMU))
     tf = tb.text_frame
@@ -118,50 +121,53 @@ def text(slide, left, top, w, h, lines, size=13, bold=False, color=INK,
         p.font.size = Pt(size)
         p.font.bold = bd
         p.font.color.rgb = _c(col)
-        _font(p.font)
+        p.font.name = font_name or FONT
     return tb
 
 
 def title_band(slide, title_plain, title_bold="", idx=None):
-    """Шапка слайда: крупный тонкий заголовок + жирное ключевое слово,
-    тонкая амбер-черта снизу. Сдвинута вправо (LEFT) — под брошюровку слева."""
+    """Шапка слайда: тонкий (Segoe UI Light) заголовок + жирное (Black)
+    ключевое слово, по ПРАВОМУ краю; амбер-черта справа под ним."""
+    right = LEFT + CONTENT_W
     tb = slide.shapes.add_textbox(int(LEFT * EMU), int(0.34 * EMU),
-                                  int(10.4 * EMU), int(0.75 * EMU))
+                                  int(CONTENT_W * EMU), int(0.75 * EMU))
     tf = tb.text_frame
     tf.word_wrap = False
     tf.vertical_anchor = MSO_ANCHOR.MIDDLE
     p = tf.paragraphs[0]
+    p.alignment = PP_ALIGN.RIGHT
     r1 = p.add_run()
     r1.text = title_plain
     r1.font.size = Pt(28)
     r1.font.bold = False
     r1.font.color.rgb = _c(INK)
-    _font(r1.font)
+    r1.font.name = FONT_LIGHT
     if title_bold:
         r2 = p.add_run()
         r2.text = ("" if title_plain.endswith(" ") else " ") + title_bold
         r2.font.size = Pt(28)
-        r2.font.bold = True
+        r2.font.bold = False        # Black уже даёт вес
         r2.font.color.rgb = _c(INK)
-        _font(r2.font)
-    rect(slide, LEFT + 0.02, 1.18, 1.6, 0.045, AMBER)
+        r2.font.name = FONT_BLACK
+    rect(slide, right - 1.6, 1.18, 1.6, 0.045, AMBER)
     if idx is not None:
-        nb = slide.shapes.add_textbox(int(11.9 * EMU), int(0.4 * EMU),
+        nb = slide.shapes.add_textbox(int(LEFT * EMU), int(0.4 * EMU),
                                       int(0.9 * EMU), int(0.6 * EMU))
         ntf = nb.text_frame
         ntf.vertical_anchor = MSO_ANCHOR.MIDDLE
         np = ntf.paragraphs[0]
-        np.alignment = PP_ALIGN.RIGHT
+        np.alignment = PP_ALIGN.LEFT
         np.text = f"{idx:02d}"
         np.font.size = Pt(20)
         np.font.color.rgb = _c(SOFT)
-        _font(np.font)
+        np.font.name = FONT_LIGHT
 
 
 def section_label(slide, left, top, w, label):
     tb = slide.shapes.add_textbox(int(left * EMU), int(top * EMU),
                                   int(w * EMU), int(0.3 * EMU))
     p = tb.text_frame.paragraphs[0]
+    p.alignment = PP_ALIGN.RIGHT
     p.text = label.upper()
     p.font.size = Pt(10)
     p.font.bold = True
@@ -199,32 +205,49 @@ def footer(slide, variant_name=None):
     _font(p.font)
 
 
-# Палитра вертикальных указателей вариантов (База — графит, далее — акценты).
-_TAB_PALETTE = [INK, AMBER, (0x2E, 0x7D, 0x32), (0xC0, 0x39, 0x2C),
-                (0x37, 0x4A, 0x8A), (0x8A, 0x60, 0x00)]
+# Серые оттенки ушек: активное — тёмное и впритык к краю; прочие — светло-серые
+# и чуть утоплены (как алфавитный указатель в записной книжке).
+_TAB_ACTIVE = (0x4A, 0x4A, 0x4A)
+_TAB_INACTIVE = (0xC4, 0xC4, 0xC4)
+_RAIL_TOP = 1.55
+_RAIL_BOT = 7.0
+_EDGE = 13.28          # правая кромка листа (13.333 − поле)
 
 
-def variant_tab(slide, label, v_index):
-    """Вертикальный указатель варианта у правой кромки (как алфавитные ушки
-    в записной книжке). Цвет — по индексу варианта."""
-    color = _TAB_PALETTE[v_index % len(_TAB_PALETTE)]
-    y, w, h = 2.2, 0.34, 2.7
-    rect(slide, TAB_X, y, w, h, color)
-    # Повёрнутая на 270° подпись по центру ушка (читается снизу вверх).
-    cx, cy = TAB_X + w / 2, y + h / 2
-    tb = slide.shapes.add_textbox(int((cx - 1.35) * EMU), int((cy - 0.15) * EMU),
-                                  int(2.7 * EMU), int(0.3 * EMU))
-    tb.rotation = 270
-    tf = tb.text_frame
-    tf.word_wrap = False
-    tf.vertical_anchor = MSO_ANCHOR.MIDDLE
-    p = tf.paragraphs[0]
-    p.alignment = PP_ALIGN.CENTER
-    p.text = label.upper()
-    p.font.size = Pt(11)
-    p.font.bold = True
-    p.font.color.rgb = _c(WHITE)
-    _font(p.font)
+def variant_rail(slide, labels: list[str], current: int | None) -> None:
+    """Вертикальная «рейка» ушек всех вариантов с ФИКСИРОВАННЫМИ позициями:
+    сверху вниз — База, Вариант 1, 2… Каждое ушко сохраняет свою высоту на всех
+    слайдах. Активный (current) — тёмно-серый, впритык к правому краю и шире;
+    прочие — светло-серые, чуть утоплены. Только оттенки серого."""
+    n = len(labels)
+    if n == 0:
+        return
+    span = _RAIL_BOT - _RAIL_TOP
+    gap = 0.10
+    slot = span / n
+    tab_h = max(0.5, slot - gap)
+    for i, label in enumerate(labels):
+        active = (i == current)
+        y = _RAIL_TOP + i * slot + (slot - tab_h) / 2
+        w = 0.40 if active else 0.30
+        x = _EDGE - w                      # впритык к правому краю
+        color = _TAB_ACTIVE if active else _TAB_INACTIVE
+        rect(slide, x, y, w, tab_h, color)
+        cx, cy = x + w / 2, y + tab_h / 2
+        half = tab_h / 2 + 0.6
+        tb = slide.shapes.add_textbox(int((cx - half) * EMU), int((cy - 0.14) * EMU),
+                                      int(2 * half * EMU), int(0.28 * EMU))
+        tb.rotation = 270
+        tf = tb.text_frame
+        tf.word_wrap = False
+        tf.vertical_anchor = MSO_ANCHOR.MIDDLE
+        p = tf.paragraphs[0]
+        p.alignment = PP_ALIGN.CENTER
+        p.text = label.upper()
+        p.font.size = Pt(10 if active else 8.5)
+        p.font.bold = active
+        p.font.color.rgb = _c(WHITE)
+        _font(p.font)
 
 
 def kpi_card(slide, left, top, w, h, value, label, *, status=None,
@@ -239,7 +262,7 @@ def kpi_card(slide, left, top, w, h, value, label, *, status=None,
     pv.font.size = Pt(21)
     pv.font.bold = False
     pv.font.color.rgb = _c(INK)
-    _font(pv.font)
+    pv.font.name = FONT_LIGHT       # тонкие крупные цифры, как в модели
     lb = slide.shapes.add_textbox(int((left + 0.12) * EMU), int((top + 0.62) * EMU),
                                   int((w - 0.24) * EMU), int(0.3 * EMU))
     pl = lb.text_frame.paragraphs[0]
@@ -327,8 +350,8 @@ def table(slide, left, top, w, headers, rows, *, col_ratios=None, fsize=11,
 
 def title_slide(deck, title_plain, title_bold, subtitle, meta_line):
     s = deck.slide()
-    text(s, 0.9, 2.5, 11.5, 1.0, [(title_plain, INK, False)], size=40)
-    text(s, 0.9, 3.35, 11.5, 1.0, [(title_bold, INK, True)], size=40)
+    text(s, 0.9, 2.5, 11.5, 1.0, title_plain, size=40, font_name=FONT_LIGHT)
+    text(s, 0.9, 3.35, 11.5, 1.0, title_bold, size=40, font_name=FONT_BLACK)
     rect(s, 0.92, 4.5, 2.2, 0.06, AMBER)
     text(s, 0.9, 4.75, 11.5, 0.6, subtitle, size=18, color=MUTED)
     text(s, 0.9, 6.6, 11.5, 0.5, meta_line, size=11, color=SOFT)

@@ -275,15 +275,14 @@ def build_variant_table_blocks(result: TEPResult) -> list[TableBlock]:
     if (result.social_parking_total.value or 0) > 0:
         rows += [
             _row("СОЦ: всего м/м (отдельные открытые на ЗУ)", result.social_parking_total, fmt_int),
-            _row("В т.ч. ДОО (ceil(раб/5) + ceil(уч/100), min 2)",
-                 result.social_parking_kindergarten, fmt_int),
-            _row("В т.ч. СОШ (та же формула)", result.social_parking_school, fmt_int),
+            _row("В т.ч. ДОО", result.social_parking_kindergarten, fmt_int),
+            _row("В т.ч. СОШ", result.social_parking_school, fmt_int),
         ]
         if (result.add_education_parking_places.value or 0) > 0:
-            rows.append(_row("В т.ч. доп. образование (та же формула)",
+            rows.append(_row("В т.ч. доп. образование",
                              result.add_education_parking_places, fmt_int))
         if (result.polyclinic_parking_places.value or 0) > 0:
-            rows.append(_row("В т.ч. поликлиника (5 раб + 40 посетит.)",
+            rows.append(_row("В т.ч. поликлиника",
                              result.polyclinic_parking_places, fmt_int))
         rows.append(_row("Площадь парковок соцобъектов на квартале",
                          result.social_parking_area, fmt_m2))
