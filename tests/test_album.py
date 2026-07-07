@@ -44,6 +44,28 @@ def test_album_builds_12_slides(norms):
     assert _n_slides(p) == 12
 
 
+def test_concept_album_multi_variant(norms):
+    """Альбом концепции: Титул + по варианту (карточка + N таблиц) + сравнение."""
+    from urban_model.export.album import build_concept_album
+    from urban_model.export.variant_tables import build_variant_table_blocks
+    r1 = solve_max_kit(Site(area_m2=100_000), _opts(floors=9), norms)
+    r2 = solve_max_kit(Site(area_m2=100_000), _opts(floors=16), norms)
+    p = tempfile.mktemp(suffix=".pptx")
+    build_concept_album([("База", r1), ("Вариант", r2)], p)
+    n_blocks = len(build_variant_table_blocks(r1))
+    # 1 титул + 2×(1 карточка + n_blocks таблиц) + ≥1 слайд сравнения
+    assert _n_slides(p) >= 1 + 2 * (1 + n_blocks) + 1
+
+
+def test_concept_album_single_variant(norms):
+    """Работает и для одного варианта (без вариантов оптимизации)."""
+    from urban_model.export.album import build_concept_album
+    r = solve_max_kit(Site(area_m2=50_000), _opts(include_school=False), norms)
+    p = tempfile.mktemp(suffix=".pptx")
+    build_concept_album([("Только база", r)], p)
+    assert _n_slides(p) >= 3
+
+
 def test_album_does_not_crash_on_small_site(norms):
     opts = _opts(floors=12)
     r = solve_max_kit(Site(area_m2=10_000), opts, norms)

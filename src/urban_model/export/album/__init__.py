@@ -12,5 +12,6 @@
 from __future__ import annotations
 
 from urban_model.export.album.builder import build_variant_album
+from urban_model.export.album.concept import build_concept_album
 
-__all__ = ["build_variant_album"]
+__all__ = ["build_variant_album", "build_concept_album"]
