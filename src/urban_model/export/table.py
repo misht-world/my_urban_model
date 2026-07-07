@@ -28,6 +28,7 @@ _KPI_ROWS: list[tuple[str, str]] = [
     ("GFA, м²", "gfa"),
     ("Площадь квартир, м²", "apartments_area"),
     ("Население, чел", "population"),
+    ("Эконом-индекс (100=окуп.)", "_economy_index"),  # специальный случай
     ("Плотность, чел/га", "density_chel_per_ga"),
     ("Плотность статус", "_density_status"),        # специальный случай
     ("ДОО мест (требуется)", "kindergarten_places_required"),
@@ -61,6 +62,10 @@ def _get_value(result: TEPResult, attr: str) -> Any:
         return "OK" if result.balance.is_feasible else "ДЕФИЦИТ"
     if attr == "_limiting_factor":
         return result.limiting_factor or ""
+    if attr == "_economy_index":
+        # Экономика может быть отключена (include_economy=False) → None.
+        econ = getattr(result, "economy", None)
+        return round(econ.economy_index, 1) if econ is not None else None
     field = getattr(result, attr)
     if isinstance(field, TEPField):
         v = field.value
