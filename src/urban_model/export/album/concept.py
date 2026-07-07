@@ -3,9 +3,9 @@
 Структура (по ТЗ Михаила):
   1. Титул
   2. (Общая информация о территории — позже)
-  3. Базовый вариант: карточка (KPI как на сайте) + слайды-таблицы по вкладкам
-  4. Варианты оптимизации: то же — карточка + те же таблицы
-  5. Сводная сравнительная таблица (как в xlsx, в стиле альбома)
+  3. Сводная сравнительная таблица (сначала — обзор всех вариантов)
+  4. Базовый вариант: карточка (KPI как на сайте) + слайды-таблицы по вкладкам
+  5. Варианты оптимизации: то же — карточка + те же таблицы
 
 Таблицы берутся из ЕДИНОГО билдера `export/variant_tables.py` — те же строки,
 что на «Расчёте», поэтому Базовый и оптимизационные варианты идентичны.
@@ -22,9 +22,21 @@ from urban_model.export.variant_tables import build_variant_table_blocks
 from urban_model.models.result import TEPResult
 from urban_model.ui.formatting import fmt_int, fmt_m2
 
-_EMU = T.EMU
-_MARGIN = 0.6
-_CONTENT_W = 12.13
+_MARGIN = T.LEFT
+_CONTENT_W = T.CONTENT_W
+
+# Эмодзи для KPI-карточек (как значки на сайте). Рендерятся Segoe UI Emoji.
+_EMO = {
+    "КИТ (ПЗЗ)": "🏢", "Население, чел.": "👥", "Площадь квартир": "🏠",
+    "Этажность": "🏙️", "ЗНОП": "🌳", "ДОО": "🧸", "СОШ": "🏫",
+    "Доп. образование": "🎨", "Поликлиника": "🏥", "Парковки": "🚗",
+    "Эконом-индекс": "💰", "Выход жилья": "📤", "Соц. нагрузка": "⚖️", "ROI": "📈",
+}
+
+
+def _clean_name(name: str) -> str:
+    """Убрать служебный префикс «opt:» из имени сценария."""
+    return str(name).removeprefix("opt:").strip()
 
 
 def _floors_txt(tep: TEPResult) -> str:
@@ -35,31 +47,34 @@ def _floors_txt(tep: TEPResult) -> str:
 
 
 def _kpi_pairs(tep: TEPResult) -> list[tuple[str, str, str | None]]:
-    """(значение, подпись, доп.строка) — зеркало render_main_kpi_grid."""
+    """(значение, подпись с эмодзи, доп.строка) — зеркало render_main_kpi_grid."""
+    def lbl(t):
+        e = _EMO.get(t)
+        return f"{e} {t}" if e else t
+
     pairs: list[tuple[str, str, str | None]] = []
-    pairs.append((f"{tep.kit.value:.3f}", "КИТ (ПЗЗ)", None))
-    pairs.append((f"{fmt_int(tep.population.value)}", "Население, чел.", None))
-    pairs.append((fmt_m2(tep.apartments_area.value), "Площадь квартир", None))
-    pairs.append((_floors_txt(tep), "Этажность", None))
+    pairs.append((f"{tep.kit.value:.3f}", lbl("КИТ (ПЗЗ)"), None))
+    pairs.append((f"{fmt_int(tep.population.value)}", lbl("Население, чел."), None))
+    pairs.append((fmt_m2(tep.apartments_area.value), lbl("Площадь квартир"), None))
+    pairs.append((_floors_txt(tep), lbl("Этажность"), None))
     znop_pp = tep.znop_per_person.value or 0
     znop_area = int(tep.znop_area.value or 0)
     pairs.append((f"{znop_area:,}".replace(",", " ") + " м²" if znop_area else "—",
-                  "ЗНОП", f"{znop_pp:.1f} м²/чел" if znop_pp > 0 else None))
-    # ряд 2
+                  lbl("ЗНОП"), f"{znop_pp:.1f} м²/чел" if znop_pp > 0 else None))
     kg = int(tep.kindergarten_places_accepted.value or 0)
-    pairs.append((f"{kg} мест" if kg else "—", "ДОО", None))
+    pairs.append((f"{kg} мест" if kg else "—", lbl("ДОО"), None))
     sch = int(tep.school_places_accepted.value or 0)
-    pairs.append((f"{sch} мест" if sch else "—", "СОШ", None))
+    pairs.append((f"{sch} мест" if sch else "—", lbl("СОШ"), None))
     ae = int(tep.add_education_places_accepted.value or 0)
     ae_place = ("встроен. (ВПП)" if getattr(tep, "add_education_built_in", False)
                 else "отд. стоящее")
-    pairs.append((f"{ae} мест" if ae else "—", "Доп. образование",
+    pairs.append((f"{ae} мест" if ae else "—", lbl("Доп. образование"),
                   ae_place if ae else None))
     poly_f = getattr(tep, "polyclinic_visits_accepted", None)
     poly = int(poly_f.value or 0) if poly_f is not None else 0
     poly_place = ("ВПП (офис врача)" if getattr(tep, "polyclinic_built_in", False)
                   else "отд. стоящая")
-    pairs.append((f"{poly} посещ." if poly else "—", "Поликлиника",
+    pairs.append((f"{poly} посещ." if poly else "—", lbl("Поликлиника"),
                   poly_place if poly else None))
     op = int(tep.parking_open_places.value or 0)
     ml = int(tep.parking_multilevel_places.value or 0)
@@ -72,7 +87,7 @@ def _kpi_pairs(tep: TEPResult) -> list[tuple[str, str, str | None]]:
     if ml:   parts.append(f"мн. {ml}")
     if styl: parts.append(f"ст. {styl}")
     if ug:   parts.append(f"пд. {ug}")
-    pairs.append((f"{total_pl} м/м" if total_pl else "—", "Парковки",
+    pairs.append((f"{total_pl} м/м" if total_pl else "—", lbl("Парковки"),
                   " · ".join(parts) or None))
     return pairs
 
@@ -81,24 +96,43 @@ def _econ_pairs(tep: TEPResult) -> list[tuple[str, str, str | None]]:
     e = getattr(tep, "economy", None)
     if e is None:
         return []
+
+    def lbl(t):
+        return f"{_EMO.get(t, '')} {t}".strip()
+
     out: list[tuple[str, str, str | None]] = [
-        (f"{e.economy_index:.0f} / 100", "Эконом-индекс", None),
-        (f"{e.sellable_ratio * 100:.0f}%" if e.sellable_ratio else "—", "Выход жилья", None),
+        (f"{e.economy_index:.0f} / 100", lbl("Эконом-индекс"), None),
+        (f"{e.sellable_ratio * 100:.0f}%" if e.sellable_ratio else "—",
+         lbl("Выход жилья"), None),
     ]
     social_cost = (e.cost.kindergarten + e.cost.school + e.cost.social_parking
                    + getattr(e.cost, "add_education", 0.0))
     if social_cost > 0.5 or e.revenue.social_compensation > 0.5:
         out.append((f"{-e.net_social_burden:+,.0f}".replace(",", " "),
-                    "Соц. нагрузка", "баллы"))
+                    lbl("Соц. нагрузка"), "баллы"))
     else:
-        out.append((f"{e.roi * 100:.1f}%" if e.cost.total > 0 else "—", "ROI", None))
+        out.append((f"{e.roi * 100:.1f}%" if e.cost.total > 0 else "—", lbl("ROI"), None))
     return out
 
 
-def _card_slide(deck, name: str, tep: TEPResult, kind: str) -> None:
+def _var_label(v_index: int) -> str:
+    return "База" if v_index == 0 else f"Вариант {v_index}"
+
+
+def _chrome(s, v_index: int) -> None:
+    """Общие элементы слайда варианта: бренд справа-сверху + вертикальный ушко."""
+    T.top_right_brand(s)
+    T.variant_tab(s, _var_label(v_index), v_index)
+
+
+def _card_slide(deck, name: str, tep: TEPResult, kind: str, v_index: int) -> None:
     """Слайд-карточка варианта: KPI-сетка как на сайте (2 ряда × 5 + экономика)."""
     s = deck.slide()
-    T.title_band(s, kind, name)
+    T.title_band(s, kind, "")
+    _chrome(s, v_index)
+    # Длинное имя — отдельной строкой под чертой (перенос, не вылезает за лист).
+    T.text(s, _MARGIN, 1.3, _CONTENT_W, 0.6, _clean_name(name),
+           size=12, color=T.MUTED, spacing=1.05)
 
     def _draw_row(pairs, top):
         n = len(pairs)
@@ -108,22 +142,25 @@ def _card_slide(deck, name: str, tep: TEPResult, kind: str) -> None:
         cw = (_CONTENT_W - gap * (n - 1)) / n
         for i, (val, lbl, extra) in enumerate(pairs):
             left = _MARGIN + i * (cw + gap)
-            T.kpi_card(s, left, top, cw, 1.2, val, lbl, delta=extra)
+            T.kpi_card(s, left, top, cw, 1.15, val, lbl, delta=extra)
 
     kp = _kpi_pairs(tep)
-    _draw_row(kp[:5], 1.5)
-    _draw_row(kp[5:10], 2.85)
+    _draw_row(kp[:5], 1.95)
+    _draw_row(kp[5:10], 3.25)
     econ = _econ_pairs(tep)
     if econ:
-        T.section_label(s, _MARGIN, 4.25, _CONTENT_W, "Экономика")
-        _draw_row(econ, 4.65)
-    T.footer(s, name)
+        T.section_label(s, _MARGIN, 4.6, _CONTENT_W, "Экономика")
+        _draw_row(econ, 5.0)
+    T.footer(s)
 
 
-def _table_slide(deck, name: str, block, idx: int | None = None) -> None:
-    """Слайд-таблица одной вкладки варианта (из общего билдера)."""
+def _table_slide(deck, name: str, block, v_index: int) -> None:
+    """Слайд-таблица одной вкладки варианта (из общего билдера) + итог раздела."""
     s = deck.slide()
-    T.title_band(s, block.title, "", idx=idx)
+    T.title_band(s, block.title, "")
+    _chrome(s, v_index)
+    T.text(s, _MARGIN, 1.28, _CONTENT_W, 0.35, _clean_name(name),
+           size=11, color=T.SOFT)
     if block.columns is None:
         headers = ["Показатель", "Значение"]
         rows = [(r["Показатель"], r["Значение"]) for r in block.rows]
@@ -132,25 +169,25 @@ def _table_slide(deck, name: str, block, idx: int | None = None) -> None:
         headers = block.columns
         rows = [[r.get(c, "") for c in block.columns] for r in block.rows]
         ratios = None
-    # theme.table сама считает высоту (0.4 + 0.32×строк). Ограничим 15 строк
-    # на слайд, чтобы не выехать за нижнюю кромку.
     max_rows = 15
-    top = 1.55
-    if len(rows) <= max_rows:
-        T.table(s, _MARGIN, top, _CONTENT_W, headers, rows, col_ratios=ratios)
-    else:
-        # длинная таблица (напр. баланс с зонами) — только первые строки + пометка
-        T.table(s, _MARGIN, top, _CONTENT_W, headers, rows[:max_rows], col_ratios=ratios)
-    note_top = top + 0.4 + 0.32 * min(len(rows), max_rows) + 0.15
+    top = 1.75
+    T.table(s, _MARGIN, top, _CONTENT_W, headers, rows[:max_rows], col_ratios=ratios)
+    note_top = top + 0.4 + 0.32 * min(len(rows), max_rows) + 0.12
+    # Итог раздела (item 10) — выделенной строкой, затем справочные notes.
+    if block.summary:
+        T.text(s, _MARGIN, note_top, _CONTENT_W, 0.6, f"ИТОГ — {block.summary}",
+               size=10, bold=True, color=T.INK)
+        note_top += 0.5
     for note in block.notes:
         T.text(s, _MARGIN, note_top, _CONTENT_W, 0.6, note, size=9, color=T.MUTED)
-        note_top += 0.5
-    T.footer(s, name)
+        note_top += 0.42
+    T.footer(s)
 
 
 def _comparison_slides(deck, scenarios: list[tuple[str, TEPResult]]) -> None:
     """Сводная сравнительная таблица (как в xlsx). Разбита по слайдам."""
-    df = results_to_dataframe(scenarios)
+    clean = [(_clean_name(n), t) for n, t in scenarios]
+    df = results_to_dataframe(clean)
     names = list(df.columns)
     labels = list(df.index)
     chunk = 13
@@ -158,6 +195,7 @@ def _comparison_slides(deck, scenarios: list[tuple[str, TEPResult]]) -> None:
         s = deck.slide()
         part = "" if len(labels) <= chunk else f" ({start // chunk + 1})"
         T.title_band(s, "Сравнение", "вариантов" + part)
+        T.top_right_brand(s)
         sub = labels[start:start + chunk]
         headers = ["Показатель"] + names
         rows = []
@@ -169,7 +207,7 @@ def _comparison_slides(deck, scenarios: list[tuple[str, TEPResult]]) -> None:
             rows.append(row)
         ratios = [2.4] + [1.0] * len(names)
         T.table(s, _MARGIN, 1.55, _CONTENT_W, headers, rows, col_ratios=ratios, fsize=10)
-        T.footer(s, "сравнение")
+        T.footer(s)
 
 
 def build_concept_album(
@@ -189,11 +227,18 @@ def build_concept_album(
     T.title_slide(deck, title_line, title_bold,
                   subtitle="Базовый вариант и варианты оптимизации", meta_line=meta)
 
+    # (9) Сначала — сводное сравнение (обзор всех вариантов).
+    try:
+        _comparison_slides(deck, scenarios)
+    except Exception:  # noqa: BLE001 — §12: альбом не должен падать
+        pass
+
+    # Затем — детально по каждому варианту.
     for v_idx, (name, tep) in enumerate(scenarios):
         kind = "Базовый вариант" if v_idx == 0 else f"Вариант {v_idx}"
         try:
-            _card_slide(deck, name, tep, kind)
-        except Exception:  # noqa: BLE001 — §12: альбом не должен падать
+            _card_slide(deck, name, tep, kind, v_idx)
+        except Exception:  # noqa: BLE001
             pass
         try:
             blocks = build_variant_table_blocks(tep)
@@ -201,13 +246,8 @@ def build_concept_album(
             blocks = []
         for blk in blocks:
             try:
-                _table_slide(deck, name, blk)
+                _table_slide(deck, name, blk, v_idx)
             except Exception:  # noqa: BLE001
                 pass
-
-    try:
-        _comparison_slides(deck, scenarios)
-    except Exception:  # noqa: BLE001
-        pass
 
     return deck.save(path)

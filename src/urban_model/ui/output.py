@@ -977,10 +977,17 @@ def render_comparison_tab() -> None:
 
     st.subheader(f"Сценарии в сравнении: {len(pairs)}")
 
+    # v0.13.1: служебный префикс «opt:» (из карточек оптимизатора) в отображении
+    # убираем — в списке, сводке, xlsx и альбоме.
+    def _clean(nm: str) -> str:
+        return str(nm).removeprefix("opt:").strip()
+
+    clean_pairs = [(_clean(name), tep) for name, tep in pairs]
+
     # Список с кнопками удаления
     for idx, (name, _) in enumerate(pairs):
         c1, c2 = st.columns([10, 1])
-        c1.write(f"**{idx + 1}.** {name}")
+        c1.write(f"**{idx + 1}.** {_clean(name)}")
         if c2.button("🗑️", key=f"del_{idx}"):
             st.session_state.scenarios.pop(idx)
             st.rerun()
@@ -992,14 +999,14 @@ def render_comparison_tab() -> None:
     if len(pairs) >= 1:
         st.markdown("---")
         st.subheader("Сводка")
-        df = results_to_dataframe(pairs)
+        df = results_to_dataframe(clean_pairs)
         st.dataframe(df, use_container_width=True)
 
         # Скачать xlsx-сравнение
         with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False) as tmp:
             tmp_path = tmp.name
         try:
-            to_xlsx(pairs, tmp_path)
+            to_xlsx(clean_pairs, tmp_path)
             with open(tmp_path, "rb") as f:
                 xlsx_bytes = f.read()
         finally:
@@ -1025,7 +1032,7 @@ def render_comparison_tab() -> None:
             with tempfile.NamedTemporaryFile(suffix=".pptx", delete=False) as tmp:
                 _pp = tmp.name
             try:
-                build_concept_album(pairs, _pp)
+                build_concept_album(clean_pairs, _pp)
                 with open(_pp, "rb") as f:
                     st.session_state["_concept_album_bytes"] = f.read()
             finally:

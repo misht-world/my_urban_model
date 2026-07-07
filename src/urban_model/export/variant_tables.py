@@ -34,6 +34,9 @@ class TableBlock:
     rows: list[dict]
     columns: list[str] | None = None  # None → key-value (Показатель/Значение); иначе grid
     notes: list[str] = field(default_factory=list)
+    # Итог раздела одной строкой. Используется в альбоме концепции (после
+    # таблицы); на «Расчёте» не выводится.
+    summary: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -119,7 +122,13 @@ def build_variant_table_blocks(result: TEPResult) -> list[TableBlock]:
         _row("Плотность квартала (внутренняя, GFA / площадь квартала)",
              result.block_density, fmt_float),
     ]
-    blocks.append(TableBlock("housing", "Жильё", "home", rows))
+    _sum_housing = (
+        f"КИТ {result.kit.value:.3f} (потолок {result.kit_normative_max.value or 0}); "
+        f"население {fmt_int(result.population.value)} чел.; площадь квартир "
+        f"{fmt_m2(result.apartments_area.value)}; плотность "
+        f"{result.density_chel_per_ga.value:.0f} чел./га."
+    )
+    blocks.append(TableBlock("housing", "Жильё", "home", rows, summary=_sum_housing))
 
     # 🎒 ДОО
     rows = [
@@ -133,7 +142,13 @@ def build_variant_table_blocks(result: TEPResult) -> list[TableBlock]:
         _row("Площадь участков", result.kindergarten_plot_area, fmt_m2),
         _row("Площадь зданий", result.kindergarten_building_area, fmt_m2),
     ]
-    blocks.append(TableBlock("kindergarten", "ДОО (детские сады)", "child_care", rows))
+    _sum_kg = (
+        f"{int(result.kindergarten_places_accepted.value or 0)} мест"
+        + (f" в {format_buckets(_kg_n, _kg_caps)}" if _kg_n else "")
+        + f"; участки {fmt_m2(result.kindergarten_plot_area.value)}."
+    )
+    blocks.append(TableBlock("kindergarten", "ДОО (детские сады)", "child_care",
+                             rows, summary=_sum_kg))
 
     # 🏫 СОШ
     rows = [
@@ -147,7 +162,12 @@ def build_variant_table_blocks(result: TEPResult) -> list[TableBlock]:
         _row("Площадь участков", result.school_plot_area, fmt_m2),
         _row("Площадь зданий", result.school_building_area, fmt_m2),
     ]
-    blocks.append(TableBlock("school", "СОШ (школы)", "school", rows))
+    _sum_sch = (
+        f"{int(result.school_places_accepted.value or 0)} мест"
+        + (f" в {format_buckets(_sch_n, _sch_caps)}" if _sch_n else "")
+        + f"; участки {fmt_m2(result.school_plot_area.value)}."
+    )
+    blocks.append(TableBlock("school", "СОШ (школы)", "school", rows, summary=_sum_sch))
 
     # 🎨 Доп. образование
     if (result.add_education_places_accepted.value or 0) > 0:
@@ -166,8 +186,13 @@ def build_variant_table_blocks(result: TEPResult) -> list[TableBlock]:
         _ae_park_lbl = ("Парковка — открытая на ЗУ жилья" if _ae_built_in
                         else "Парковка — на своём ЗУ (как ДОУ/СОШ)")
         rows.append(_row(_ae_park_lbl, result.add_education_parking_places, fmt_int))
+        _sum_ae = (
+            f"{int(result.add_education_places_accepted.value or 0)} мест, "
+            f"{_ae_place_str}."
+        )
         blocks.append(TableBlock(
-            "add_education", f"Организации доп. образования — {_ae_label}", "palette", rows))
+            "add_education", f"Организации доп. образования — {_ae_label}", "palette",
+            rows, summary=_sum_ae))
 
     # 🏥 Поликлиника
     if (result.polyclinic_visits_accepted.value or 0) > 0:
@@ -188,8 +213,13 @@ def build_variant_table_blocks(result: TEPResult) -> list[TableBlock]:
         _poly_park_lbl = ("Парковка — открытая на ЗУ жилья" if _poly_bi
                           else "Парковка — на ЗУ поликлиники")
         rows.append(_row(_poly_park_lbl, result.polyclinic_parking_places, fmt_int))
+        _sum_poly = (
+            f"{int(result.polyclinic_visits_accepted.value or 0)} посещений/смену, "
+            f"{_poly_place_str}."
+        )
         blocks.append(TableBlock(
-            "polyclinic", f"Поликлиника — {_poly_label}", "local_hospital", rows))
+            "polyclinic", f"Поликлиника — {_poly_label}", "local_hospital",
+            rows, summary=_sum_poly))
 
     # Спорт
     if (result.sport_facilities_plot_area.value or 0) > 0:
@@ -200,8 +230,13 @@ def build_variant_table_blocks(result: TEPResult) -> list[TableBlock]:
                  result.sport_facilities_greening_extra, fmt_m2),
             _row("Полный ЗУ (sport + доп. озеленение)", result.sport_facilities_plot_area, fmt_m2),
         ]
+        _sum_sport = (
+            f"Спортплощадки {fmt_m2(result.sport_facilities_area.value)}; "
+            f"полный ЗУ {fmt_m2(result.sport_facilities_plot_area.value)}."
+        )
         blocks.append(TableBlock(
-            "sport", "Плоскостные спортивные сооружения", "directions_run", rows))
+            "sport", "Плоскостные спортивные сооружения", "directions_run",
+            rows, summary=_sum_sport))
 
     # 🌳 ЗНОП и озеленение
     rows = [
@@ -210,7 +245,12 @@ def build_variant_table_blocks(result: TEPResult) -> list[TableBlock]:
         _row("Озеленение жилья", result.greening_housing_area, fmt_m2),
         _row("Минимум озеленения квартала (норматив)", result.greening_quarter_required, fmt_m2),
     ]
-    blocks.append(TableBlock("znop", "ЗНОП и озеленение", "park", rows))
+    _sum_znop = (
+        f"ЗНОП {result.znop_per_person.value or 0:.1f} м²/чел, всего "
+        f"{fmt_m2(result.znop_area.value)}; норматив озеленения квартала "
+        f"{fmt_m2(result.greening_quarter_required.value)}."
+    )
+    blocks.append(TableBlock("znop", "ЗНОП и озеленение", "park", rows, summary=_sum_znop))
 
     # 🅿️ Парковки
     rows = [
@@ -247,7 +287,21 @@ def build_variant_table_blocks(result: TEPResult) -> list[TableBlock]:
                              result.polyclinic_parking_places, fmt_int))
         rows.append(_row("Площадь парковок соцобъектов на квартале",
                          result.social_parking_area, fmt_m2))
-    blocks.append(TableBlock("parking", "Парковки", "local_parking", rows))
+    _pp = []
+    if (result.parking_open_places.value or 0) > 0:
+        _pp.append(f"открытых {int(result.parking_open_places.value)}")
+    if (result.parking_multilevel_places.value or 0) > 0:
+        _pp.append(f"многоур. {int(result.parking_multilevel_places.value)}")
+    if (getattr(result, 'parking_stylobate_places', None)
+            and (result.parking_stylobate_places.value or 0) > 0):
+        _pp.append(f"стилоб. {int(result.parking_stylobate_places.value)}")
+    if (result.parking_underground_places.value or 0) > 0:
+        _pp.append(f"подземных {int(result.parking_underground_places.value)}")
+    _sum_park = (
+        f"Всего {int(result.parking_required_places.value or 0)} м/м"
+        + (" (" + ", ".join(_pp) + ")" if _pp else "") + "."
+    )
+    blocks.append(TableBlock("parking", "Парковки", "local_parking", rows, summary=_sum_park))
 
     # Проезды (формулы/источники скрыты)
     rows = [
@@ -257,7 +311,11 @@ def build_variant_table_blocks(result: TEPResult) -> list[TableBlock]:
     for r in rows:
         r["Формула"] = ""
         r["Источник"] = ""
-    blocks.append(TableBlock("driveways", "Проезды", "route", rows))
+    _sum_dw = (
+        f"Внутриквартальные {fmt_m2(result.driveways_intra_quarter_area.value)}, "
+        f"на ЗУ жилья {fmt_m2(result.driveways_housing_lot_area.value)}."
+    )
+    blocks.append(TableBlock("driveways", "Проезды", "route", rows, summary=_sum_dw))
 
     # 🔌 Инженерная инфраструктура (grid)
     if result.engineering is not None and result.engineering.objects:
@@ -282,11 +340,16 @@ def build_variant_table_blocks(result: TEPResult) -> list[TableBlock]:
             f"{fmt_m2(eng.plot_in_balance)} (всего по объектам {fmt_m2(eng.plot_total_all)}). "
             f"«Только потребность» — объект считается, но ЗУ вне баланса."
         )
+        _n_eng = sum(o.count for o in eng.objects if o.count > 0)
+        _sum_eng = (
+            f"{_n_eng} объектов инж. инфраструктуры; в баланс "
+            f"{fmt_m2(eng.plot_in_balance)} (всего {fmt_m2(eng.plot_total_all)})."
+        )
         blocks.append(TableBlock(
             "engineering", "Инженерная инфраструктура", "bolt", eng_rows,
             columns=["Объект", "Кол-во", "Мощность (1 шт.)", "ЗУ (1 шт.), м²",
                      "ЗУ всего, м²", "В балансе"],
-            notes=[note]))
+            notes=[note], summary=_sum_eng))
 
     # ⚖️ Баланс территории (grid, с зонами)
     blocks.append(_balance_block(result))
@@ -318,11 +381,15 @@ def build_variant_table_blocks(result: TEPResult) -> list[TableBlock]:
                 f"высокого предела. В общем балансе квартала это компенсируется "
                 f"низкими зонами (общий КИТ {result.kit.value:.3f} в норме)."
             )
+        _sum_cl = (
+            f"{len(result.floor_clusters_detail)} зон(ы); средневзвешенная "
+            f"этажность {result.effective_floors:.1f}, общий КИТ {result.kit.value:.3f}."
+        )
         blocks.append(TableBlock(
             "clusters", "Кластеры этажности (по зонам)", "apartment", cl_rows,
             columns=["Зона", "Площадь, м²", "Этажей", "КИТ зоны (справ.)",
                      "Площадь квартир, м²", "Пятно застройки, м²"],
-            notes=notes))
+            notes=notes, summary=_sum_cl))
 
     return blocks
 
@@ -401,5 +468,11 @@ def _balance_block(result: TEPResult) -> TableBlock:
     )
     if _cl_shares:
         note += "  ·  колонки по зонам — пропорционально площади зон"
+    _occ_pct = b.required_total / site_area * 100 if site_area > 0 else 0
+    _feas = "баланс сходится" if b.is_feasible else "ДЕФИЦИТ территории"
+    summary = (
+        f"Занято {fmt_m2(b.required_total)} ({_occ_pct:.0f}% квартала), "
+        f"резерв {fmt_m2(b.surplus)}; {_feas}."
+    )
     return TableBlock("balance", "Баланс территории", "balance", comp_rows,
-                      columns=columns, notes=[note])
+                      columns=columns, notes=[note], summary=summary)

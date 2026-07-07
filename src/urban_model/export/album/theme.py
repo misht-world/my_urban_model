@@ -27,6 +27,16 @@ EMU = 914400
 SW = int(13.333 * EMU)
 SH = int(7.5 * EMU)
 
+# Шрифт — как в модели/на сайте (-apple-system, "Segoe UI", Roboto…).
+# На Windows/PowerPoint это Segoe UI.
+FONT = "Segoe UI"
+
+# Отступы: слева больше (сторона брошюровки), справа — место под вертикальный
+# указатель варианта.
+LEFT = 1.0
+CONTENT_W = 11.55
+TAB_X = 12.68          # x вертикального указателя справа
+
 CHART_COLORS = {
     "housing": "#4A4A4A", "kindergarten": "#F5A623", "school": "#C0392C",
     "parking": "#8A8A8A", "driveways": "#B8B8B8", "znop": "#2E7D32",
@@ -38,6 +48,12 @@ CHART_COLORS = {
 
 def _c(rgb):
     return RGBColor(*rgb)
+
+
+def _font(f):
+    """Проставить шрифт модели (Segoe UI) на font-объект. Возвращает его же."""
+    f.name = FONT
+    return f
 
 
 class Deck:
@@ -102,14 +118,15 @@ def text(slide, left, top, w, h, lines, size=13, bold=False, color=INK,
         p.font.size = Pt(size)
         p.font.bold = bd
         p.font.color.rgb = _c(col)
+        _font(p.font)
     return tb
 
 
 def title_band(slide, title_plain, title_bold="", idx=None):
     """Шапка слайда: крупный тонкий заголовок + жирное ключевое слово,
-    тонкая амбер-черта снизу."""
-    tb = slide.shapes.add_textbox(int(0.6 * EMU), int(0.34 * EMU),
-                                  int(11.2 * EMU), int(0.75 * EMU))
+    тонкая амбер-черта снизу. Сдвинута вправо (LEFT) — под брошюровку слева."""
+    tb = slide.shapes.add_textbox(int(LEFT * EMU), int(0.34 * EMU),
+                                  int(10.4 * EMU), int(0.75 * EMU))
     tf = tb.text_frame
     tf.word_wrap = False
     tf.vertical_anchor = MSO_ANCHOR.MIDDLE
@@ -119,16 +136,18 @@ def title_band(slide, title_plain, title_bold="", idx=None):
     r1.font.size = Pt(28)
     r1.font.bold = False
     r1.font.color.rgb = _c(INK)
+    _font(r1.font)
     if title_bold:
         r2 = p.add_run()
         r2.text = ("" if title_plain.endswith(" ") else " ") + title_bold
         r2.font.size = Pt(28)
         r2.font.bold = True
         r2.font.color.rgb = _c(INK)
-    rect(slide, 0.62, 1.18, 1.6, 0.045, AMBER)
+        _font(r2.font)
+    rect(slide, LEFT + 0.02, 1.18, 1.6, 0.045, AMBER)
     if idx is not None:
-        nb = slide.shapes.add_textbox(int(12.0 * EMU), int(0.4 * EMU),
-                                      int(1.0 * EMU), int(0.6 * EMU))
+        nb = slide.shapes.add_textbox(int(11.9 * EMU), int(0.4 * EMU),
+                                      int(0.9 * EMU), int(0.6 * EMU))
         ntf = nb.text_frame
         ntf.vertical_anchor = MSO_ANCHOR.MIDDLE
         np = ntf.paragraphs[0]
@@ -136,6 +155,7 @@ def title_band(slide, title_plain, title_bold="", idx=None):
         np.text = f"{idx:02d}"
         np.font.size = Pt(20)
         np.font.color.rgb = _c(SOFT)
+        _font(np.font)
 
 
 def section_label(slide, left, top, w, label):
@@ -146,17 +166,65 @@ def section_label(slide, left, top, w, label):
     p.font.size = Pt(10)
     p.font.bold = True
     p.font.color.rgb = _c(MUTED)
+    _font(p.font)
     rect(slide, left, top + 0.32, w, 0.02, INK)
 
 
-def footer(slide, variant_name):
-    rect(slide, 0.6, 7.12, 12.13, 0.012, HAIR)
-    tb = slide.shapes.add_textbox(int(0.6 * EMU), int(7.16 * EMU),
-                                  int(12.13 * EMU), int(0.28 * EMU))
+def top_right_brand(slide, text_str="Модель застройки территории"):
+    """Бренд-плашка в правом верхнем углу (амбер-акцент)."""
+    tb = slide.shapes.add_textbox(int(8.6 * EMU), int(0.22 * EMU),
+                                  int(4.1 * EMU), int(0.3 * EMU))
+    tf = tb.text_frame
+    tf.word_wrap = False
+    p = tf.paragraphs[0]
+    p.alignment = PP_ALIGN.RIGHT
+    p.text = text_str.upper()
+    p.font.size = Pt(9)
+    p.font.bold = True
+    p.font.color.rgb = _c(AMBER)
+    _font(p.font)
+
+
+def footer(slide, variant_name=None):
+    """Нижний колонтитул — правовой дисклеймер (не проектная документация)."""
+    rect(slide, LEFT, 7.12, CONTENT_W, 0.012, HAIR)
+    tb = slide.shapes.add_textbox(int(LEFT * EMU), int(7.16 * EMU),
+                                  int(CONTENT_W * EMU), int(0.28 * EMU))
     p = tb.text_frame.paragraphs[0]
-    p.text = f"Модель застройки территории · вариант «{variant_name}»"
-    p.font.size = Pt(8)
+    p.text = ("Информационная модель для оценки вариантов застройки. "
+              "Не является проектной документацией и не влечёт правовых "
+              "последствий. Значения — расчётные, требуют проверки проектом.")
+    p.font.size = Pt(7.5)
     p.font.color.rgb = _c(SOFT)
+    _font(p.font)
+
+
+# Палитра вертикальных указателей вариантов (База — графит, далее — акценты).
+_TAB_PALETTE = [INK, AMBER, (0x2E, 0x7D, 0x32), (0xC0, 0x39, 0x2C),
+                (0x37, 0x4A, 0x8A), (0x8A, 0x60, 0x00)]
+
+
+def variant_tab(slide, label, v_index):
+    """Вертикальный указатель варианта у правой кромки (как алфавитные ушки
+    в записной книжке). Цвет — по индексу варианта."""
+    color = _TAB_PALETTE[v_index % len(_TAB_PALETTE)]
+    y, w, h = 2.2, 0.34, 2.7
+    rect(slide, TAB_X, y, w, h, color)
+    # Повёрнутая на 270° подпись по центру ушка (читается снизу вверх).
+    cx, cy = TAB_X + w / 2, y + h / 2
+    tb = slide.shapes.add_textbox(int((cx - 1.35) * EMU), int((cy - 0.15) * EMU),
+                                  int(2.7 * EMU), int(0.3 * EMU))
+    tb.rotation = 270
+    tf = tb.text_frame
+    tf.word_wrap = False
+    tf.vertical_anchor = MSO_ANCHOR.MIDDLE
+    p = tf.paragraphs[0]
+    p.alignment = PP_ALIGN.CENTER
+    p.text = label.upper()
+    p.font.size = Pt(11)
+    p.font.bold = True
+    p.font.color.rgb = _c(WHITE)
+    _font(p.font)
 
 
 def kpi_card(slide, left, top, w, h, value, label, *, status=None,
@@ -171,12 +239,14 @@ def kpi_card(slide, left, top, w, h, value, label, *, status=None,
     pv.font.size = Pt(21)
     pv.font.bold = False
     pv.font.color.rgb = _c(INK)
+    _font(pv.font)
     lb = slide.shapes.add_textbox(int((left + 0.12) * EMU), int((top + 0.62) * EMU),
                                   int((w - 0.24) * EMU), int(0.3 * EMU))
     pl = lb.text_frame.paragraphs[0]
     pl.text = label.upper()
     pl.font.size = Pt(8.5)
     pl.font.color.rgb = _c(MUTED)
+    _font(pl.font)
     extra = delta or status
     if extra:
         col = status_color or (OK if (delta and str(delta).startswith("+")) else MUTED)
@@ -188,6 +258,7 @@ def kpi_card(slide, left, top, w, h, value, label, *, status=None,
         pe.font.size = Pt(9)
         pe.font.bold = True
         pe.font.color.rgb = _c(col)
+        _font(pe.font)
 
 
 def status_pill(slide, left, top, w, label, color):
@@ -202,6 +273,7 @@ def status_pill(slide, left, top, w, label, color):
     p.font.size = Pt(9)
     p.font.bold = True
     p.font.color.rgb = _c(color)
+    _font(p.font)
 
 
 def table(slide, left, top, w, headers, rows, *, col_ratios=None, fsize=11,
@@ -230,6 +302,7 @@ def table(slide, left, top, w, headers, rows, *, col_ratios=None, fsize=11,
                 r_.font.size = Pt(fsize - 1)
                 r_.font.bold = True
                 r_.font.color.rgb = _c(WHITE)
+                _font(r_.font)
     n = len(rows)
     for i, row in enumerate(rows, 1):
         txt_col = (row_colors[i - 1] if row_colors and i - 1 < len(row_colors)
@@ -248,6 +321,7 @@ def table(slide, left, top, w, headers, rows, *, col_ratios=None, fsize=11,
                     r_.font.size = Pt(fsize)
                     r_.font.bold = is_last
                     r_.font.color.rgb = _c(txt_col)
+                    _font(r_.font)
     return gt
 
 
