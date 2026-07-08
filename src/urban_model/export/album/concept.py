@@ -27,18 +27,26 @@ from urban_model.ui.formatting import fmt_int, fmt_m2
 _MARGIN = T.LEFT
 _CONTENT_W = T.CONTENT_W
 
-# Значки KPI-карточек. База — без селектора эмодзи; при выводе добавляем
-# variation selector U+FE0E (текстовое, МОНОХРОМНОЕ представление), чтобы значок
-# рендерился серым (цветом подписи), а не цветным эмодзи — как в модели.
+# Значки KPI-карточек. Не эмодзи (те дают «тофу»-квадрат или цветной глиф), а
+# ТЕКСТОВЫЕ символы Unicode из старых блоков (Геометрия/Дингбаты/Letterlike) —
+# они гарантированно рендерятся МОНОХРОМНО и красятся цветом подписи (серым),
+# как значки в модели.
 _EMO = {
-    "КИТ (ПЗЗ)": "\U0001F3E2", "Население, чел.": "\U0001F465",
-    "Площадь квартир": "\U0001F3E0", "Этажность": "\U0001F3D9",
-    "ЗНОП": "\U0001F333", "ДОО": "\U0001F9F8", "СОШ": "\U0001F3EB",
-    "Доп. образование": "\U0001F3A8", "Поликлиника": "\U0001F3E5",
-    "Парковки": "\U0001F697", "Эконом-индекс": "\U0001F4B0",
-    "Выход жилья": "\U0001F4E4", "Соц. нагрузка": "⚖", "ROI": "\U0001F4C8",
+    "КИТ (ПЗЗ)": "⌂",          # ⌂ дом
+    "Население, чел.": "☰",     # ☰ ряды
+    "Площадь квартир": "▦",     # ▦ сетка
+    "Этажность": "▤",           # ▤ слои
+    "ЗНОП": "✿",               # ✿ флёрон
+    "ДОО": "❍",                # ❍ круг
+    "СОШ": "✎",                # ✎ карандаш
+    "Доп. образование": "❖",    # ❖ ромб
+    "Поликлиника": "✚",         # ✚ крест
+    "Парковки": "◈",           # ◈ ромб-в-ромбе
+    "Эконом-индекс": "₽",       # ₽ рубль
+    "Выход жилья": "▲",         # ▲ вверх
+    "Соц. нагрузка": "§",       # § параграф
+    "ROI": "↗",                # ↗ рост
 }
-_VS_TEXT = "︎"     # variation selector-15 -> монохромный (серый) значок
 
 
 def _clean_name(name: str) -> str:
@@ -57,7 +65,7 @@ def _kpi_pairs(tep: TEPResult) -> list[tuple[str, str, str | None]]:
     """(значение, подпись с эмодзи, доп.строка) — зеркало render_main_kpi_grid."""
     def lbl(t):
         e = _EMO.get(t)
-        return f"{e}{_VS_TEXT} {t}" if e else t
+        return f"{e}  {t}" if e else t
 
     pairs: list[tuple[str, str, str | None]] = []
     pairs.append((f"{tep.kit.value:.3f}", lbl("КИТ (ПЗЗ)"), None))
@@ -106,7 +114,7 @@ def _econ_pairs(tep: TEPResult) -> list[tuple[str, str, str | None]]:
 
     def lbl(t):
         e = _EMO.get(t)
-        return f"{e}{_VS_TEXT} {t}" if e else t
+        return f"{e}  {t}" if e else t
 
     out: list[tuple[str, str, str | None]] = [
         (f"{e.economy_index:.0f} / 100", lbl("Эконом-индекс"), None),
@@ -127,6 +135,14 @@ def _var_label(v_index: int) -> str:
     return "База" if v_index == 0 else f"Вариант {v_index}"
 
 
+def _split_title(title: str) -> tuple[str, str]:
+    """Разбить заголовок на (обычная часть, жирное последнее слово)."""
+    parts = title.rsplit(" ", 1)
+    if len(parts) == 2:
+        return parts[0], parts[1]
+    return "", title
+
+
 def _chrome(s, rail_labels: list[str], current: int | None) -> None:
     """Общие элементы слайда: бренд справа-сверху + рейка вариантов справа."""
     T.top_right_brand(s)
@@ -137,11 +153,15 @@ def _card_slide(deck, name: str, tep: TEPResult, kind: str, v_index: int,
                 rail_labels: list[str]) -> None:
     """Слайд-карточка варианта: KPI-сетка как на сайте (2 ряда × 5 + экономика)."""
     s = deck.slide()
-    T.title_band(s, kind, "")
+    # Заголовок с частичным жирным (как «Сравнение вариантов»): последнее слово
+    # — Black. «Базовый вариант» → Базовый + **вариант**; «Вариант 1» → Вариант + **1**.
+    _plain, _bold = _split_title(kind)
+    T.title_band(s, _plain, _bold)
     _chrome(s, rail_labels, v_index)
     # Длинное имя — отдельной строкой под чертой (перенос), по правому краю.
+    # Единый стиль имени варианта на всех карточках (как на слайдах-таблицах).
     T.text(s, _MARGIN, 1.3, _CONTENT_W, 0.6, _clean_name(name),
-           size=12, color=T.MUTED, spacing=1.05, align=PP_ALIGN.RIGHT)
+           size=11, color=T.MUTED, spacing=1.05, align=PP_ALIGN.RIGHT)
 
     def _draw_row(pairs, top):
         n = len(pairs)
@@ -170,7 +190,7 @@ def _table_slide(deck, name: str, block, v_index: int,
     T.title_band(s, block.title, "")
     _chrome(s, rail_labels, v_index)
     T.text(s, _MARGIN, 1.28, _CONTENT_W, 0.35, _clean_name(name),
-           size=11, color=T.SOFT, align=PP_ALIGN.RIGHT)
+           size=11, color=T.MUTED, align=PP_ALIGN.RIGHT)
     if block.columns is None:
         headers = ["Показатель", "Значение"]
         rows = [(r["Показатель"], r["Значение"]) for r in block.rows]
