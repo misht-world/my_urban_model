@@ -135,6 +135,113 @@ def _var_label(v_index: int) -> str:
     return "База" if v_index == 0 else f"Вариант {v_index}"
 
 
+# ── Слайд «Общая информация о территории» (из CalculationOptions Базы) ──
+
+_PARK_MODE_RU = {
+    "min_open": "минимум открытых (12.5%), остальное — подземные",
+    "all_open": "100% открытые",
+    "custom": "заданные доли",
+}
+_FUND_RU = {
+    "compensated": "компенсация города (доля)",
+    "developer": "за счёт застройщика",
+    "city": "строит город",
+    "at_cost": "передача по себестоимости",
+}
+
+
+def _territory_rows(site_area: float, o) -> list[tuple[str, str]]:
+    """Строки «Исходные условия» из options (левая таблица)."""
+    rows = [("Площадь квартала", f"{fmt_m2(site_area)}  ({site_area/10_000:.2f} га)")]
+    if getattr(o, "floor_clusters", None):
+        zones = " + ".join(f"{c.area_m2/10_000:.1f} га × {c.floors} эт."
+                           for c in o.floor_clusters)
+        rows.append(("Этажность (зоны)", zones))
+    else:
+        rows.append(("Этажность", f"{o.floors} эт."))
+    rows.append(("Документация по планировке (ДПТ)",
+                 "да (КИТ ≤ 2.5)" if o.planning_doc else "нет (КИТ ≤ 1.4)"))
+    rows.append(("Класс жилья", {"economy": "эконом", "comfort": "комфорт",
+                                 "business": "бизнес"}.get(o.residential_class,
+                                                           str(o.residential_class))))
+    p = o.parking
+    park = _PARK_MODE_RU.get(p.mode, p.mode)
+    if p.mode == "custom":
+        parts = []
+        if p.open_share > 0.001:
+            parts.append(f"откр. {p.open_share:.0%}")
+        if p.multilevel_share > 0.001:
+            parts.append(f"многоур. {p.multilevel_share:.0%} ({p.multilevel_levels} эт.)")
+        if p.underground_share > 0.001:
+            parts.append(f"подз. {p.underground_share:.0%} ({p.underground_levels} ур.)")
+        if getattr(p, "stylobate_share", 0) > 0.001:
+            parts.append(f"стилобат {p.stylobate_share:.0%}")
+        park = " · ".join(parts)
+    rows.append(("Парковки (жилищные)", park))
+    vpp_total = sum(b.area_m2 for b in (o.built_in_list or []))
+    if o.built_in is not None:
+        vpp_total += o.built_in.area_m2
+    if vpp_total > 0:
+        rows.append(("ВПП (встроенно-пристроенные)", fmt_m2(vpp_total)))
+    if o.znop_per_person_override is not None:
+        rows.append(("ЗНОП (вручную)", f"{o.znop_per_person_override:g} м²/чел"))
+    if o.znop_total_area_override is not None:
+        rows.append(("ЗНОП, площадь (вручную)", fmt_m2(o.znop_total_area_override)))
+    if getattr(o, "include_economy", True):
+        rows.append(("Соцобъекты (финансирование)",
+                     _FUND_RU.get(getattr(o, "social_funding", "compensated"), "—")))
+    return rows
+
+
+def _composition_rows(o) -> list[tuple[str, str]]:
+    """Строки «Состав расчёта» — что учитывается (правая таблица)."""
+    def yn(v):
+        return "учитывается" if v else "не учитывается"
+
+    def od(spec):
+        return " (только потребность)" if getattr(spec, "only_demand", False) else ""
+
+    rows = [
+        ("ДОО (детские сады)", yn(o.include_kindergarten) + od(o.kindergarten)
+         + (" · только типовые вместимости"
+            if getattr(o.kindergarten, "strict_capacity", False) else "")),
+        ("СОШ (школы)", yn(o.include_school) + od(o.school)
+         + (" · только типовые вместимости"
+            if getattr(o.school, "strict_capacity", False) else "")),
+        ("Доп. образование (ВРИ 3.5.1)", yn(getattr(o, "include_add_education", True))),
+        ("Поликлиника (ВРИ 3.4.1)", yn(getattr(o, "include_polyclinic", True))),
+        ("Спортивные сооружения (ВРИ 5.1.3)", yn(o.include_sport_facilities)),
+        ("ЗНОП", yn(o.include_znop)),
+        ("Парковки", yn(o.include_parking)),
+        ("Внутриквартальные проезды", yn(o.include_intra_driveways)),
+        ("Инженерная инфраструктура", yn(getattr(o, "include_engineering", True))),
+        ("Экономика (усл. баллы)", yn(getattr(o, "include_economy", True))),
+        ("Норматив озеленения 25%",
+         "контролируется" if o.enforce_quarter_greening_norm else "справочно"),
+        ("Норматив плотности 450 чел/га",
+         "контролируется" if o.enforce_density_norm else "справочно"),
+    ]
+    if getattr(o, "custom_objects", None):
+        rows.append(("Пользовательские объекты", f"{len(o.custom_objects)} шт."))
+    return rows
+
+
+def _territory_slide(deck, site_area: float, o, rail_labels: list[str]) -> None:
+    """Слайд «Общая информация о территории»: исходные условия + состав расчёта."""
+    s = deck.slide()
+    T.title_band(s, "Общая информация о", "территории")
+    T.top_right_brand(s)
+    half = (_CONTENT_W - 0.3) / 2
+    T.section_label(s, _MARGIN, 1.5, half, "Исходные условия")
+    T.table(s, _MARGIN, 1.95, half, ["Параметр", "Значение"],
+            _territory_rows(site_area, o), col_ratios=[1.1, 1.4], fsize=10)
+    right_x = _MARGIN + half + 0.3
+    T.section_label(s, right_x, 1.5, half, "Состав расчёта")
+    T.table(s, right_x, 1.95, half, ["Компонент", "Статус"],
+            _composition_rows(o), col_ratios=[1.4, 1.1], fsize=10)
+    T.footer(s)
+
+
 def _split_title(title: str) -> tuple[str, str]:
     """Разбить заголовок на (обычная часть, жирное последнее слово)."""
     parts = title.rsplit(" ", 1)
@@ -281,10 +388,17 @@ def build_concept_album(
     scenarios: list[tuple[str, TEPResult]], path: str, *,
     title_line: str = "Альбом",
     title_bold: str = "концепции",
+    base_options=None,
+    site_area: float | None = None,
 ) -> str:
     """Собрать мульти-вариантный альбом концепции (PPTX 16:9). Возвращает путь.
 
     scenarios: список (имя, TEPResult) — Базовый вариант первым, далее варианты.
+    base_options/site_area: параметры Базы для слайда «Общая информация о
+    территории» (если не переданы — слайд пропускается).
+
+    Структура (v0.13.5): Титул → Общая информация → Сравнение →
+    карточки ВСЕХ вариантов подряд → детальные таблицы по каждому варианту.
     Каждый слайд обёрнут в try/except — альбом не падает на нехватке данных.
     """
     deck = T.Deck()
@@ -297,19 +411,29 @@ def build_concept_album(
     # Фиксированные подписи ушек-рейки: сверху вниз — База, Вариант 1, 2…
     rail_labels = [_var_label(i) for i in range(n_var)]
 
-    # (9) Сначала — сводное сравнение (обзор всех вариантов).
+    # Общая информация о территории (из параметров Базы).
+    if base_options is not None and site_area:
+        try:
+            _territory_slide(deck, float(site_area), base_options, rail_labels)
+        except Exception:  # noqa: BLE001 — §12: альбом не должен падать
+            pass
+
+    # Сводное сравнение (обзор всех вариантов).
     try:
         _comparison_slides(deck, scenarios, rail_labels)
-    except Exception:  # noqa: BLE001 — §12: альбом не должен падать
+    except Exception:  # noqa: BLE001
         pass
 
-    # Затем — детально по каждому варианту.
+    # Карточки ВСЕХ вариантов подряд (обзор каждого на одном слайде).
     for v_idx, (name, tep) in enumerate(scenarios):
         kind = "Базовый вариант" if v_idx == 0 else f"Вариант {v_idx}"
         try:
             _card_slide(deck, name, tep, kind, v_idx, rail_labels)
         except Exception:  # noqa: BLE001
             pass
+
+    # Детальные таблицы — по каждому варианту.
+    for v_idx, (name, tep) in enumerate(scenarios):
         try:
             blocks = build_variant_table_blocks(tep)
         except Exception:  # noqa: BLE001

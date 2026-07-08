@@ -1023,16 +1023,29 @@ def render_comparison_tab() -> None:
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             use_container_width=True,
         )
-        # Альбом концепции: Титул → по каждому варианту (карточка + таблицы по
-        # вкладкам, как на «Расчёте») → сводная сравнительная таблица. Первый
-        # сценарий в списке трактуется как Базовый вариант.
+        # Альбом концепции (v0.13.5): Титул → Общая информация о территории →
+        # Сравнение → карточки вариантов → детальные таблицы. Первый выбранный
+        # сценарий трактуется как Базовый вариант.
+        # Выбор вариантов: можно собрать альбом по 1–3 выбранным, не по всем.
+        _opt_labels = [f"{i + 1}. {nm}" for i, (nm, _) in enumerate(clean_pairs)]
+        _sel = st.multiselect(
+            "Варианты в альбом (по умолчанию — все)",
+            options=_opt_labels, default=_opt_labels,
+            key="album_variant_select",
+        )
+        _sel_idx = [i for i, lb in enumerate(_opt_labels) if lb in _sel]
+        album_pairs = [clean_pairs[i] for i in _sel_idx] or clean_pairs
         if dl2.button(":material/slideshow: Сформировать альбом (PPTX)",
                       use_container_width=True):
             from urban_model.export.album.concept import build_concept_album
             with tempfile.NamedTemporaryFile(suffix=".pptx", delete=False) as tmp:
                 _pp = tmp.name
             try:
-                build_concept_album(clean_pairs, _pp)
+                build_concept_album(
+                    album_pairs, _pp,
+                    base_options=st.session_state.get("last_calc_options"),
+                    site_area=st.session_state.get("last_calc_site_area"),
+                )
                 with open(_pp, "rb") as f:
                     st.session_state["_concept_album_bytes"] = f.read()
             finally:
@@ -1049,6 +1062,7 @@ def render_comparison_tab() -> None:
                 use_container_width=True,
             )
         st.caption(
-            "Альбом концепции: Базовый вариант (первый в списке) и варианты "
-            "оптимизации — карточка + таблицы по вкладкам + сводное сравнение."
+            "Альбом концепции: общая информация о территории, сводное сравнение, "
+            "карточки выбранных вариантов и детальные таблицы по каждому. "
+            "Первый выбранный вариант — Базовый."
         )

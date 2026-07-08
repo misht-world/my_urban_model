@@ -57,6 +57,18 @@ def test_concept_album_multi_variant(norms):
     assert _n_slides(p) >= 1 + 2 * (1 + n_blocks) + 1
 
 
+def test_concept_album_territory_slide(norms):
+    """v0.13.5: base_options+site_area добавляют слайд «Общая информация»."""
+    from urban_model.export.album import build_concept_album
+    opts = _opts(floors=12)
+    r = solve_max_kit(Site(area_m2=100_000), opts, norms)
+    p1 = tempfile.mktemp(suffix=".pptx")
+    p2 = tempfile.mktemp(suffix=".pptx")
+    build_concept_album([("База", r)], p1)
+    build_concept_album([("База", r)], p2, base_options=opts, site_area=100_000)
+    assert _n_slides(p2) == _n_slides(p1) + 1
+
+
 def test_concept_album_single_variant(norms):
     """Работает и для одного варианта (без вариантов оптимизации)."""
     from urban_model.export.album import build_concept_album
