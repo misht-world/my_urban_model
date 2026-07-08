@@ -1239,6 +1239,48 @@ def _render_what_to_improve_section(
 
 
 # ---------------------------------------------------------------------------
+# Секция 3a-bis: Советы (v0.14.1) — текстовые рекомендации из сканов
+# ---------------------------------------------------------------------------
+
+@st.cache_data(show_spinner=False)
+def _cached_advice(_norms_key: str, opts_json: str, site_area: float,
+                   base_apartments: float | None):
+    from urban_model.optimize.advice import build_advice
+    norms = _get_norms_resolver()
+    opts = CalculationOptions.model_validate_json(opts_json)
+    site = Site(area_m2=site_area)
+    return build_advice(site, opts, norms, base_apartments=base_apartments)
+
+
+def _render_advice_section(site: Site, base_options: CalculationOptions,
+                           base_tep: TEPResult | None = None) -> None:
+    """«Советы»: что улучшить относительно Базы (из детерминированных сканов)."""
+    st.markdown("### :material/lightbulb: Советы — что можно улучшить")
+    st.caption(
+        "Локальный анализ: каждый совет меняет ОДИН фактор (прочие — как в "
+        "базе). Точную комбинацию ищет подбор выше — советы показывают "
+        "направление и цену вопроса."
+    )
+    _base_apt = (float(base_tep.apartments_area.value or 0)
+                 if base_tep is not None else None)
+    try:
+        advice = _cached_advice("spb", base_options.model_dump_json(),
+                                site.area_m2, _base_apt)
+    except Exception as e:  # noqa: BLE001 — диагностика в UI
+        st.error(f"Ошибка советующего анализа: {e}")
+        return
+    if not advice:
+        st.success(
+            "База близка к локальному оптимуму по всем проверенным факторам "
+            "(этажность, парковки, ЗНОП) — заметных улучшений одним параметром "
+            "не найдено."
+        )
+        return
+    for a in advice:
+        st.markdown(f"• {a.text}")
+
+
+# ---------------------------------------------------------------------------
 # Секция 3b: Чувствительность (tornado) — v0.9.15
 # ---------------------------------------------------------------------------
 
@@ -1647,6 +1689,11 @@ def render_optimizer_tab(
 
     # 3. One-factor сканы (автоматически)
     _render_what_to_improve_section(site, base_options, norms)
+
+    st.markdown("")
+
+    # 3a-bis. Советы — текстовые рекомендации из сканов (v0.14.1)
+    _render_advice_section(site, base_options, base_tep)
 
     st.markdown("")
 
