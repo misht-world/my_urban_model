@@ -61,6 +61,21 @@ def _floors_txt(tep: TEPResult) -> str:
     return f"{ef:.0f} эт." if ef else "—"
 
 
+def _buckets_extra(formula: str | None, total: int) -> str | None:
+    """«N объектов по lo–hi мест» — та же подпись, что под метриками ДОО/СОШ
+    в KPI-сетке модели (ui/output._buckets_delta)."""
+    from urban_model.export.variant_tables import parse_object_buckets
+    if not formula or total == 0:
+        return None
+    n, caps = parse_object_buckets(formula)
+    if n == 0:
+        return None
+    lo, hi = min(caps), max(caps)
+    per = f"{lo} мест" if lo == hi else f"{lo}–{hi} мест"
+    word = "объект" if n == 1 else ("объекта" if 2 <= n <= 4 else "объектов")
+    return f"{n} {word} по {per}"
+
+
 def _kpi_pairs(tep: TEPResult) -> list[tuple[str, str, str | None]]:
     """(значение, подпись с эмодзи, доп.строка) — зеркало render_main_kpi_grid."""
     def lbl(t):
@@ -77,9 +92,11 @@ def _kpi_pairs(tep: TEPResult) -> list[tuple[str, str, str | None]]:
     pairs.append((f"{znop_area:,}".replace(",", " ") + " м²" if znop_area else "—",
                   lbl("ЗНОП"), f"{znop_pp:.1f} м²/чел" if znop_pp > 0 else None))
     kg = int(tep.kindergarten_places_accepted.value or 0)
-    pairs.append((f"{kg} мест" if kg else "—", lbl("ДОО"), None))
+    pairs.append((f"{kg} мест" if kg else "—", lbl("ДОО"),
+                  _buckets_extra(tep.kindergarten_places_accepted.formula, kg)))
     sch = int(tep.school_places_accepted.value or 0)
-    pairs.append((f"{sch} мест" if sch else "—", lbl("СОШ"), None))
+    pairs.append((f"{sch} мест" if sch else "—", lbl("СОШ"),
+                  _buckets_extra(tep.school_places_accepted.formula, sch)))
     ae = int(tep.add_education_places_accepted.value or 0)
     ae_place = ("встроен. (ВПП)" if getattr(tep, "add_education_built_in", False)
                 else "отд. стоящее")
