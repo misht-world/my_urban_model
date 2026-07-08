@@ -214,6 +214,23 @@ def _table_slide(deck, name: str, block, v_index: int,
     T.footer(s)
 
 
+# Показатели, где БОЛЬШЕ = лучше (подсвечиваем максимум в строке).
+_HL_MORE_IS_BETTER = ("Площадь квартир", "Эконом-индекс")
+
+
+def _best_col_for(df, lab: str, names: list[str]) -> int | None:
+    """Индекс варианта (0-based) с максимальным числовым значением в строке."""
+    best_j, best_v = None, None
+    for j, nm in enumerate(names):
+        try:
+            v = float(str(df.loc[lab, nm]).replace(" ", "").replace(" ", ""))
+        except (ValueError, TypeError):
+            continue
+        if best_v is None or v > best_v:
+            best_v, best_j = v, j
+    return best_j
+
+
 def _comparison_slides(deck, scenarios: list[tuple[str, TEPResult]],
                        rail_labels: list[str]) -> None:
     """Сводная сравнительная таблица (как в xlsx). Разбита по слайдам."""
@@ -221,6 +238,13 @@ def _comparison_slides(deck, scenarios: list[tuple[str, TEPResult]],
     df = results_to_dataframe(clean)
     names = list(df.columns)
     labels = list(df.index)
+    # Лучший вариант (столбец) по каждому «больше=лучше» показателю.
+    best_by_label = {
+        lab: _best_col_for(df, lab, names)
+        for lab in labels if any(k in lab for k in _HL_MORE_IS_BETTER)
+    }
+    ratios = [2.4] + [1.0] * len(names)
+    top = 1.7
     chunk = 13
     for start in range(0, len(labels), chunk):
         s = deck.slide()
@@ -230,14 +254,26 @@ def _comparison_slides(deck, scenarios: list[tuple[str, TEPResult]],
         sub = labels[start:start + chunk]
         headers = ["Показатель"] + names
         rows = []
-        for lab in sub:
+        hl_cells = set()
+        for i, lab in enumerate(sub, 1):     # i — 1-based строка данных в таблице
             row = [lab]
             for nm in names:
                 v = df.loc[lab, nm]
                 row.append("" if v is None else str(v))
             rows.append(row)
-        ratios = [2.4] + [1.0] * len(names)
-        T.table(s, _MARGIN, 1.55, _CONTENT_W, headers, rows, col_ratios=ratios, fsize=10)
+            bj = best_by_label.get(lab)
+            if bj is not None:
+                hl_cells.add((i, bj + 1))    # +1: столбец 0 — «Показатель»
+        # (item 3) Серые подписи «База»/«Вариант N» над колонками — для сопоставления
+        # с боковой рейкой. Позиции колонок из ratios.
+        _tot = sum(ratios)
+        for j in range(len(names)):
+            x0 = _MARGIN + _CONTENT_W * (2.4 + j) / _tot
+            cw = _CONTENT_W * 1.0 / _tot
+            T.text(s, x0, top - 0.28, cw, 0.24, _var_label(j),
+                   size=8, color=T.SOFT, align=PP_ALIGN.CENTER)
+        T.table(s, _MARGIN, top, _CONTENT_W, headers, rows, col_ratios=ratios,
+                fsize=10, hl_cells=hl_cells)
         T.footer(s)
 
 

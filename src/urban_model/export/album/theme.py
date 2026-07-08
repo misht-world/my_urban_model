@@ -235,7 +235,7 @@ def variant_rail(slide, labels: list[str], current: int | None) -> None:
         if current is not None and not active:
             continue
         y = _RAIL_TOP + i * slot + (slot - tab_h) / 2
-        w = 0.40 if active else 0.30
+        w = 0.36                           # одинаковый размер везде; различие — оттенком
         x = _EDGE - w                      # впритык к правому краю
         color = _TAB_ACTIVE if active else _TAB_INACTIVE
         rect(slide, x, y, w, tab_h, color)
@@ -305,8 +305,11 @@ def status_pill(slide, left, top, w, label, color):
     _font(p.font)
 
 
+HL_FILL = (0xFD, 0xEF, 0xD3)      # палевый амбер — подсветка лучшего значения
+
+
 def table(slide, left, top, w, headers, rows, *, col_ratios=None, fsize=11,
-          row_colors=None, bold_last=False):
+          row_colors=None, bold_last=False, hl_cells=None):
     nr, nc = len(rows) + 1, len(headers)
     h = 0.4 + 0.32 * len(rows)
     gt = slide.shapes.add_table(nr, nc, int(left * EMU), int(top * EMU),
@@ -340,15 +343,16 @@ def table(slide, left, top, w, headers, rows, *, col_ratios=None, fsize=11,
         for j, val in enumerate(row):
             cell = tbl.cell(i, j)
             cell.text = str(val)
+            hl = bool(hl_cells) and (i, j) in hl_cells
             cell.fill.solid()
-            cell.fill.fore_color.rgb = _c(WHITE if i % 2 else ZEBRA)
+            cell.fill.fore_color.rgb = _c(HL_FILL if hl else (WHITE if i % 2 else ZEBRA))
             cell.margin_left = Emu(int(0.08 * EMU))
             cell.margin_top = Emu(int(0.015 * EMU))
             cell.margin_bottom = Emu(int(0.015 * EMU))
             for p in cell.text_frame.paragraphs:
                 for r_ in p.runs:
                     r_.font.size = Pt(fsize)
-                    r_.font.bold = is_last
+                    r_.font.bold = is_last or hl
                     r_.font.color.rgb = _c(txt_col)
                     _font(r_.font)
     return gt
