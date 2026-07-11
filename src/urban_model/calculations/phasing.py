@@ -19,7 +19,12 @@ import math
 import re
 
 from urban_model.calculations.warning_codes import WC, prefix
-from urban_model.models.phasing import PhasingResult, PhasingSpec, StageProvision
+from urban_model.models.phasing import (
+    LotProvision,
+    PhasingResult,
+    PhasingSpec,
+    StageProvision,
+)
 
 
 def _buckets(formula: str | None) -> list[int]:
@@ -111,8 +116,66 @@ _NO_SPLIT_NOTE = (
 )
 
 
-def compute_phasing(result, spec: PhasingSpec) -> PhasingResult:
-    """Раскладка готового TEPResult по очередям. Не мутирует result."""
+def _compute_lot_engineering(
+    stages: list[StageProvision], result, norms, eng_spec,
+) -> tuple[list[LotProvision], str | None]:
+    """Автономные комплекты инженерии по лотам (v0.15.6).
+
+    Каждый лот считается `compute_engineering` от СОБСТВЕННОГО спроса
+    (квартиры/население/соцобъекты лота). Возвращает (лоты, дельта-примечание
+    к единой квартальной схеме). Информационный слой: баланс квартала считан
+    по единой инженерке (эффект масштаба крупных объектов).
+    """
+    from urban_model.calculations.engineering import compute_engineering
+
+    lots: list[LotProvision] = []
+    by_lot: dict[int, list[StageProvision]] = {}
+    for s in stages:
+        by_lot.setdefault(s.lot, []).append(s)
+    for lot_idx in sorted(by_lot):
+        ls = by_lot[lot_idx]
+        pop = sum(s.population_stage for s in ls)
+        apt = sum(s.apartments_m2 for s in ls)
+        n_soc = sum(len(s.kg_buckets) + len(s.school_buckets) for s in ls)
+        eng = compute_engineering(apt, pop, n_soc, norms, eng_spec)
+        counts = {o.label: o.count for o in eng.objects if o.count > 0}
+        lots.append(LotProvision(
+            index=lot_idx, stages=[s.index for s in ls],
+            population=pop, apartments_m2=apt, n_social=n_soc,
+            engineering=counts, eng_plot_total=eng.plot_total_all,
+        ))
+
+    # Дельта к единой квартальной схеме (по ней считан баланс).
+    delta_note = None
+    q_eng = getattr(result, "engineering", None)
+    if q_eng is not None:
+        q_objs = sum(o.count for o in q_eng.objects if o.count > 0)
+        q_plot = q_eng.plot_total_all
+        l_objs = sum(sum(lp.engineering.values()) for lp in lots)
+        l_plot = sum(lp.eng_plot_total for lp in lots)
+        d_obj = l_objs - q_objs
+        d_plot = l_plot - q_plot
+        def _n(v: float, sign: bool = False) -> str:
+            s = f"{v:+,.0f}" if sign else f"{v:,.0f}"
+            return s.replace(",", " ")
+
+        delta_note = (
+            f"Автономные лоты: {l_objs} объектов инженерии, ЗУ "
+            f"{_n(l_plot)} м² — против {q_objs} объектов и {_n(q_plot)} м² "
+            f"по единой квартальной схеме ({d_obj:+d} объектов, "
+            f"{_n(d_plot, sign=True)} м²). Баланс территории посчитан по "
+            f"единой схеме."
+        )
+    return lots, delta_note
+
+
+def compute_phasing(result, spec: PhasingSpec, norms=None,
+                    eng_spec=None) -> PhasingResult:
+    """Раскладка готового TEPResult по очередям. Не мутирует result.
+
+    norms/eng_spec нужны только для `spec.engineering_by_lots` (автономные
+    комплекты инженерии по лотам).
+    """
     if spec.mode == "auto":
         shares = _auto_shares(result)
         if shares is None:
@@ -203,4 +266,14 @@ def compute_phasing(result, spec: PhasingSpec) -> PhasingResult:
             engineering_stage=eng_per_stage[k],
             deficits=deficits,
         ))
-    return PhasingResult(mode=spec.mode, stages=stages, warnings=warnings)
+    lots: list[LotProvision] = []
+    eng_delta_note = None
+    if spec.engineering_by_lots and norms is not None and stages:
+        try:
+            lots, eng_delta_note = _compute_lot_engineering(
+                stages, result, norms, eng_spec)
+        except Exception:  # noqa: BLE001 — информационный слой не роняет расчёт
+            lots, eng_delta_note = [], None
+
+    return PhasingResult(mode=spec.mode, stages=stages, warnings=warnings,
+                         lots=lots, eng_delta_note=eng_delta_note)

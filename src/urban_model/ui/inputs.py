@@ -671,13 +671,24 @@ def _render_phasing_expander():
                 "определяются автоматически по результату расчёта."
             ),
         )
+        # v0.15.6: автономная инженерия по лотам (для обоих режимов долей).
+        eng_lots = st.checkbox(
+            "Инженерия автономно по каждому лоту", value=False,
+            key="phasing_eng_lots",
+            help=(
+                "Каждый лот получает собственный комплект ТП/котельной/ОСПС "
+                "и т.д. по своему спросу. Информационный слой: баланс "
+                "территории считан по единой квартальной схеме — таблица "
+                "покажет по-лотовые комплекты и дельту к ней."
+            ),
+        )
         if mode_lbl.startswith("Авто"):
             st.caption(
                 "Число очередей и доли площади будут подобраны автоматически "
                 "по результату расчёта: каждая очередь обеспечена "
                 "соцобъектами (≈95–100% на конец этапа)."
             )
-            return PhasingSpec(mode="auto")
+            return PhasingSpec(mode="auto", engineering_by_lots=eng_lots)
         n = int(st.number_input("Число очередей", min_value=2, max_value=4,
                                 value=2, step=1, key="phasing_n"))
         shares: list[float] = []
@@ -696,7 +707,8 @@ def _render_phasing_expander():
             f"объекты инженерии раскладываются по очередям автоматически — "
             f"по накопительной потребности."
         )
-        return PhasingSpec(mode="manual", shares=[s / tot for s in shares])
+        return PhasingSpec(mode="manual", shares=[s / tot for s in shares],
+                           engineering_by_lots=eng_lots)
 
 
 def _render_lot_share_expander() -> float | None:

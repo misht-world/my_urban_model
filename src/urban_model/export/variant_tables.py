@@ -462,6 +462,38 @@ def build_variant_table_blocks(result: TEPResult) -> list[TableBlock]:
                    _eng_note],
             summary=_sum_ph))
 
+        # 🔌 Инженерия по лотам (v0.15.6) — автономные комплекты
+        if getattr(ph, "lots", None):
+            _short = lambda lbl: lbl.split(" (")[0]  # noqa: E731
+            _all_labels: list[str] = []
+            for lp in ph.lots:
+                for lbl in lp.engineering:
+                    sl = _short(lbl)
+                    if sl not in _all_labels:
+                        _all_labels.append(sl)
+            lot_rows = []
+            for lp in ph.lots:
+                row = {
+                    "Лот": lp.index,
+                    "Очереди": ", ".join(str(i) for i in lp.stages),
+                    "Население": f"{lp.population:,.0f}".replace(",", " "),
+                }
+                cnt_by_short = {_short(lbl): c for lbl, c in lp.engineering.items()}
+                for sl in _all_labels:
+                    row[sl] = cnt_by_short.get(sl, 0)
+                row["ЗУ, м²"] = f"{lp.eng_plot_total:,.0f}".replace(",", " ")
+                lot_rows.append(row)
+            lot_cols = ["Лот", "Очереди", "Население"] + _all_labels + ["ЗУ, м²"]
+            _lot_notes = ["Каждый лот обеспечен собственным комплектом "
+                          "инженерных объектов по своему спросу (автономный "
+                          "режим)."]
+            if ph.eng_delta_note:
+                _lot_notes.append(ph.eng_delta_note)
+            blocks.append(TableBlock(
+                "phasing_eng", "Инженерия по лотам", "bolt", lot_rows,
+                columns=lot_cols, notes=_lot_notes,
+                summary=ph.eng_delta_note))
+
     return blocks
 
 

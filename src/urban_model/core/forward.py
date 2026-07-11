@@ -1587,7 +1587,10 @@ def compute_tep_for_kit(
     # соцобъектов на конец очередей добавляются к warnings результата.
     if getattr(options, "phasing", None) is not None:
         from urban_model.calculations.phasing import compute_phasing
-        result.phasing = compute_phasing(result, options.phasing)
+        result.phasing = compute_phasing(
+            result, options.phasing, norms=norms,
+            eng_spec=getattr(options, "engineering", None),
+        )
         result.warnings.extend(result.phasing.warnings)
 
     # === Экономика (v0.8.0) ===

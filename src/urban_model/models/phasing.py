@@ -33,6 +33,11 @@ class PhasingSpec(BaseModel):
         default_factory=lambda: [0.5, 0.5],
         description="Доли площади по очередям (только для mode='manual')",
     )
+    # v0.15.6: автономная инженерия по лотам — каждый лот получает СВОЙ
+    # комплект ТП/котельной/ОСПС и т.д. по собственному спросу. Информационный
+    # слой: баланс квартала считан по единой квартальной схеме (эффект
+    # масштаба); режим показывает по-лотовые комплекты и дельту к ней.
+    engineering_by_lots: bool = False
 
     @field_validator("shares")
     @classmethod
@@ -81,6 +86,19 @@ class StageProvision(BaseModel):
         return not self.deficits
 
 
+class LotProvision(BaseModel):
+    """Автономный комплект инженерии одного лота (v0.15.6)."""
+    model_config = ConfigDict(extra="forbid")
+
+    index: int                       # 1-based номер лота
+    stages: list[int] = Field(default_factory=list)   # номера очередей лота
+    population: float = 0.0
+    apartments_m2: float = 0.0
+    n_social: int = 0                # корпуса ДОО+СОШ лота (для ТП)
+    engineering: dict[str, int] = Field(default_factory=dict)  # label → count
+    eng_plot_total: float = 0.0      # ЗУ инженерии лота, м²
+
+
 class PhasingResult(BaseModel):
     """Итог раскладки по очередям.
 
@@ -93,3 +111,6 @@ class PhasingResult(BaseModel):
     stages: list[StageProvision] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
     note: str | None = None          # пояснение, если stages пуст
+    # v0.15.6: автономная инженерия по лотам (пусто, если режим выключен).
+    lots: list[LotProvision] = Field(default_factory=list)
+    eng_delta_note: str | None = None  # дельта к единой квартальной схеме

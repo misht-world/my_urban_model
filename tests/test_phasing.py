@@ -180,6 +180,50 @@ class TestLots:
         assert "лоте(ах)" in ph.summary
 
 
+class TestEngineeringByLots:
+    @pytest.fixture(scope="class")
+    def result(self, norms):
+        from urban_model.models.social import SchoolSpec
+        o = CalculationOptions(
+            floors=12, planning_doc=True,
+            school=SchoolSpec(num_objects=2),
+            kindergarten=KindergartenSpec(num_objects=4),
+            phasing=PhasingSpec(mode="auto", engineering_by_lots=True))
+        return solve_max_kit(Site(area_m2=400_000), o, norms)
+
+    def test_lots_have_full_kits(self, result):
+        """Каждый лот автономен: котельная и ОСПС в каждом."""
+        ph = result.phasing
+        assert len(ph.lots) == max(s.lot for s in ph.stages)
+        for lp in ph.lots:
+            assert any("Котельная" in lbl for lbl in lp.engineering)
+            assert any("ОСПС" in lbl for lbl in lp.engineering)
+            assert lp.eng_plot_total > 0
+
+    def test_delta_note_present(self, result):
+        assert result.phasing.eng_delta_note
+        assert "единой" in result.phasing.eng_delta_note
+
+    def test_lot_population_sums(self, result):
+        ph = result.phasing
+        assert sum(lp.population for lp in ph.lots) == pytest.approx(
+            result.population.value, rel=1e-6)
+
+    def test_off_by_default(self, norms):
+        o = CalculationOptions(floors=12, planning_doc=True,
+                               phasing=PhasingSpec(mode="auto"))
+        r = solve_max_kit(Site(area_m2=200_000), o, norms)
+        assert r.phasing.lots == []
+
+    def test_block_in_variant_tables(self, result):
+        from urban_model.export.variant_tables import build_variant_table_blocks
+        pe = next((b for b in build_variant_table_blocks(result)
+                   if b.key == "phasing_eng"), None)
+        assert pe is not None
+        assert "Лот" in pe.columns and "ЗУ, м²" in pe.columns
+        assert len(pe.rows) == len(result.phasing.lots)
+
+
 def test_deficit_when_social_undersized(norms):
     """Недостаточная вместимость ДОО (ручной override) → дефицит на этапе."""
     o = CalculationOptions(
