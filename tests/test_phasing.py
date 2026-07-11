@@ -35,8 +35,9 @@ class TestPhasingSpec:
 class TestPhasingResult:
     @pytest.fixture(scope="class")
     def result(self, norms):
-        o = CalculationOptions(floors=12, planning_doc=True,
-                               phasing=PhasingSpec(shares=[0.3, 0.3, 0.4]))
+        o = CalculationOptions(
+            floors=12, planning_doc=True,
+            phasing=PhasingSpec(mode="manual", shares=[0.3, 0.3, 0.4]))
         return solve_max_kit(Site(area_m2=200_000), o, norms)
 
     def test_none_without_spec(self, norms):
@@ -85,12 +86,46 @@ class TestPhasingResult:
                 assert ph.stages[0].engineering_stage.get(o.label) == 1
 
 
+class TestAutoMode:
+    def test_auto_stages_follow_kg_buckets(self, norms):
+        """Авто: число очередей = число корпусов ДОО; покрытие ≥95% на этапах."""
+        o = CalculationOptions(floors=12, planning_doc=True,
+                               phasing=PhasingSpec(mode="auto"))
+        r = solve_max_kit(Site(area_m2=200_000), o, norms)
+        ph = r.phasing
+        assert ph.mode == "auto"
+        import re
+        m = re.search(r"\[([\d,\s]+)\]", r.kindergarten_places_accepted.formula)
+        n_kg = len(m.group(1).split(","))
+        assert len(ph.stages) == min(4, max(2, n_kg))
+        for s in ph.stages:
+            if s.kg_required_cum > 0:
+                assert s.kg_provided_cum / s.kg_required_cum >= 0.95
+        assert all(s.is_ok for s in ph.stages)
+
+    def test_auto_shares_sum_to_one(self, norms):
+        o = CalculationOptions(floors=12, planning_doc=True,
+                               phasing=PhasingSpec(mode="auto"))
+        r = solve_max_kit(Site(area_m2=200_000), o, norms)
+        assert sum(s.share for s in r.phasing.stages) == pytest.approx(1.0)
+
+    def test_auto_fallback_without_kg(self, norms):
+        """Без ДОО и СОШ (или 1 корпус) — 2 равные очереди."""
+        o = CalculationOptions(floors=9, planning_doc=True,
+                               include_kindergarten=False, include_school=False,
+                               phasing=PhasingSpec(mode="auto"))
+        r = solve_max_kit(Site(area_m2=50_000), o, norms)
+        ph = r.phasing
+        assert len(ph.stages) == 2
+        assert ph.stages[0].share == pytest.approx(0.5)
+
+
 def test_deficit_when_social_undersized(norms):
     """Недостаточная вместимость ДОО (ручной override) → дефицит на этапе."""
     o = CalculationOptions(
         floors=12, planning_doc=True,
         kindergarten=KindergartenSpec(num_objects=1, capacity_per_object=100),
-        phasing=PhasingSpec(shares=[0.5, 0.5]),
+        phasing=PhasingSpec(mode="manual", shares=[0.5, 0.5]),
     )
     r = solve_max_kit(Site(area_m2=200_000), o, norms)
     ph = r.phasing
@@ -101,7 +136,7 @@ def test_deficit_when_social_undersized(norms):
 def test_phasing_block_in_variant_tables(norms):
     from urban_model.export.variant_tables import build_variant_table_blocks
     o = CalculationOptions(floors=12, planning_doc=True,
-                           phasing=PhasingSpec(shares=[0.5, 0.5]))
+                           phasing=PhasingSpec(mode="manual", shares=[0.5, 0.5]))
     r = solve_max_kit(Site(area_m2=100_000), o, norms)
     blocks = build_variant_table_blocks(r)
     ph = next((b for b in blocks if b.key == "phasing"), None)

@@ -158,7 +158,8 @@ def _phasing_chip(tep: TEPResult) -> str | None:
     word = "очереди" if 2 <= n <= 4 else "очередей"
     ok = all(s.is_ok for s in ph.stages)
     status = "" if ok else " · есть дефициты"
-    return f"Очерёдность: {n} {word} ({shares}%){status}"
+    auto = " · авто" if getattr(ph, "mode", "") == "auto" else ""
+    return f"Очерёдность: {n} {word} ({shares}%){auto}{status}"
 
 
 def _var_label(v_index: int) -> str:

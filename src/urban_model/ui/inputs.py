@@ -661,6 +661,23 @@ def _render_phasing_expander():
         )
         if not on:
             return None
+        mode_lbl = st.radio(
+            "Доли очередей", ["Авто — по обеспеченности соцобъектами", "Вручную"],
+            index=0, key="phasing_mode", horizontal=False,
+            help=(
+                "Авто: границы очередей подбираются так, чтобы каждая очередь "
+                "была самодостаточна по соцобъектам (потребность на конец "
+                "этапа покрыта введёнными корпусами). Число очередей и доли "
+                "определяются автоматически по результату расчёта."
+            ),
+        )
+        if mode_lbl.startswith("Авто"):
+            st.caption(
+                "Число очередей и доли площади будут подобраны автоматически "
+                "по результату расчёта: каждая очередь обеспечена "
+                "соцобъектами (≈95–100% на конец этапа)."
+            )
+            return PhasingSpec(mode="auto")
         n = int(st.number_input("Число очередей", min_value=2, max_value=4,
                                 value=2, step=1, key="phasing_n"))
         shares: list[float] = []
@@ -679,7 +696,7 @@ def _render_phasing_expander():
             f"объекты инженерии раскладываются по очередям автоматически — "
             f"по накопительной потребности."
         )
-        return PhasingSpec(shares=[s / tot for s in shares])
+        return PhasingSpec(mode="manual", shares=[s / tot for s in shares])
 
 
 def _render_lot_share_expander() -> float | None:

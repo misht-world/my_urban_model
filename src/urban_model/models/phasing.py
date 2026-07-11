@@ -10,16 +10,28 @@
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class PhasingSpec(BaseModel):
-    """Задание очередей: доли площади квартала (Σ = 1, 2–4 очереди)."""
+    """Задание очередей.
+
+    mode="auto" (по умолчанию) — доли выводятся из дискретности соцобъектов:
+    границы очередей проходят по ёмкости корпусов ДОО (нет ДОО → СОШ; нет
+    ничего → 2 равные), так что на конец каждой очереди накопительная
+    потребность покрыта введёнными корпусами (~95–105%). В UI это называется
+    нейтрально «по обеспеченности соцобъектами».
+
+    mode="manual" — пользователь задаёт доли площади (Σ = 1, 2–4 очереди).
+    """
     model_config = ConfigDict(extra="forbid")
 
+    mode: Literal["auto", "manual"] = "auto"
     shares: list[float] = Field(
         default_factory=lambda: [0.5, 0.5],
-        description="Доли площади квартала по очередям (нормализуются к 1)",
+        description="Доли площади по очередям (только для mode='manual')",
     )
 
     @field_validator("shares")
@@ -68,5 +80,6 @@ class PhasingResult(BaseModel):
     """Итог раскладки по очередям."""
     model_config = ConfigDict(extra="forbid")
 
+    mode: str = "manual"             # "auto" | "manual" — как получены доли
     stages: list[StageProvision] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)

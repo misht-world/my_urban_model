@@ -332,9 +332,11 @@ def render_main_kpi_grid(result: TEPResult, options=None) -> None:
         _ok = all(s.is_ok for s in ph.stages)
         _status = ("обеспеченность выдержана" if _ok
                    else "⚠ есть дефициты соцобъектов")
+        _auto = " · авто" if getattr(ph, "mode", "") == "auto" else ""
         st.caption(
             f":material/stairs: Очерёдность: {len(ph.stages)} очереди "
-            f"({_shares}%) — {_status}. Детали — в «Очерёдность застройки» ниже."
+            f"({_shares}%{_auto}) — {_status}. "
+            f"Детали — в «Очерёдность застройки» ниже."
         )
 
 

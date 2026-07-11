@@ -419,8 +419,10 @@ def build_variant_table_blocks(result: TEPResult) -> list[TableBlock]:
                 "Статус": "✓" if s.is_ok else "⚠ дефицит",
             })
         n_def = sum(1 for s in ph.stages if not s.is_ok)
+        _auto_ph = (" (доли подобраны автоматически по обеспеченности "
+                    "соцобъектами)" if getattr(ph, "mode", "") == "auto" else "")
         _sum_ph = (
-            f"{len(ph.stages)} очереди(ей); "
+            f"{len(ph.stages)} очереди(ей){_auto_ph}; "
             + ("обеспеченность соцобъектами выдержана на всех этапах."
                if n_def == 0 else f"дефицит соцобъектов на {n_def} этапе(ах).")
         )
