@@ -1582,6 +1582,14 @@ def compute_tep_for_kit(
         warnings=warnings,
     )
 
+    # === Очерёдность застройки (v0.15.0) ===
+    # Раскладка готового результата по этапам; предупреждения о дефицитах
+    # соцобъектов на конец очередей добавляются к warnings результата.
+    if getattr(options, "phasing", None) is not None:
+        from urban_model.calculations.phasing import compute_phasing
+        result.phasing = compute_phasing(result, options.phasing)
+        result.warnings.extend(result.phasing.warnings)
+
     # === Экономика (v0.8.0) ===
     # После того как ТЭП собран — считаем стоимость / выручку / прибыль
     # и присоединяем к результату. Экономика никак не влияет на сами ТЭП.

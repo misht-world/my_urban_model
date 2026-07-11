@@ -191,6 +191,8 @@ def render_params_tab() -> UserInputs:
                 site, floors, planning_doc, lot_override,
                 enforce_greening_norm, enforce_density_norm, floor_clusters,
             ) = _render_essentials()
+            # v0.15.0: очерёдность застройки (территориальные этапы).
+            phasing_spec = _render_phasing_expander()
 
         with st.container(border=True, key="param_left_card_include"):
             st.markdown("##### Учитывать в расчёте")
@@ -395,6 +397,7 @@ def render_params_tab() -> UserInputs:
         social_compensation_share=social_comp_share,
         enforce_quarter_greening_norm=enforce_greening_norm,
         enforce_density_norm=enforce_density_norm,
+        phasing=phasing_spec,
     )
     return UserInputs(
         site=site, options=options, mode=mode,
@@ -637,6 +640,46 @@ def _render_essentials() -> tuple[Site, int, bool, "float | None", bool, bool, l
         Site(area_m2=area_m2), int(floors), planning_doc, lot_override,
         enforce_greening, enforce_density, floor_clusters,
     )
+
+
+def _render_phasing_expander():
+    """Очерёдность застройки (v0.15.0): 2–4 очереди долями площади.
+
+    Раскладка соцобъектов/инженерки по очередям — автоматическая (по
+    накопительной потребности), считается поверх готового результата.
+    Все виджеты — скаляры → сохраняются в файл проекта.
+    """
+    from urban_model.models.phasing import PhasingSpec
+
+    with st.expander(":material/stairs: Очерёдность застройки", expanded=False):
+        on = st.checkbox(
+            "Разбить на очереди", value=False, key="phasing_on",
+            help=(
+                "Территориальные этапы долями площади. Модель проверит "
+                "обеспеченность ДОО/СОШ и инженерией на конец каждой очереди."
+            ),
+        )
+        if not on:
+            return None
+        n = int(st.number_input("Число очередей", min_value=2, max_value=4,
+                                value=2, step=1, key="phasing_n"))
+        shares: list[float] = []
+        cols = st.columns(n)
+        for i in range(n):
+            with cols[i]:
+                shares.append(float(st.number_input(
+                    f"Оч. {i + 1}, %", min_value=1.0, max_value=97.0,
+                    value=round(100.0 / n, 0), step=1.0,
+                    key=f"phase_share_{i + 1}",
+                )))
+        tot = sum(shares)
+        note = "" if abs(tot - 100.0) < 0.5 else f" (Σ={tot:.0f}% → нормализуются)"
+        st.caption(
+            f"Доли площади квартала по очередям{note}. Корпуса ДОО/СОШ и "
+            f"объекты инженерии раскладываются по очередям автоматически — "
+            f"по накопительной потребности."
+        )
+        return PhasingSpec(shares=[s / tot for s in shares])
 
 
 def _render_lot_share_expander() -> float | None:

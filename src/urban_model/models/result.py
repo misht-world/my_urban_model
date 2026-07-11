@@ -211,6 +211,10 @@ class TEPResult(BaseModel):
     # Экономика (v0.8.0) — None допустимо для unit-тестов чистых расчётов.
     economy: "EconomicMetrics | None" = None
 
+    # Очерёдность застройки (v0.15.0) — раскладка по этапам поверх готового
+    # результата; None если options.phasing не задан.
+    phasing: "PhasingResult | None" = None
+
     def summary(self) -> str:
         lines = [
             f"Профиль: {self.profile}",
@@ -261,6 +265,7 @@ class TEPResult(BaseModel):
 # импортируется (рухнет только rebuild при первом использовании).
 def _rebuild_with_economy() -> None:
     from urban_model.economy.result import EconomicMetrics  # noqa: F401
+    from urban_model.models.phasing import PhasingResult  # noqa: F401
     TEPResult.model_rebuild()
 
 

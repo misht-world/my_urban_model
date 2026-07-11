@@ -11,6 +11,7 @@ from urban_model.models.cluster import FloorCluster
 from urban_model.models.custom_object import CustomObject
 from urban_model.models.engineering import EngineeringSpec
 from urban_model.models.parking import ParkingConfig
+from urban_model.models.phasing import PhasingSpec
 from urban_model.models.social import (
     AdditionalEducationSpec,
     KindergartenSpec,
@@ -86,6 +87,11 @@ class CalculationOptions(BaseModel):
         default=True, description="Учитывать инженерную инфраструктуру в балансе"
     )
     engineering: EngineeringSpec = Field(default_factory=EngineeringSpec)
+
+    # Очерёдность застройки (v0.15.0): территориальные этапы долями площади.
+    # None → без очередей. Раскладка — надстройка поверх готового TEPResult
+    # (compute_phasing в конце forward), ядро расчёта очередей не знает.
+    phasing: "PhasingSpec | None" = None
 
     # v0.8.7: «мягкие» нормативы — пользователь может отключить проверку.
     # На малых кварталах (< 0.5 га) норматив 25% озеленения и норматив

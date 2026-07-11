@@ -63,6 +63,10 @@ class WC(str, Enum):
     # Поликлиника в ВПП > 100 посещений → дробление на несколько офисов врача.
     POLYCLINIC_VPP_SPLIT = "POLYCLINIC_VPP_SPLIT"
 
+    # Очерёдность (v0.15.0): на конец очереди k накопительная потребность в
+    # местах ДОО/СОШ не покрыта уже введёнными корпусами.
+    PHASE_SOC_DEFICIT = "PHASE_SOC_DEFICIT"
+
 
 def prefix(code: WC, message: str) -> str:
     """Префиксирует сообщение тегом `[CODE] `."""

@@ -390,6 +390,47 @@ def build_variant_table_blocks(result: TEPResult) -> list[TableBlock]:
                      "Площадь квартир, м²", "Пятно застройки, м²"],
             notes=notes, summary=_sum_cl))
 
+    # 🪜 Очерёдность застройки (v0.15.0)
+    ph = getattr(result, "phasing", None)
+    if ph is not None and ph.stages:
+        ph_rows = []
+        for s in ph.stages:
+            eng = ", ".join(
+                f"{lbl.split(' (')[0]}×{cnt}" for lbl, cnt in s.engineering_stage.items()
+            ) or "—"
+            def _bk(bk):
+                return " + ".join(str(b) for b in bk) if bk else "—"
+            ph_rows.append({
+                "Очередь": s.index,
+                "Доля": f"{s.share:.0%}",
+                "Площадь, м²": f"{s.area_m2:,.0f}".replace(",", " "),
+                "Квартиры, м²": f"{s.apartments_m2:,.0f}".replace(",", " "),
+                "Население (накоп.)": f"{s.population_cum:,.0f}".replace(",", " "),
+                "ДОО введено/треб.": f"{s.kg_provided_cum}/{s.kg_required_cum:.0f}"
+                                     + (f" (+{_bk(s.kg_buckets)})" if s.kg_buckets else ""),
+                "СОШ введено/треб.": f"{s.school_provided_cum}/{s.school_required_cum:.0f}"
+                                     + (f" (+{_bk(s.school_buckets)})" if s.school_buckets else ""),
+                "Парковки, м/м": s.parking_places_stage,
+                "Инженерия": eng,
+                "Статус": "✓" if s.is_ok else "⚠ дефицит",
+            })
+        n_def = sum(1 for s in ph.stages if not s.is_ok)
+        _sum_ph = (
+            f"{len(ph.stages)} очереди(ей); "
+            + ("обеспеченность соцобъектами выдержана на всех этапах."
+               if n_def == 0 else f"дефицит соцобъектов на {n_def} этапе(ах).")
+        )
+        blocks.append(TableBlock(
+            "phasing", "Очерёдность застройки", "stairs", ph_rows,
+            columns=["Очередь", "Доля", "Площадь, м²", "Квартиры, м²",
+                     "Население (накоп.)", "ДОО введено/треб.",
+                     "СОШ введено/треб.", "Парковки, м/м", "Инженерия", "Статус"],
+            notes=["Корпуса ДОО/СОШ и объекты инженерии разложены по очередям "
+                   "автоматически — по накопительной потребности. «(+N)» — "
+                   "вместимости корпусов, вводимых в этой очереди. ДОО/СОШ "
+                   "«введено/требуется» — накопительно на конец очереди."],
+            summary=_sum_ph))
+
     return blocks
 
 
