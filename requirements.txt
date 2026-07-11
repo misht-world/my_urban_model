@@ -1,7 +1,22 @@
 # Для Streamlit Community Cloud (share.streamlit.io).
-# Устанавливает сам пакет urban_model (со всеми зависимостями из pyproject:
-# pydantic, pyyaml, pandas, openpyxl, optuna, python-docx, matplotlib, python-pptx)
-# + streamlit для UI. Streamlit запинен на проверенной версии: незапиненный
-# 1.59.1 падал segfault'ом на старте (лог 2026-07-11).
+# ВЕСЬ бинарный стек ЖЁСТКО запинен по локально проверенным версиям
+# (v0.15.10): свободное разрешение дважды приводило к segfault на старте
+# (2026-07-11) — свежие колёса pyarrow 25 / pandas 3.0.3 / matplotlib 3.11
+# на Python 3.11 Linux. Общий знаменатель обоих падений — pyarrow 25.0.0;
+# локально проверен pyarrow 24.0.0. Обновлять пины — только пакетно и с
+# проверкой деплоя.
 -e .
 streamlit==1.57.0
+pandas==3.0.2
+numpy==2.4.4
+matplotlib==3.10.9
+pyarrow==24.0.0
+pillow==12.2.0
+protobuf==7.34.1
+altair==6.1.0
+pydantic==2.13.4
+openpyxl==3.1.5
+optuna==4.8.0
+python-docx==1.2.0
+python-pptx==1.0.2
+PyYAML==6.0.3
