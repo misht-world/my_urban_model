@@ -22,3 +22,11 @@ cloudflared.exe
 
 # Streamlit secrets — НЕ коммитить (пароли/ключи)
 .streamlit/secrets.toml
+
+# Реальные проекты пользователя (репозиторий публичный — не публиковать)
+my_project/
+
+# Рабочие черновики в корне
+Answer_audit.txt
+макеты_страниц.html
+docs/comparison.xlsx
