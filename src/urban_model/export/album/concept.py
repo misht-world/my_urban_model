@@ -148,6 +148,19 @@ def _econ_pairs(tep: TEPResult) -> list[tuple[str, str, str | None]]:
     return out
 
 
+def _phasing_chip(tep: TEPResult) -> str | None:
+    """«Очерёдность: 3 очереди (30/40/30%)» — если очереди заданы."""
+    ph = getattr(tep, "phasing", None)
+    if ph is None or not ph.stages:
+        return None
+    shares = "/".join(f"{s.share * 100:.0f}" for s in ph.stages)
+    n = len(ph.stages)
+    word = "очереди" if 2 <= n <= 4 else "очередей"
+    ok = all(s.is_ok for s in ph.stages)
+    status = "" if ok else " · есть дефициты"
+    return f"Очерёдность: {n} {word} ({shares}%){status}"
+
+
 def _var_label(v_index: int) -> str:
     return "База" if v_index == 0 else f"Вариант {v_index}"
 
@@ -286,6 +299,10 @@ def _card_slide(deck, name: str, tep: TEPResult, kind: str, v_index: int,
     # Единый стиль имени варианта на всех карточках (как на слайдах-таблицах).
     T.text(s, _MARGIN, 1.3, _CONTENT_W, 0.6, _clean_name(name),
            size=11, color=T.MUTED, spacing=1.05, align=PP_ALIGN.RIGHT)
+    # Очерёдность (v0.15.1) — чип слева (правый край занят именем варианта).
+    _chip = _phasing_chip(tep)
+    if _chip:
+        T.text(s, _MARGIN, 1.3, 5.5, 0.35, _chip, size=10, color=T.MUTED)
 
     def _draw_row(pairs, top):
         n = len(pairs)
@@ -320,13 +337,23 @@ def _table_slide(deck, name: str, block, v_index: int,
         rows = [(r["Показатель"], r["Значение"]) for r in block.rows]
         ratios = [3, 2]
     else:
-        headers = block.columns
-        rows = [[r.get(c, "") for c in block.columns] for r in block.rows]
+        # v0.15.1: для альбома — компактный набор колонок (album_columns),
+        # если задан: широкие таблицы (очерёдность, 10 колонок) на слайде
+        # переносят текст в ячейках, реальная высота строк растёт и подписи
+        # налезали на таблицу.
+        cols = getattr(block, "album_columns", None) or block.columns
+        headers = cols
+        rows = [[r.get(c, "") for c in cols] for r in block.rows]
         ratios = None
     max_rows = 15
     top = 1.75
-    T.table(s, _MARGIN, top, _CONTENT_W, headers, rows[:max_rows], col_ratios=ratios)
-    note_top = top + 0.4 + 0.32 * min(len(rows), max_rows) + 0.12
+    fsize = 11 if len(headers) <= 6 else 9.5
+    T.table(s, _MARGIN, top, _CONTENT_W, headers, rows[:max_rows],
+            col_ratios=ratios, fsize=fsize)
+    # Запас высоты строки: широкие таблицы переносят текст (строка ~в 1.5 раза
+    # выше номинала 0.32).
+    row_h = 0.32 if len(headers) <= 6 else 0.48
+    note_top = top + 0.4 + row_h * min(len(rows), max_rows) + 0.12
     # Итог раздела — мелким серым, как справочные notes (без «ИТОГ», не жирный).
     if block.summary:
         T.text(s, _MARGIN, note_top, _CONTENT_W, 0.6, block.summary,

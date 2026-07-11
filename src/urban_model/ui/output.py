@@ -325,6 +325,18 @@ def render_main_kpi_grid(result: TEPResult, options=None) -> None:
                 help="profit / cost (условные баллы).",
             )
 
+    # ── Очерёдность (v0.15.1): подпись под сеткой, если очереди заданы ──
+    ph = getattr(result, "phasing", None)
+    if ph is not None and ph.stages:
+        _shares = "/".join(f"{s.share * 100:.0f}" for s in ph.stages)
+        _ok = all(s.is_ok for s in ph.stages)
+        _status = ("обеспеченность выдержана" if _ok
+                   else "⚠ есть дефициты соцобъектов")
+        st.caption(
+            f":material/stairs: Очерёдность: {len(ph.stages)} очереди "
+            f"({_shares}%) — {_status}. Детали — в «Очерёдность застройки» ниже."
+        )
+
 
 def render_kpi(result: TEPResult, *, scenario_default_name: str | None = None,
                options=None) -> None:
@@ -1028,6 +1040,14 @@ def render_comparison_tab() -> None:
         # сценарий трактуется как Базовый вариант.
         # Выбор вариантов: можно собрать альбом по 1–3 выбранным, не по всем.
         _opt_labels = [f"{i + 1}. {nm}" for i, (nm, _) in enumerate(clean_pairs)]
+        # v0.15.1 (баг «в альбоме только База»): multiselect с key запоминает
+        # СТАРЫЙ выбор — при добавлении новых сценариев они не попадали в
+        # выбор (default игнорируется, когда key уже в session_state).
+        # Пуш-паттерн (как pareto_floors_range): при изменении СПИСКА сценариев
+        # сбрасываем выбор на «все»; ручные правки между изменениями живут.
+        if st.session_state.get("_album_sel_options") != _opt_labels:
+            st.session_state["album_variant_select"] = _opt_labels
+            st.session_state["_album_sel_options"] = _opt_labels
         _sel = st.multiselect(
             "Варианты в альбом (по умолчанию — все)",
             options=_opt_labels, default=_opt_labels,
