@@ -634,6 +634,23 @@ def compute_tep_for_kit(
         norms=norms,
         spec=options.engineering,
     )
+    # v0.15.7: автономная инженерия ПО ЛОТАМ — встраивается в баланс/экономику.
+    # Каждый лот получает свой комплект по собственному спросу; агрегат
+    # замещает квартальную схему (объекты «— лот N», Σ площадей — в баланс,
+    # объекты с мощностями — в экономику). Если очереди не строятся (авто-режим
+    # без опоры) — остаётся квартальная схема.
+    _ph_spec = getattr(options, "phasing", None)
+    if _ph_spec is not None and getattr(_ph_spec, "engineering_by_lots", False):
+        from urban_model.calculations.phasing import lot_engineering_totals
+        _lot_eng = lot_engineering_totals(
+            apartments_area_v, pop_v, kg_buckets, sch_buckets,
+            kg_required_raw, sch_required_raw, _ph_spec, norms,
+            options.engineering,
+            count_kg=n_kg_obj > 0, count_sch=n_sch_obj > 0,
+            n_extra_social=n_ae_obj + n_poly_obj + n_med_custom,
+        )
+        if _lot_eng is not None:
+            eng_result = _lot_eng
     # В баланс/озеленение инженерка входит, только если include_engineering=True.
     eng_plot_in_balance = (
         eng_result.plot_in_balance if options.include_engineering else 0.0
@@ -1590,6 +1607,8 @@ def compute_tep_for_kit(
         result.phasing = compute_phasing(
             result, options.phasing, norms=norms,
             eng_spec=getattr(options, "engineering", None),
+            count_kg=n_kg_obj > 0, count_sch=n_sch_obj > 0,
+            n_extra_social=n_ae_obj + n_poly_obj + n_med_custom,
         )
         result.warnings.extend(result.phasing.warnings)
 

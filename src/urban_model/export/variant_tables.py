@@ -485,8 +485,8 @@ def build_variant_table_blocks(result: TEPResult) -> list[TableBlock]:
                 lot_rows.append(row)
             lot_cols = ["Лот", "Очереди", "Население"] + _all_labels + ["ЗУ, м²"]
             _lot_notes = ["Каждый лот обеспечен собственным комплектом "
-                          "инженерных объектов по своему спросу (автономный "
-                          "режим)."]
+                          "инженерных объектов по своему спросу; комплекты "
+                          "заложены в баланс территории и экономику."]
             if ph.eng_delta_note:
                 _lot_notes.append(ph.eng_delta_note)
             blocks.append(TableBlock(

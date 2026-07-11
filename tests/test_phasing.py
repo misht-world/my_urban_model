@@ -202,7 +202,27 @@ class TestEngineeringByLots:
 
     def test_delta_note_present(self, result):
         assert result.phasing.eng_delta_note
-        assert "единой" in result.phasing.eng_delta_note
+        assert "по-лотовой" in result.phasing.eng_delta_note
+
+    def test_lots_embedded_in_balance(self, result, norms):
+        """v0.15.7: по-лотовая инженерка ВСТРОЕНА в баланс/экономику."""
+        # встроенный агрегат == Σ комплектов лотов из таблицы
+        lot_sum = sum(lp.eng_plot_total for lp in result.phasing.lots)
+        assert result.engineering.plot_total_all == pytest.approx(lot_sum, abs=1.0)
+        # объекты помечены лотами
+        assert any("— лот" in o.label for o in result.engineering.objects)
+        # квартир меньше, чем при единой квартальной схеме (цена автономности)
+        from urban_model.models.social import SchoolSpec
+        o_off = CalculationOptions(
+            floors=12, planning_doc=True,
+            school=SchoolSpec(num_objects=2),
+            kindergarten=KindergartenSpec(num_objects=4),
+            phasing=PhasingSpec(mode="auto", engineering_by_lots=False))
+        r_off = solve_max_kit(Site(area_m2=400_000), o_off, norms)
+        assert (result.apartments_area.value
+                < r_off.apartments_area.value - 100)
+        assert (result.balance.components["engineering_plot"]
+                > r_off.balance.components["engineering_plot"])
 
     def test_lot_population_sums(self, result):
         ph = result.phasing

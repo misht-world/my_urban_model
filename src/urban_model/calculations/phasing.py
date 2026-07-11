@@ -82,7 +82,9 @@ def _distribute_count(total: int, cum_shares: list[float]) -> list[int]:
     return out
 
 
-def _auto_shares(result) -> list[float] | None:
+def _auto_shares_from_buckets(
+    kg_buckets: list[int], sch_buckets: list[int],
+) -> list[float] | None:
     """Авто-доли очередей из дискретности соцобъектов (v0.15.2).
 
     Границы очередей — по ёмкости корпусов ДОО (сортировка по убыванию:
@@ -96,9 +98,7 @@ def _auto_shares(result) -> list[float] | None:
     не имеет опоры (единственный соцобъект нужен с первой очереди, любые
     доли произвольны) → None: «не делить».
     """
-    buckets = _buckets(result.kindergarten_places_accepted.formula)
-    if len(buckets) < 2:
-        buckets = _buckets(result.school_places_accepted.formula)
+    buckets = kg_buckets if len(kg_buckets) >= 2 else sch_buckets
     if len(buckets) < 2:
         return None
     caps = sorted(buckets, reverse=True)
@@ -106,6 +106,128 @@ def _auto_shares(result) -> list[float] | None:
         caps = caps[:3] + [sum(caps[3:])]   # мелкие корпуса → последняя очередь
     total = sum(caps)
     return [c / total for c in caps]
+
+
+def _auto_shares(result) -> list[float] | None:
+    return _auto_shares_from_buckets(
+        _buckets(result.kindergarten_places_accepted.formula),
+        _buckets(result.school_places_accepted.formula),
+    )
+
+
+def _stage_partition(
+    population: float,
+    kg_buckets: list[int],
+    sch_buckets: list[int],
+    kg_required: float,
+    sch_required: float,
+    spec: PhasingSpec,
+):
+    """Общий партишн очередей/лотов (v0.15.7) — ЕДИНАЯ логика для
+    compute_phasing (слой поверх результата) и lot_engineering_totals
+    (внутри forward, по-лотовая инженерка в балансе).
+
+    Возвращает (shares, cum_shares, kg_per_stage, sch_per_stage, lot_of_stage)
+    либо None, если авто-режим решил не делить.
+    """
+    if spec.mode == "auto":
+        shares = _auto_shares_from_buckets(kg_buckets, sch_buckets)
+        if shares is None:
+            return None
+    else:
+        shares = spec.shares
+    n = len(shares)
+    cum_shares = [sum(shares[: k + 1]) for k in range(n)]
+    kg_rate = kg_required / population if population > 0 else 0.0
+    sch_rate = sch_required / population if population > 0 else 0.0
+    kg_req_cum = [population * cs * kg_rate for cs in cum_shares]
+    sch_req_cum = [population * cs * sch_rate for cs in cum_shares]
+    kg_per_stage = _assign_buckets(kg_buckets, kg_req_cum)
+    sch_per_stage = _assign_buckets(sch_buckets, sch_req_cum)
+    # ЛОТы: первый корпус СОШ обслуживает лот 1, каждый следующий открывает новый.
+    lot_of_stage: list[int] = []
+    lot_idx = 1
+    schools_seen = False
+    for k in range(n):
+        if sch_per_stage[k] and schools_seen:
+            lot_idx += 1
+        if sch_per_stage[k]:
+            schools_seen = True
+        lot_of_stage.append(lot_idx)
+    return shares, cum_shares, kg_per_stage, sch_per_stage, lot_of_stage
+
+
+def lot_engineering_totals(
+    apartments_area: float,
+    population: float,
+    kg_buckets: list[int],
+    sch_buckets: list[int],
+    kg_required: float,
+    sch_required: float,
+    spec: PhasingSpec,
+    norms,
+    eng_spec,
+    count_kg: bool = True,
+    count_sch: bool = True,
+    n_extra_social: int = 0,
+):
+    """По-лотовая инженерка ДЛЯ БАЛАНСА/ЭКОНОМИКИ (v0.15.7).
+
+    Вызывается из forward на каждой итерации бисекции вместо квартальной
+    `compute_engineering`, когда включён `spec.engineering_by_lots`: каждый
+    лот получает автономный комплект по своему спросу, объекты помечаются
+    «— лот N» и агрегируются в общий EngineeringResult (Σ площадей → баланс;
+    объекты с мощностями → экономика).
+
+    count_kg/count_sch — учитывать ли корпуса в ТП (False при only_demand);
+    n_extra_social — ТП отдельно стоящих доп.обр/поликлиники/мед-объектов
+    (не лотуются, относятся к лоту 1).
+
+    Возвращает EngineeringResult либо None (очереди не строятся — квартальная
+    схема остаётся).
+    """
+    from urban_model.calculations.engineering import compute_engineering
+    from urban_model.models.engineering import EngineeringResult
+
+    part = _stage_partition(population, kg_buckets, sch_buckets,
+                            kg_required, sch_required, spec)
+    if part is None:
+        return None
+    shares, _cum, kg_per_stage, sch_per_stage, lot_of_stage = part
+
+    # Спрос по лотам
+    lots: dict[int, dict] = {}
+    for k, lot in enumerate(lot_of_stage):
+        d = lots.setdefault(lot, {"apt": 0.0, "pop": 0.0, "soc": 0})
+        d["apt"] += apartments_area * shares[k]
+        d["pop"] += population * shares[k]
+        d["soc"] += (len(kg_per_stage[k]) if count_kg else 0) \
+            + (len(sch_per_stage[k]) if count_sch else 0)
+    first_lot = min(lots)
+    lots[first_lot]["soc"] += n_extra_social
+
+    objects = []
+    plot_in_balance = 0.0
+    plot_total_all = 0.0
+    cooking = "electric"
+    for lot_idx in sorted(lots):
+        d = lots[lot_idx]
+        eng = compute_engineering(d["apt"], d["pop"], d["soc"], norms, eng_spec)
+        cooking = eng.cooking
+        for o in eng.objects:
+            if o.count <= 0:
+                continue
+            objects.append(o.model_copy(update={
+                "label": f"{o.label} — лот {lot_idx}",
+            }))
+        plot_in_balance += eng.plot_in_balance
+        plot_total_all += eng.plot_total_all
+    return EngineeringResult(
+        objects=objects,
+        plot_in_balance=plot_in_balance,
+        plot_total_all=plot_total_all,
+        cooking=cooking,
+    )
 
 
 _NO_SPLIT_NOTE = (
@@ -118,13 +240,15 @@ _NO_SPLIT_NOTE = (
 
 def _compute_lot_engineering(
     stages: list[StageProvision], result, norms, eng_spec,
+    count_kg: bool = True, count_sch: bool = True, n_extra_social: int = 0,
 ) -> tuple[list[LotProvision], str | None]:
     """Автономные комплекты инженерии по лотам (v0.15.6).
 
-    Каждый лот считается `compute_engineering` от СОБСТВЕННОГО спроса
-    (квартиры/население/соцобъекты лота). Возвращает (лоты, дельта-примечание
-    к единой квартальной схеме). Информационный слой: баланс квартала считан
-    по единой инженерке (эффект масштаба крупных объектов).
+    Каждый лот считается `compute_engineering` от СОБСТВЕННОГО спроса —
+    ровно тем же способом, что `lot_engineering_totals` в forward, поэтому
+    таблица «Инженерия по лотам» совпадает с тем, что заложено в БАЛАНС и
+    ЭКОНОМИКУ (v0.15.7 — по-лотовая схема интегрирована в расчёт).
+    Дельта-примечание показывает, что дала бы единая квартальная схема.
     """
     from urban_model.calculations.engineering import compute_engineering
 
@@ -132,11 +256,18 @@ def _compute_lot_engineering(
     by_lot: dict[int, list[StageProvision]] = {}
     for s in stages:
         by_lot.setdefault(s.lot, []).append(s)
+    first_lot = min(by_lot) if by_lot else 1
     for lot_idx in sorted(by_lot):
         ls = by_lot[lot_idx]
         pop = sum(s.population_stage for s in ls)
         apt = sum(s.apartments_m2 for s in ls)
-        n_soc = sum(len(s.kg_buckets) + len(s.school_buckets) for s in ls)
+        n_soc = sum(
+            (len(s.kg_buckets) if count_kg else 0)
+            + (len(s.school_buckets) if count_sch else 0)
+            for s in ls
+        )
+        if lot_idx == first_lot:
+            n_soc += n_extra_social
         eng = compute_engineering(apt, pop, n_soc, norms, eng_spec)
         counts = {o.label: o.count for o in eng.objects if o.count > 0}
         lots.append(LotProvision(
@@ -145,93 +276,99 @@ def _compute_lot_engineering(
             engineering=counts, eng_plot_total=eng.plot_total_all,
         ))
 
-    # Дельта к единой квартальной схеме (по ней считан баланс).
+    # Что дала бы ЕДИНАЯ квартальная схема (для сравнения — эффект масштаба).
     delta_note = None
-    q_eng = getattr(result, "engineering", None)
-    if q_eng is not None:
+    try:
+        apt_total = sum(lp.apartments_m2 for lp in lots)
+        pop_total = sum(lp.population for lp in lots)
+        n_soc_total = sum(lp.n_social for lp in lots)
+        q_eng = compute_engineering(apt_total, pop_total, n_soc_total,
+                                    norms, eng_spec)
         q_objs = sum(o.count for o in q_eng.objects if o.count > 0)
         q_plot = q_eng.plot_total_all
         l_objs = sum(sum(lp.engineering.values()) for lp in lots)
         l_plot = sum(lp.eng_plot_total for lp in lots)
-        d_obj = l_objs - q_objs
-        d_plot = l_plot - q_plot
+
         def _n(v: float, sign: bool = False) -> str:
             s = f"{v:+,.0f}" if sign else f"{v:,.0f}"
             return s.replace(",", " ")
 
         delta_note = (
-            f"Автономные лоты: {l_objs} объектов инженерии, ЗУ "
-            f"{_n(l_plot)} м² — против {q_objs} объектов и {_n(q_plot)} м² "
-            f"по единой квартальной схеме ({d_obj:+d} объектов, "
-            f"{_n(d_plot, sign=True)} м²). Баланс территории посчитан по "
-            f"единой схеме."
+            f"Баланс и экономика рассчитаны по автономной по-лотовой схеме: "
+            f"{l_objs} объектов инженерии, ЗУ {_n(l_plot)} м². Единая "
+            f"квартальная схема дала бы {q_objs} объектов и {_n(q_plot)} м² "
+            f"({_n(l_plot - q_plot, sign=True)} м² — цена автономности лотов)."
         )
+    except Exception:  # noqa: BLE001 — примечание не критично
+        pass
     return lots, delta_note
 
 
-def compute_phasing(result, spec: PhasingSpec, norms=None,
-                    eng_spec=None) -> PhasingResult:
+def compute_phasing(result, spec: PhasingSpec, norms=None, eng_spec=None,
+                    count_kg: bool = True, count_sch: bool = True,
+                    n_extra_social: int = 0) -> PhasingResult:
     """Раскладка готового TEPResult по очередям. Не мутирует result.
 
-    norms/eng_spec нужны только для `spec.engineering_by_lots` (автономные
-    комплекты инженерии по лотам).
+    norms/eng_spec/count_*/n_extra_social нужны только для
+    `spec.engineering_by_lots` (автономные комплекты инженерии по лотам —
+    те же параметры, что использовал forward при встраивании в баланс).
     """
-    if spec.mode == "auto":
-        shares = _auto_shares(result)
-        if shares is None:
-            return PhasingResult(mode="auto", stages=[], note=_NO_SPLIT_NOTE)
-    else:
-        shares = spec.shares
-    n = len(shares)
-    cum_shares = [sum(shares[: k + 1]) for k in range(n)]
-
     site_area = float(result.balance.site_area or 0.0)
     apt_total = float(result.apartments_area.value or 0.0)
     pop_total = float(result.population.value or 0.0)
     park_total = int(result.parking_required_places.value or 0)
-
-    # Нормативные ставки «мест на жителя» — из самого результата (устойчиво к
-    # override'ам): required / population.
     kg_req_total = float(result.kindergarten_places_required.value or 0.0)
     sch_req_total = float(result.school_places_required.value or 0.0)
-    kg_rate = kg_req_total / pop_total if pop_total > 0 else 0.0
-    sch_rate = sch_req_total / pop_total if pop_total > 0 else 0.0
-
     kg_buckets = _buckets(result.kindergarten_places_accepted.formula)
     sch_buckets = _buckets(result.school_places_accepted.formula)
 
+    part = _stage_partition(pop_total, kg_buckets, sch_buckets,
+                            kg_req_total, sch_req_total, spec)
+    if part is None:
+        return PhasingResult(mode="auto", stages=[], note=_NO_SPLIT_NOTE)
+    shares, cum_shares, kg_per_stage, sch_per_stage, lot_of_stage = part
+    n = len(shares)
+
+    kg_rate = kg_req_total / pop_total if pop_total > 0 else 0.0
+    sch_rate = sch_req_total / pop_total if pop_total > 0 else 0.0
     kg_req_cum = [pop_total * cs * kg_rate for cs in cum_shares]
     sch_req_cum = [pop_total * cs * sch_rate for cs in cum_shares]
-    kg_per_stage = _assign_buckets(kg_buckets, kg_req_cum)
-    sch_per_stage = _assign_buckets(sch_buckets, sch_req_cum)
 
-    # Инженерка: объекты по накопительному спросу.
+    # Инженерка по очередям. Обычный режим: объекты квартальной схемы по
+    # накопительному спросу. По-лотовый режим (v0.15.7): result.engineering
+    # уже содержит объекты «— лот N» — комплект лота вводится с ПЕРВОЙ
+    # очередью своего лота.
     eng_per_stage: list[dict[str, int]] = [{} for _ in range(n)]
     if getattr(result, "engineering", None) is not None:
-        for obj in result.engineering.objects:
-            if obj.count <= 0:
-                continue
-            dist = _distribute_count(int(obj.count), cum_shares)
-            for k, c in enumerate(dist):
-                if c > 0:
-                    eng_per_stage[k][obj.label] = c
+        if spec.engineering_by_lots:
+            _first_stage_of_lot: dict[int, int] = {}
+            for k, lot in enumerate(lot_of_stage):
+                _first_stage_of_lot.setdefault(lot, k)
+            for obj in result.engineering.objects:
+                if obj.count <= 0:
+                    continue
+                _m = re.search(r"— лот (\d+)$", obj.label)
+                _lot = int(_m.group(1)) if _m else min(_first_stage_of_lot)
+                k = _first_stage_of_lot.get(_lot, 0)
+                eng_per_stage[k][obj.label] = (
+                    eng_per_stage[k].get(obj.label, 0) + obj.count)
+        else:
+            for obj in result.engineering.objects:
+                if obj.count <= 0:
+                    continue
+                dist = _distribute_count(int(obj.count), cum_shares)
+                for k, c in enumerate(dist):
+                    if c > 0:
+                        eng_per_stage[k][obj.label] = c
 
     stages: list[StageProvision] = []
     warnings: list[str] = []
     kg_prov = 0
     sch_prov = 0
-    # ЛОТ (v0.15.5): группа очередей, полностью обеспеченная соцобъектами.
-    # Границы — по вводу корпусов СОШ: первый корпус обслуживает лот 1
-    # (включая очереди до него), каждый СЛЕДУЮЩИЙ корпус открывает новый лот.
-    lot_idx = 1
-    schools_seen = False
     for k in range(n):
         kg_prov += sum(kg_per_stage[k])
         sch_prov += sum(sch_per_stage[k])
-        if sch_per_stage[k] and schools_seen:
-            lot_idx += 1
-        if sch_per_stage[k]:
-            schools_seen = True
+        lot_idx = lot_of_stage[k]
         deficits: list[str] = []
         # −0.5 места — допуск на округление требуемых мест
         if kg_prov < kg_req_cum[k] - 0.5:
@@ -271,7 +408,9 @@ def compute_phasing(result, spec: PhasingSpec, norms=None,
     if spec.engineering_by_lots and norms is not None and stages:
         try:
             lots, eng_delta_note = _compute_lot_engineering(
-                stages, result, norms, eng_spec)
+                stages, result, norms, eng_spec,
+                count_kg=count_kg, count_sch=count_sch,
+                n_extra_social=n_extra_social)
         except Exception:  # noqa: BLE001 — информационный слой не роняет расчёт
             lots, eng_delta_note = [], None
 
