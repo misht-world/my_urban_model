@@ -363,24 +363,34 @@ def _table_slide(deck, name: str, block, v_index: int,
         headers = cols
         rows = [[r.get(c, "") for c in cols] for r in block.rows]
         ratios = None
-    max_rows = 15
-    top = 1.75
     fsize = 11 if len(headers) <= 6 else 9.5
-    T.table(s, _MARGIN, top, _CONTENT_W, headers, rows[:max_rows],
-            col_ratios=ratios, fsize=fsize)
-    # Запас высоты строки: широкие таблицы переносят текст (строка ~в 1.5 раза
-    # выше номинала 0.32).
     row_h = 0.32 if len(headers) <= 6 else 0.48
-    note_top = top + 0.4 + row_h * min(len(rows), max_rows) + 0.12
-    # Итог раздела — мелким серым, как справочные notes (без «ИТОГ», не жирный).
-    if block.summary:
-        T.text(s, _MARGIN, note_top, _CONTENT_W, 0.6, block.summary,
-               size=9, color=T.MUTED)
-        note_top += 0.42
-    for note in block.notes:
-        T.text(s, _MARGIN, note_top, _CONTENT_W, 0.6, note, size=9, color=T.MUTED)
-        note_top += 0.42
-    T.footer(s)
+    # v0.15.10 (п.2 Михаила): длинные таблицы (баланс с зонами и т.п.)
+    # ПЕРЕНОСЯТСЯ на следующие слайды, а не наезжают на подписи/подвал.
+    page_rows = 13 if len(headers) <= 6 else 9
+    top = 1.75
+    pages = [rows[i:i + page_rows] for i in range(0, len(rows), page_rows)] or [[]]
+    for pi, page in enumerate(pages):
+        if pi > 0:
+            s = deck.slide()
+            T.title_band(s, block.title, "(продолжение)")
+            _chrome(s, rail_labels, v_index)
+            T.text(s, _MARGIN, 1.28, _CONTENT_W, 0.35, _clean_name(name),
+                   size=11, color=T.MUTED, align=PP_ALIGN.RIGHT)
+        T.table(s, _MARGIN, top, _CONTENT_W, headers, page,
+                col_ratios=ratios, fsize=fsize)
+        note_top = top + 0.4 + row_h * len(page) + 0.12
+        if pi == len(pages) - 1:
+            # Итог и примечания — только на последней странице таблицы.
+            if block.summary:
+                T.text(s, _MARGIN, note_top, _CONTENT_W, 0.6, block.summary,
+                       size=9, color=T.MUTED)
+                note_top += 0.42
+            for note in block.notes:
+                T.text(s, _MARGIN, note_top, _CONTENT_W, 0.6, note,
+                       size=9, color=T.MUTED)
+                note_top += 0.42
+        T.footer(s)
 
 
 # Показатели, где БОЛЬШЕ = лучше (подсвечиваем максимум в строке).

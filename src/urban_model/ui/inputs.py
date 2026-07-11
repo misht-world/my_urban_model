@@ -694,7 +694,7 @@ def _render_phasing_tile():
                 "соцобъектами (≈95–100% на конец этапа)."
             )
             return PhasingSpec(mode="auto", engineering_by_lots=eng_lots)
-        n = int(st.number_input("Число очередей", min_value=2, max_value=4,
+        n = int(st.number_input("Число очередей", min_value=2, max_value=8,
                                 value=2, step=1, key="phasing_n"))
         shares: list[float] = []
         cols = st.columns(n)
