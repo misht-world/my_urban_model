@@ -1698,14 +1698,26 @@ def _render_custom_objects_tile() -> list[CustomObject]:
         st.caption(
             "Объекты вне базовых классов (офис, ФОК, поликлиника, "
             "торговля). Каждый занимает свой ЗУ и считается по ВРИ-коду. "
-            "Чтобы добавить — нажмите «+» в таблице, заполните строку и "
-            "нажмите «Применить»."
+            "Добавьте строку через «+» — изменения применяются сразу."
         )
 
+        # v0.15.12: (а) объекты СОХРАНЯЮТСЯ в файл проекта через скаляр
+        # co_objects_json (паттерн reseed, как зоны — fc_zones_json);
+        # (б) правки применяются ВЖИВУЮ, без кнопки «Применить» (раньше
+        # изменения площадей без нажатия кнопки не влияли на расчёт).
+        import json as _json
         if "custom_objects" not in st.session_state:
             st.session_state.custom_objects = []
+        _saved_co = st.session_state.get("co_objects_json") or ""
+        if _saved_co and st.session_state.get("_co_seeded") != _saved_co:
+            try:
+                _loaded = _json.loads(_saved_co)
+                if isinstance(_loaded, list):
+                    st.session_state.custom_objects = _loaded
+            except (ValueError, TypeError):
+                pass
+            st.session_state["_co_seeded"] = _saved_co
 
-        # DataFrame только из реально применённых объектов; пусто = пусто
         rows = []
         for obj in st.session_state.custom_objects:
             rows.append({
@@ -1750,41 +1762,45 @@ def _render_custom_objects_tile() -> list[CustomObject]:
                     help="Сумма площадей этажных перекрытий объекта",
                 ),
             },
-            key="objects_editor_inline",
+            key=f"objects_editor_{abs(hash(_saved_co)) % 10**8}",
         )
 
-        col1, col2, _ = st.columns([1, 1, 3])
-        with col1:
-            if st.button("Применить", type="primary"):
-                new_list = []
-                for _, row in edited_df.iterrows():
-                    try:
-                        name = str(row["Название"]).strip()
-                        plot = float(row["Площадь ЗУ, м²"])
-                        # v0.9.29: ВРИ необязателен — по умолчанию 4.0 (коммерция).
-                        vri_raw = row.get("ВРИ-код")
-                        vri = str(vri_raw).strip() if pd.notna(vri_raw) and str(vri_raw).strip() else "4.0"
-                        if not name or plot <= 0:
-                            continue
-                        new_list.append({
-                            "name": name,
-                            "plot_area_m2": plot,
-                            "vri_code": vri,
-                            "floor_area_m2": (
-                                float(row["Общая площадь, м²"])
-                                if pd.notna(row["Общая площадь, м²"]) else None
-                            ),
-                        })
-                    except (ValueError, TypeError, KeyError):
-                        continue
-                st.session_state.custom_objects = new_list
-                st.toast(f"Применено: {len(new_list)} объект(а/ов)", icon="📦")
-                st.rerun()
-        with col2:
-            if st.button("Очистить",
-                         disabled=not st.session_state.custom_objects):
-                st.session_state.custom_objects = []
-                st.rerun()
+        # Живое применение: каждая правка таблицы -> список объектов + зеркало
+        # в co_objects_json (в файл проекта). Невалидные/недозаполненные
+        # строки молча пропускаются (появятся в расчёте, когда заполнены).
+        new_list = []
+        for _, row in edited_df.iterrows():
+            try:
+                name = str(row["Название"]).strip()
+                plot = float(row["Площадь ЗУ, м²"])
+                # v0.9.29: ВРИ необязателен — по умолчанию 4.0 (коммерция).
+                vri_raw = row.get("ВРИ-код")
+                vri = str(vri_raw).strip() if pd.notna(vri_raw) and str(vri_raw).strip() else "4.0"
+                if not name or name == "None" or plot <= 0:
+                    continue
+                new_list.append({
+                    "name": name,
+                    "plot_area_m2": plot,
+                    "vri_code": vri,
+                    "floor_area_m2": (
+                        float(row["Общая площадь, м²"])
+                        if pd.notna(row["Общая площадь, м²"]) else None
+                    ),
+                })
+            except (ValueError, TypeError, KeyError):
+                continue
+        st.session_state.custom_objects = new_list
+        _cur_co = _json.dumps(new_list, ensure_ascii=False)
+        if _cur_co != _saved_co:
+            st.session_state["co_objects_json"] = _cur_co
+            st.session_state["_co_seeded"] = _cur_co
+        if new_list:
+            st.caption(f"Учитывается объектов: **{len(new_list)}**")
+        if st.button("Очистить", disabled=not new_list):
+            st.session_state.custom_objects = []
+            st.session_state["co_objects_json"] = "[]"
+            st.session_state["_co_seeded"] = "[]"
+            st.rerun()
 
     return [CustomObject(**obj) for obj in st.session_state.custom_objects]
 
