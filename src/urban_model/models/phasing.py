@@ -91,16 +91,25 @@ class StageProvision(BaseModel):
 
 
 class LotProvision(BaseModel):
-    """Автономный комплект инженерии одного лота (v0.15.6)."""
+    """Сводка одного лота (v0.15.6; v0.15.9 — строится всегда при очередях).
+
+    Лот = группа очередей, полностью обеспеченная соцобъектами. Инженерия
+    заполняется только в режиме `engineering_by_lots` (автономные комплекты).
+    """
     model_config = ConfigDict(extra="forbid")
 
     index: int                       # 1-based номер лота
     stages: list[int] = Field(default_factory=list)   # номера очередей лота
+    share: float = 0.0               # доля площади лота
+    area_m2: float = 0.0
     population: float = 0.0
     apartments_m2: float = 0.0
+    kg_buckets: list[int] = Field(default_factory=list)   # корпуса ДОО лота
+    school_buckets: list[int] = Field(default_factory=list)
+    parking_places: int = 0
     n_social: int = 0                # корпуса ДОО+СОШ лота (для ТП)
     engineering: dict[str, int] = Field(default_factory=dict)  # label → count
-    eng_plot_total: float = 0.0      # ЗУ инженерии лота, м²
+    eng_plot_total: float = 0.0      # ЗУ инженерии лота, м² (0 без автономии)
 
 
 class PhasingResult(BaseModel):

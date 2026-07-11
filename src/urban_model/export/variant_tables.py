@@ -330,19 +330,29 @@ def build_variant_table_blocks(result: TEPResult) -> list[TableBlock]:
     # 🔌 Инженерная инфраструктура (grid)
     if result.engineering is not None and result.engineering.objects:
         eng = result.engineering
-        eng_rows = []
+        # v0.15.9: метки «— лот N» на общем листе не показываем (лоты видны на
+        # своём листе «Лоты застройки»); одинаковые объекты разных лотов
+        # (метка+мощность+ЗУ/шт) агрегируются в одну строку.
+        _agg: dict[tuple, dict] = {}
         for o in eng.objects:
             if o.count <= 0:
                 continue
+            lbl = o.label.split(" — лот")[0]
             cap = (f"{o.capacity:g} {o.capacity_unit}"
                    if o.capacity and o.capacity_unit else "—")
+            key = (lbl, cap, round(o.plot_each, 1), o.in_balance)
+            a = _agg.setdefault(key, {"count": 0, "plot_total": 0.0})
+            a["count"] += o.count
+            a["plot_total"] += o.plot_total
+        eng_rows = []
+        for (lbl, cap, plot_each, in_bal), a in _agg.items():
             eng_rows.append({
-                "Объект": o.label,
-                "Кол-во": o.count,
+                "Объект": lbl,
+                "Кол-во": a["count"],
                 "Мощность (1 шт.)": cap,
-                "ЗУ (1 шт.), м²": f"{o.plot_each:,.0f}".replace(",", " "),
-                "ЗУ всего, м²": f"{o.plot_total:,.0f}".replace(",", " "),
-                "В балансе": "да" if o.in_balance else "только потребность",
+                "ЗУ (1 шт.), м²": f"{plot_each:,.0f}".replace(",", " "),
+                "ЗУ всего, м²": f"{a['plot_total']:,.0f}".replace(",", " "),
+                "В балансе": "да" if in_bal else "только потребность",
             })
         cooking_lbl = "электроплиты" if eng.cooking == "electric" else "газовые плиты"
         note = (
@@ -412,7 +422,6 @@ def build_variant_table_blocks(result: TEPResult) -> list[TableBlock]:
             def _bk(bk):
                 return " + ".join(str(b) for b in bk) if bk else "—"
             ph_rows.append({
-                "Лот": s.lot,
                 "Очередь": s.index,
                 "Доля": f"{s.share:.0%}",
                 "Площадь, м²": f"{s.area_m2:,.0f}".replace(",", " "),
@@ -446,52 +455,67 @@ def build_variant_table_blocks(result: TEPResult) -> list[TableBlock]:
         ) + "."
         blocks.append(TableBlock(
             "phasing", "Очерёдность застройки", "stairs", ph_rows,
-            columns=["Лот", "Очередь", "Доля", "Площадь, м²", "Квартиры, м²",
+            columns=["Очередь", "Доля", "Площадь, м²", "Квартиры, м²",
                      "Население (накоп.)", "ДОО введено/треб.",
                      "СОШ введено/треб.", "Парковки, м/м", "Инженерия", "Статус"],
-            album_columns=["Лот", "Очередь", "Доля", "Квартиры, м²",
+            album_columns=["Очередь", "Доля", "Квартиры, м²",
                            "Население (накоп.)", "ДОО введено/треб.",
                            "СОШ введено/треб.", "Статус"],
-            notes=["Лот — группа очередей, полностью обеспеченная соцобъектами: "
-                   "границы лотов проходят по вводу корпусов СОШ (школа "
-                   "обслуживает несколько очередей). Корпуса ДОО/СОШ и объекты "
-                   "инженерии разложены по очередям автоматически — по "
-                   "накопительной потребности. «(+N)» — вместимости корпусов, "
-                   "вводимых в этой очереди; «введено/требуется» — накопительно "
-                   "на конец очереди.",
+            notes=["Корпуса ДОО/СОШ и объекты инженерии разложены по очередям "
+                   "автоматически — по накопительной потребности. «(+N)» — "
+                   "вместимости корпусов, вводимых в этой очереди; "
+                   "«введено/требуется» — накопительно на конец очереди.",
                    _eng_note],
             summary=_sum_ph))
 
-        # 🔌 Инженерия по лотам (v0.15.6) — автономные комплекты
-        if getattr(ph, "lots", None):
-            _short = lambda lbl: lbl.split(" (")[0]  # noqa: E731
-            _all_labels: list[str] = []
-            for lp in ph.lots:
-                for lbl in lp.engineering:
-                    sl = _short(lbl)
-                    if sl not in _all_labels:
-                        _all_labels.append(sl)
+        # 🧩 Лоты застройки (v0.15.9): лоты + их очереди, социалка, инженерия.
+        # Показывается, когда лоты содержательны: их больше одного ИЛИ включена
+        # автономная инженерия (у лота есть свой комплект).
+        _lots = getattr(ph, "lots", None) or []
+        _has_lot_eng = any(lp.engineering for lp in _lots)
+        if _lots and (len(_lots) > 1 or _has_lot_eng):
+            def _bkl(bk):
+                return " + ".join(str(b) for b in bk) if bk else "—"
             lot_rows = []
-            for lp in ph.lots:
+            for lp in _lots:
                 row = {
                     "Лот": lp.index,
                     "Очереди": ", ".join(str(i) for i in lp.stages),
+                    "Доля": f"{lp.share:.0%}",
+                    "Площадь, м²": f"{lp.area_m2:,.0f}".replace(",", " "),
+                    "Квартиры, м²": f"{lp.apartments_m2:,.0f}".replace(",", " "),
                     "Население": f"{lp.population:,.0f}".replace(",", " "),
+                    "ДОО, мест": _bkl(lp.kg_buckets),
+                    "СОШ, мест": _bkl(lp.school_buckets),
+                    "Парковки, м/м": lp.parking_places,
                 }
-                cnt_by_short = {_short(lbl): c for lbl, c in lp.engineering.items()}
-                for sl in _all_labels:
-                    row[sl] = cnt_by_short.get(sl, 0)
-                row["ЗУ, м²"] = f"{lp.eng_plot_total:,.0f}".replace(",", " ")
+                if _has_lot_eng:
+                    row["Инженерия"] = ", ".join(
+                        f"{lbl.split(' (')[0]}×{cnt}"
+                        for lbl, cnt in lp.engineering.items()) or "—"
+                    row["ЗУ инж., м²"] = (
+                        f"{lp.eng_plot_total:,.0f}".replace(",", " "))
                 lot_rows.append(row)
-            lot_cols = ["Лот", "Очереди", "Население"] + _all_labels + ["ЗУ, м²"]
-            _lot_notes = ["Каждый лот обеспечен собственным комплектом "
-                          "инженерных объектов по своему спросу; комплекты "
-                          "заложены в баланс территории и экономику."]
+            lot_cols = ["Лот", "Очереди", "Доля", "Площадь, м²", "Квартиры, м²",
+                        "Население", "ДОО, мест", "СОШ, мест", "Парковки, м/м"]
+            lot_alb = ["Лот", "Очереди", "Доля", "Квартиры, м²", "Население",
+                       "ДОО, мест", "СОШ, мест"]
+            if _has_lot_eng:
+                lot_cols += ["Инженерия", "ЗУ инж., м²"]
+                lot_alb += ["ЗУ инж., м²"]
+            _lot_notes = ["Лот — группа очередей, полностью обеспеченная "
+                          "соцобъектами: границы лотов проходят по вводу "
+                          "корпусов СОШ (школа обслуживает несколько очередей)."]
+            if _has_lot_eng:
+                _lot_notes.append(
+                    "Каждый лот обеспечен собственным комплектом инженерных "
+                    "объектов по своему спросу; комплекты заложены в баланс "
+                    "территории и экономику.")
             if ph.eng_delta_note:
                 _lot_notes.append(ph.eng_delta_note)
             blocks.append(TableBlock(
-                "phasing_eng", "Инженерия по лотам", "bolt", lot_rows,
-                columns=lot_cols, notes=_lot_notes,
+                "lots", "Лоты застройки", "view_module", lot_rows,
+                columns=lot_cols, album_columns=lot_alb, notes=_lot_notes,
                 summary=ph.eng_delta_note))
 
     return blocks

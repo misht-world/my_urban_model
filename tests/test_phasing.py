@@ -181,14 +181,21 @@ class TestLots:
         assert next(s.lot for s in r.phasing.stages
                     if s.index == second_school_stage) == 2
 
-    def test_lot_column_in_table(self, norms):
+    def test_lots_block_and_no_lot_column(self, norms):
+        """v0.15.9: колонки «Лот» в очередях нет; лоты — отдельным блоком."""
         from urban_model.export.variant_tables import build_variant_table_blocks
+        from urban_model.models.social import SchoolSpec
         o = CalculationOptions(floors=12, planning_doc=True,
+                               school=SchoolSpec(num_objects=2),
+                               kindergarten=KindergartenSpec(num_objects=4),
                                phasing=PhasingSpec(mode="auto"))
-        r = solve_max_kit(Site(area_m2=200_000), o, norms)
-        ph = next(b for b in build_variant_table_blocks(r) if b.key == "phasing")
-        assert "Лот" in ph.columns and "Лот" in ph.album_columns
-        assert "лоте(ах)" in ph.summary
+        r = solve_max_kit(Site(area_m2=400_000), o, norms)
+        blocks = build_variant_table_blocks(r)
+        ph = next(b for b in blocks if b.key == "phasing")
+        assert "Лот" not in ph.columns
+        lots = next(b for b in blocks if b.key == "lots")
+        assert "Лот" in lots.columns and "ДОО, мест" in lots.columns
+        assert len(lots.rows) == 2
 
 
 class TestEngineeringByLots:
@@ -241,18 +248,42 @@ class TestEngineeringByLots:
             result.population.value, rel=1e-6)
 
     def test_off_by_default(self, norms):
+        """Без галочки лоты-агрегаты есть, но БЕЗ инженерных комплектов."""
         o = CalculationOptions(floors=12, planning_doc=True,
                                phasing=PhasingSpec(mode="auto"))
         r = solve_max_kit(Site(area_m2=200_000), o, norms)
-        assert r.phasing.lots == []
+        assert r.phasing.lots  # агрегаты строятся всегда
+        assert all(not lp.engineering for lp in r.phasing.lots)
+        assert not any("— лот" in o2.label for o2 in r.engineering.objects)
 
     def test_block_in_variant_tables(self, result):
         from urban_model.export.variant_tables import build_variant_table_blocks
         pe = next((b for b in build_variant_table_blocks(result)
-                   if b.key == "phasing_eng"), None)
+                   if b.key == "lots"), None)
         assert pe is not None
-        assert "Лот" in pe.columns and "ЗУ, м²" in pe.columns
+        assert "Лот" in pe.columns and "ЗУ инж., м²" in pe.columns
         assert len(pe.rows) == len(result.phasing.lots)
+
+    def test_eng_distributed_within_lot(self, norms):
+        """v0.15.9 (баг Михаила): комплект лота НЕ валится в 1-ю очередь —
+        ТП распределяются по очередям лота по накопительному спросу."""
+        o = CalculationOptions(
+            floors=12, planning_doc=True,
+            phasing=PhasingSpec(mode="manual", shares=[0.34, 0.33, 0.33],
+                                engineering_by_lots=True))
+        r = solve_max_kit(Site(area_m2=400_000), o, norms)
+        ph = r.phasing
+        # один лот (1 школа) на 3 очереди: ТП должны быть и в оч.2/3
+        stages_with_eng = [s.index for s in ph.stages if s.engineering_stage]
+        assert len(stages_with_eng) >= 2, stages_with_eng
+        # метки без «— лот»
+        for s in ph.stages:
+            assert all("— лот" not in lbl for lbl in s.engineering_stage)
+        # Σ по очередям = Σ комплектов лотов
+        tot_stage = sum(c for s in ph.stages
+                        for c in s.engineering_stage.values())
+        tot_lots = sum(sum(lp.engineering.values()) for lp in ph.lots)
+        assert tot_stage == tot_lots
 
 
 def test_deficit_when_social_undersized(norms):

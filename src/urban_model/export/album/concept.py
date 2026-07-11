@@ -220,6 +220,21 @@ def _territory_rows(site_area: float, o) -> list[tuple[str, str]]:
         rows.append(("ЗНОП (вручную)", f"{o.znop_per_person_override:g} м²/чел"))
     if o.znop_total_area_override is not None:
         rows.append(("ЗНОП, площадь (вручную)", fmt_m2(o.znop_total_area_override)))
+    # v0.15.9 (п.7): остальные данные левых карточек — проезды и очерёдность.
+    if getattr(o, "driveways_intra_share_override", None) is not None:
+        rows.append(("Внутриквартальные проезды (вручную)",
+                     f"{o.driveways_intra_share_override:.0%} от квартала"))
+    if getattr(o, "driveways_lot_share_override", None) is not None:
+        rows.append(("Проезды на ЗУ жилья (вручную)",
+                     f"{o.driveways_lot_share_override:.0%}"))
+    _ph = getattr(o, "phasing", None)
+    if _ph is not None:
+        _mode = ("авто — по обеспеченности соцобъектами" if _ph.mode == "auto"
+                 else f"{len(_ph.shares)} очереди вручную ("
+                      + "/".join(f"{s * 100:.0f}" for s in _ph.shares) + "%)")
+        if getattr(_ph, "engineering_by_lots", False):
+            _mode += " · инженерия автономно по лотам"
+        rows.append(("Очерёдность застройки", _mode))
     if getattr(o, "include_economy", True):
         rows.append(("Соцобъекты (финансирование)",
                      _FUND_RU.get(getattr(o, "social_funding", "compensated"), "—")))

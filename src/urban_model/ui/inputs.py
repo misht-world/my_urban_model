@@ -191,8 +191,6 @@ def render_params_tab() -> UserInputs:
                 site, floors, planning_doc, lot_override,
                 enforce_greening_norm, enforce_density_norm, floor_clusters,
             ) = _render_essentials()
-            # v0.15.0: очерёдность застройки (территориальные этапы).
-            phasing_spec = _render_phasing_expander()
 
         with st.container(border=True, key="param_left_card_include"):
             st.markdown("##### Учитывать в расчёте")
@@ -264,6 +262,19 @@ def render_params_tab() -> UserInputs:
                     "объект занимает свой ЗУ. Раньше был неявно в проездах."
                 ),
             )
+            # v0.15.9 (по замечанию Михаила): очерёдность — стандартным
+            # компонентом «Учитывать в расчёте» + карточка справа (раньше —
+            # expander в «Общих сведениях» с вложенной галочкой). Ключ
+            # phasing_on сохранён для совместимости файлов проектов.
+            include_phasing = st.checkbox(
+                ":material/stairs: Очерёдность застройки", value=False,
+                key="phasing_on",
+                help=(
+                    "Территориальные этапы (очереди и лоты). Модель проверит "
+                    "обеспеченность соцобъектами и инженерией на конец "
+                    "каждого этапа."
+                ),
+            )
             include_custom = st.checkbox(
                 ":material/inventory_2: Дополнительные объекты", value=False, key="include_custom_objects",
             )
@@ -297,6 +308,7 @@ def render_params_tab() -> UserInputs:
     residential_class = "economy"
     social_funding = "compensated"
     social_comp_share = None
+    phasing_spec = None
 
     # Активные тайлы: (key, render-callable). Раскладываются по 2 столбцам.
     active_tiles: list[tuple[str, "callable"]] = []
@@ -312,6 +324,7 @@ def render_params_tab() -> UserInputs:
     # детали расчёта проездов пользователю знать не нужно). Флаг include_intra
     # продолжает учитываться в расчёте, доля — по нормативу (override=None).
     if include_engineering: active_tiles.append(("engineering", _render_engineering_tile))
+    if include_phasing:  active_tiles.append(("phasing", _render_phasing_tile))
     if include_custom:   active_tiles.append(("custom", _render_custom_objects_tile))
     if include_economy:  active_tiles.append(("economy", _render_economy_tile))
 
@@ -357,6 +370,7 @@ def render_params_tab() -> UserInputs:
             vpp_request = results.get("vpp", vpp_request)
             intra_override = results.get("intra", intra_override)
             engineering_spec = results.get("engineering", engineering_spec)
+            phasing_spec = results.get("phasing", phasing_spec)
             custom_objects_list = results.get("custom", custom_objects_list)
             if "economy" in results:
                 residential_class, social_funding, social_comp_share = results["economy"]
@@ -642,25 +656,15 @@ def _render_essentials() -> tuple[Site, int, bool, "float | None", bool, bool, l
     )
 
 
-def _render_phasing_expander():
-    """Очерёдность застройки (v0.15.0): 2–4 очереди долями площади.
-
-    Раскладка соцобъектов/инженерки по очередям — автоматическая (по
-    накопительной потребности), считается поверх готового результата.
-    Все виджеты — скаляры → сохраняются в файл проекта.
+def _render_phasing_tile():
+    """Плитка «Очерёдность застройки» (v0.15.9; ранее — expander в «Общих
+    сведениях»): 2–4 очереди долями площади (авто/вручную) + автономная
+    инженерия по лотам. Все виджеты — скаляры → сохраняются в файл проекта.
     """
     from urban_model.models.phasing import PhasingSpec
 
-    with st.expander(":material/stairs: Очерёдность застройки", expanded=False):
-        on = st.checkbox(
-            "Разбить на очереди", value=False, key="phasing_on",
-            help=(
-                "Территориальные этапы долями площади. Модель проверит "
-                "обеспеченность ДОО/СОШ и инженерией на конец каждой очереди."
-            ),
-        )
-        if not on:
-            return None
+    with st.container(border=True):
+        _tile_header(":material/stairs: Очерёдность застройки", "phasing_on")
         mode_lbl = st.radio(
             "Доли очередей", ["Авто — по обеспеченности соцобъектами", "Вручную"],
             index=0, key="phasing_mode", horizontal=False,

@@ -686,9 +686,15 @@ st.markdown("""
   [data-testid="column"]:has(.params-col-input) [data-testid="stMarkdownContainer"] h5 {
       margin-top: 0 !important;
   }
-  /* Прогресс-бар (st.progress): графит вместо синего — единая палитра */
-  [data-testid="stProgressBar"] > div > div,
-  [data-baseweb="progress-bar"] > div > div {
+  /* Прогресс-бар (st.progress): графит вместо синего — единая палитра.
+     v0.15.9: старый селектор `> div > div` в Streamlit 1.57 красил и ТРЕК —
+     полоса выглядела 100%-заполненной с самого старта. Теперь трек светлый,
+     заливка (на уровень глубже) — графит. */
+  [data-testid="stProgressBar"] [data-baseweb="progress-bar"] > div > div {
+      background-color: #EDEDED !important;
+      background-image: none !important;
+  }
+  [data-testid="stProgressBar"] [data-baseweb="progress-bar"] > div > div > div {
       background-color: #1A1A1A !important;
       background-image: none !important;
   }

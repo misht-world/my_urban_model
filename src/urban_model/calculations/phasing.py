@@ -238,20 +238,19 @@ _NO_SPLIT_NOTE = (
 )
 
 
-def _compute_lot_engineering(
-    stages: list[StageProvision], result, norms, eng_spec,
+def _build_lots(
+    stages: list[StageProvision], norms, eng_spec,
+    with_engineering: bool,
     count_kg: bool = True, count_sch: bool = True, n_extra_social: int = 0,
 ) -> tuple[list[LotProvision], str | None]:
-    """Автономные комплекты инженерии по лотам (v0.15.6).
+    """Сводки лотов (v0.15.9 — строятся ВСЕГДА при очередях).
 
-    Каждый лот считается `compute_engineering` от СОБСТВЕННОГО спроса —
-    ровно тем же способом, что `lot_engineering_totals` в forward, поэтому
-    таблица «Инженерия по лотам» совпадает с тем, что заложено в БАЛАНС и
-    ЭКОНОМИКУ (v0.15.7 — по-лотовая схема интегрирована в расчёт).
-    Дельта-примечание показывает, что дала бы единая квартальная схема.
+    Агрегаты (доля/площадь/население/квартиры/корпуса/парковки) — из очередей
+    лота. Инженерия — только при `with_engineering` (автономные комплекты, тем
+    же способом, что `lot_engineering_totals` в forward → таблица лотов
+    совпадает с тем, что заложено в баланс и экономику). Дельта-примечание —
+    что дала бы единая квартальная схема.
     """
-    from urban_model.calculations.engineering import compute_engineering
-
     lots: list[LotProvision] = []
     by_lot: dict[int, list[StageProvision]] = {}
     for s in stages:
@@ -259,8 +258,6 @@ def _compute_lot_engineering(
     first_lot = min(by_lot) if by_lot else 1
     for lot_idx in sorted(by_lot):
         ls = by_lot[lot_idx]
-        pop = sum(s.population_stage for s in ls)
-        apt = sum(s.apartments_m2 for s in ls)
         n_soc = sum(
             (len(s.kg_buckets) if count_kg else 0)
             + (len(s.school_buckets) if count_sch else 0)
@@ -268,39 +265,53 @@ def _compute_lot_engineering(
         )
         if lot_idx == first_lot:
             n_soc += n_extra_social
-        eng = compute_engineering(apt, pop, n_soc, norms, eng_spec)
-        counts = {o.label: o.count for o in eng.objects if o.count > 0}
         lots.append(LotProvision(
             index=lot_idx, stages=[s.index for s in ls],
-            population=pop, apartments_m2=apt, n_social=n_soc,
-            engineering=counts, eng_plot_total=eng.plot_total_all,
+            share=sum(s.share for s in ls),
+            area_m2=sum(s.area_m2 for s in ls),
+            population=sum(s.population_stage for s in ls),
+            apartments_m2=sum(s.apartments_m2 for s in ls),
+            kg_buckets=[c for s in ls for c in s.kg_buckets],
+            school_buckets=[c for s in ls for c in s.school_buckets],
+            parking_places=sum(s.parking_places_stage for s in ls),
+            n_social=n_soc,
         ))
 
-    # Что дала бы ЕДИНАЯ квартальная схема (для сравнения — эффект масштаба).
     delta_note = None
-    try:
-        apt_total = sum(lp.apartments_m2 for lp in lots)
-        pop_total = sum(lp.population for lp in lots)
-        n_soc_total = sum(lp.n_social for lp in lots)
-        q_eng = compute_engineering(apt_total, pop_total, n_soc_total,
-                                    norms, eng_spec)
-        q_objs = sum(o.count for o in q_eng.objects if o.count > 0)
-        q_plot = q_eng.plot_total_all
-        l_objs = sum(sum(lp.engineering.values()) for lp in lots)
-        l_plot = sum(lp.eng_plot_total for lp in lots)
+    if with_engineering and norms is not None:
+        from urban_model.calculations.engineering import compute_engineering
+        for i, lp in enumerate(lots):
+            eng = compute_engineering(lp.apartments_m2, lp.population,
+                                      lp.n_social, norms, eng_spec)
+            lots[i] = lp.model_copy(update={
+                "engineering": {o.label: o.count
+                                for o in eng.objects if o.count > 0},
+                "eng_plot_total": eng.plot_total_all,
+            })
+        # Что дала бы ЕДИНАЯ квартальная схема (эффект масштаба).
+        try:
+            q_eng = compute_engineering(
+                sum(lp.apartments_m2 for lp in lots),
+                sum(lp.population for lp in lots),
+                sum(lp.n_social for lp in lots), norms, eng_spec)
+            q_objs = sum(o.count for o in q_eng.objects if o.count > 0)
+            l_objs = sum(sum(lp.engineering.values()) for lp in lots)
+            l_plot = sum(lp.eng_plot_total for lp in lots)
 
-        def _n(v: float, sign: bool = False) -> str:
-            s = f"{v:+,.0f}" if sign else f"{v:,.0f}"
-            return s.replace(",", " ")
+            def _n(v: float, sign: bool = False) -> str:
+                s = f"{v:+,.0f}" if sign else f"{v:,.0f}"
+                return s.replace(",", " ")
 
-        delta_note = (
-            f"Баланс и экономика рассчитаны по автономной по-лотовой схеме: "
-            f"{l_objs} объектов инженерии, ЗУ {_n(l_plot)} м². Единая "
-            f"квартальная схема дала бы {q_objs} объектов и {_n(q_plot)} м² "
-            f"({_n(l_plot - q_plot, sign=True)} м² — цена автономности лотов)."
-        )
-    except Exception:  # noqa: BLE001 — примечание не критично
-        pass
+            delta_note = (
+                f"Баланс и экономика рассчитаны по автономной по-лотовой "
+                f"схеме: {l_objs} объектов инженерии, ЗУ {_n(l_plot)} м². "
+                f"Единая квартальная схема дала бы {q_objs} объектов и "
+                f"{_n(q_eng.plot_total_all)} м² "
+                f"({_n(l_plot - q_eng.plot_total_all, sign=True)} м² — цена "
+                f"автономности лотов)."
+            )
+        except Exception:  # noqa: BLE001 — примечание не критично
+            pass
     return lots, delta_note
 
 
@@ -335,23 +346,36 @@ def compute_phasing(result, spec: PhasingSpec, norms=None, eng_spec=None,
     sch_req_cum = [pop_total * cs * sch_rate for cs in cum_shares]
 
     # Инженерка по очередям. Обычный режим: объекты квартальной схемы по
-    # накопительному спросу. По-лотовый режим (v0.15.7): result.engineering
-    # уже содержит объекты «— лот N» — комплект лота вводится с ПЕРВОЙ
-    # очередью своего лота.
+    # накопительному спросу. По-лотовый режим (v0.15.9, фикс по замечанию
+    # Михаила): объекты КАЖДОГО лота распределяются по очередям ЭТОГО лота
+    # по накопительному спросу внутри лота (18 ТП лота — не все в 1-ю
+    # очередь, а по мере ввода жилья); единичные (котельная) — в первую
+    # очередь лота. Метки — без «— лот N» (лоты видны на своём листе).
     eng_per_stage: list[dict[str, int]] = [{} for _ in range(n)]
     if getattr(result, "engineering", None) is not None:
         if spec.engineering_by_lots:
-            _first_stage_of_lot: dict[int, int] = {}
+            _stages_of_lot: dict[int, list[int]] = {}
             for k, lot in enumerate(lot_of_stage):
-                _first_stage_of_lot.setdefault(lot, k)
+                _stages_of_lot.setdefault(lot, []).append(k)
             for obj in result.engineering.objects:
                 if obj.count <= 0:
                     continue
                 _m = re.search(r"— лот (\d+)$", obj.label)
-                _lot = int(_m.group(1)) if _m else min(_first_stage_of_lot)
-                k = _first_stage_of_lot.get(_lot, 0)
-                eng_per_stage[k][obj.label] = (
-                    eng_per_stage[k].get(obj.label, 0) + obj.count)
+                _lot = int(_m.group(1)) if _m else min(_stages_of_lot)
+                ks = _stages_of_lot.get(_lot) or [0]
+                _tot = sum(shares[k] for k in ks)
+                _local_cum = []
+                _acc = 0.0
+                for k in ks:
+                    _acc += shares[k] / _tot if _tot > 0 else 1.0 / len(ks)
+                    _local_cum.append(_acc)
+                _short = obj.label.split(" — лот")[0]
+                dist = _distribute_count(int(obj.count), _local_cum)
+                for j, c in enumerate(dist):
+                    if c > 0:
+                        k = ks[j]
+                        eng_per_stage[k][_short] = (
+                            eng_per_stage[k].get(_short, 0) + c)
         else:
             for obj in result.engineering.objects:
                 if obj.count <= 0:
@@ -405,13 +429,14 @@ def compute_phasing(result, spec: PhasingSpec, norms=None, eng_spec=None,
         ))
     lots: list[LotProvision] = []
     eng_delta_note = None
-    if spec.engineering_by_lots and norms is not None and stages:
+    if stages:
         try:
-            lots, eng_delta_note = _compute_lot_engineering(
-                stages, result, norms, eng_spec,
+            lots, eng_delta_note = _build_lots(
+                stages, norms, eng_spec,
+                with_engineering=spec.engineering_by_lots,
                 count_kg=count_kg, count_sch=count_sch,
                 n_extra_social=n_extra_social)
-        except Exception:  # noqa: BLE001 — информационный слой не роняет расчёт
+        except Exception:  # noqa: BLE001 — сводка лотов не роняет расчёт
             lots, eng_delta_note = [], None
 
     return PhasingResult(mode=spec.mode, stages=stages, warnings=warnings,

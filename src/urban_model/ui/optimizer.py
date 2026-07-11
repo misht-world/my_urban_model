@@ -406,6 +406,18 @@ def _render_recommendations_section(
             with cols[j]:
                 _render_recommendation_card(rec, row_start + j, base_options, vpp_request)
 
+    # v0.15.9 (п.6 Михаила): все сценарии одним кликом — База + карточки.
+    if recs and st.button(
+            ":material/playlist_add: Все сценарии в сравнение (вкл. Базу)",
+            key="add_all_scenarios"):
+        if "scenarios" not in st.session_state:
+            st.session_state.scenarios = []
+        st.session_state.scenarios.append(("База", base_tep))
+        for rec in recs:
+            st.session_state.scenarios.append((rec.label, rec.tep))
+        st.toast(f"Добавлено сценариев: {1 + len(recs)}", icon="✅")
+        st.rerun()
+
     # v0.12.11: ДИНАМИЧЕСКОЕ пояснение преимуществ «Девелоперского» —
     # конкретные сильные стороны именно этого варианта vs остальные.
     by_label = {r.label: r for r in recs}
