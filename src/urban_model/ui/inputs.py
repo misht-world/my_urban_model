@@ -761,13 +761,34 @@ def _render_clusters_editor(area_m2: float, floors: int) -> list[FloorCluster]:
         "Площадь квартала = Σ площадей зон ниже. Диапазон этажности для "
         "подбора — во вкладке «Оптимизация» → «Настройки подбора»."
     )
-    default_df = pd.DataFrame([
-        {"Зона": "Зона А", "Площадь, м²": round(area_m2 * 0.5), "Этажность": min(floors, 9)},
-        {"Зона": "Зона Б", "Площадь, м²": round(area_m2 * 0.5), "Этажность": max(floors, 16)},
-    ])
+    # v0.15.11: зоны СОХРАНЯЮТСЯ в файл проекта. Данные живут в скалярном
+    # ключе fc_zones_json (str -> попадает в snapshot_state), а редактор
+    # пересоздаётся с ними как с начальными данными: ключ виджета включает
+    # хэш данных, поэтому после загрузки проекта старое состояние
+    # data_editor не мешает (программно его восстановить нельзя).
+    import json as _json
+    _saved = st.session_state.get("fc_zones_json") or ""
+    default_df = None
+    if _saved:
+        try:
+            _rows = _json.loads(_saved)
+            if isinstance(_rows, list) and _rows:
+                default_df = pd.DataFrame(_rows)
+                for _c in ("Зона", "Площадь, м²", "Этажность"):
+                    if _c not in default_df.columns:
+                        default_df[_c] = None
+                default_df = default_df[["Зона", "Площадь, м²", "Этажность"]]
+        except (ValueError, KeyError, TypeError):
+            default_df = None
+    if default_df is None:
+        default_df = pd.DataFrame([
+            {"Зона": "Зона А", "Площадь, м²": round(area_m2 * 0.5), "Этажность": min(floors, 9)},
+            {"Зона": "Зона Б", "Площадь, м²": round(area_m2 * 0.5), "Этажность": max(floors, 16)},
+        ])
+    _ed_key = f"floor_clusters_editor_{abs(hash(_saved)) % 10**8}"
     edited = st.data_editor(
         default_df,
-        key="floor_clusters_editor",
+        key=_ed_key,
         num_rows="dynamic",
         hide_index=True,
         use_container_width=True,
@@ -782,6 +803,15 @@ def _render_clusters_editor(area_m2: float, floors: int) -> list[FloorCluster]:
             ),
         },
     )
+
+    # v0.15.11: текущее содержимое редактора -> fc_zones_json (в файл проекта).
+    try:
+        _cur_rows = edited.where(pd.notna(edited), None).to_dict(orient="records")
+        _cur = _json.dumps(_cur_rows, ensure_ascii=False)
+        if _cur != _saved:
+            st.session_state["fc_zones_json"] = _cur
+    except (TypeError, ValueError):
+        pass
 
     clusters: list[FloorCluster] = []
     for _, row in edited.iterrows():

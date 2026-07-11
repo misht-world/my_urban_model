@@ -49,3 +49,19 @@ def test_apply_bare_dict():
     n = apply_state({"floors": 9, "_meta": "skip", "bad": [1, 2]})
     assert n == 1
     assert st.session_state["floors"] == 9
+
+
+def test_zones_saved_via_fc_zones_json():
+    """v0.15.11: зоны этажности сохраняются в проект через fc_zones_json."""
+    import json
+    _clear_state()
+    st.session_state["use_floor_clusters"] = True
+    st.session_state["fc_zones_json"] = json.dumps(
+        [{"Зона": "А", "Площадь, м²": 100000, "Этажность": 9}],
+        ensure_ascii=False)
+    snap = snapshot_state()
+    assert "fc_zones_json" in snap["params"]
+    _clear_state()
+    apply_state(snap)
+    rows = json.loads(st.session_state["fc_zones_json"])
+    assert rows[0]["Этажность"] == 9 and rows[0]["Зона"] == "А"
