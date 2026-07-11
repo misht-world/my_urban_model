@@ -30,3 +30,8 @@ my_project/
 Answer_audit.txt
 макеты_страниц.html
 docs/comparison.xlsx
+
+# uv.lock не коммитим: Streamlit Cloud предпочитает uv-sync по нему и ставит
+# незапиненный streamlit отдельно (v0.15.3 — segfault на 1.59.1). Деплой
+# должен идти по requirements.txt с проверенными версиями.
+uv.lock

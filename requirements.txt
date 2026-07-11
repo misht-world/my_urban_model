@@ -1,6 +1,7 @@
 # Для Streamlit Community Cloud (share.streamlit.io).
 # Устанавливает сам пакет urban_model (со всеми зависимостями из pyproject:
 # pydantic, pyyaml, pandas, openpyxl, optuna, python-docx, matplotlib, python-pptx)
-# + streamlit для UI (он в pyproject в dev-зависимостях, поэтому указан явно).
+# + streamlit для UI. Streamlit запинен на проверенной версии: незапиненный
+# 1.59.1 падал segfault'ом на старте (лог 2026-07-11).
 -e .
-streamlit>=1.32
+streamlit==1.57.0
