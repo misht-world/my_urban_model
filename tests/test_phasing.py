@@ -133,6 +133,23 @@ def test_deficit_when_social_undersized(norms):
     assert any("PHASE_SOC_DEFICIT" in w for w in r.warnings)
 
 
+def test_kg_over_250_note(norms):
+    """v0.15.3: корпус ДОО > 250 мест → примечание про выкуп КС."""
+    from urban_model.export.variant_tables import build_variant_table_blocks
+    o = CalculationOptions(
+        floors=12, planning_doc=True,
+        kindergarten=KindergartenSpec(num_objects=1),  # 1 крупный корпус
+    )
+    r = solve_max_kit(Site(area_m2=200_000), o, norms)
+    kg_block = next(b for b in build_variant_table_blocks(r)
+                    if b.key == "kindergarten")
+    import re
+    caps = [int(x) for x in re.search(
+        r"\[([\d,\s]+)\]", r.kindergarten_places_accepted.formula).group(1).split(",")]
+    has_note = any("более 250 мест" in n for n in kg_block.notes)
+    assert has_note == (max(caps) > 250)
+
+
 def test_phasing_block_in_variant_tables(norms):
     from urban_model.export.variant_tables import build_variant_table_blocks
     o = CalculationOptions(floors=12, planning_doc=True,

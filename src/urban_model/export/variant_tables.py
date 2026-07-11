@@ -151,8 +151,15 @@ def build_variant_table_blocks(result: TEPResult) -> list[TableBlock]:
         + (f" в {format_buckets(_kg_n, _kg_caps)}" if _kg_n else "")
         + f"; участки {fmt_m2(result.kindergarten_plot_area.value)}."
     )
+    # v0.15.3 (по данным КС): корпуса крупнее 250 мест затрудняют выкуп городом.
+    _kg_notes = []
+    if _kg_caps and max(_kg_caps) > 250:
+        _kg_notes.append(
+            "Наполняемость ДОУ более 250 мест не рекомендована КС "
+            "в случае выкупа."
+        )
     blocks.append(TableBlock("kindergarten", "ДОО (детские сады)", "child_care",
-                             rows, summary=_sum_kg))
+                             rows, notes=_kg_notes, summary=_sum_kg))
 
     # 🏫 СОШ
     rows = [
