@@ -157,9 +157,18 @@ def compute_phasing(result, spec: PhasingSpec) -> PhasingResult:
     warnings: list[str] = []
     kg_prov = 0
     sch_prov = 0
+    # ЛОТ (v0.15.5): группа очередей, полностью обеспеченная соцобъектами.
+    # Границы — по вводу корпусов СОШ: первый корпус обслуживает лот 1
+    # (включая очереди до него), каждый СЛЕДУЮЩИЙ корпус открывает новый лот.
+    lot_idx = 1
+    schools_seen = False
     for k in range(n):
         kg_prov += sum(kg_per_stage[k])
         sch_prov += sum(sch_per_stage[k])
+        if sch_per_stage[k] and schools_seen:
+            lot_idx += 1
+        if sch_per_stage[k]:
+            schools_seen = True
         deficits: list[str] = []
         # −0.5 места — допуск на округление требуемых мест
         if kg_prov < kg_req_cum[k] - 0.5:
@@ -178,6 +187,7 @@ def compute_phasing(result, spec: PhasingSpec) -> PhasingResult:
             ))
         stages.append(StageProvision(
             index=k + 1,
+            lot=lot_idx,
             share=shares[k],
             area_m2=site_area * shares[k],
             apartments_m2=apt_total * shares[k],

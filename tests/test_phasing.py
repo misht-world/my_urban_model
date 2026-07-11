@@ -144,6 +144,42 @@ class TestAutoMode:
         assert len(r.phasing.stages) == 2
 
 
+class TestLots:
+    def test_single_school_single_lot(self, norms):
+        """Одна СОШ вбирает всю потребность → все очереди в лоте 1."""
+        o = CalculationOptions(floors=12, planning_doc=True,
+                               phasing=PhasingSpec(mode="auto"))
+        r = solve_max_kit(Site(area_m2=200_000), o, norms)
+        assert all(s.lot == 1 for s in r.phasing.stages)
+
+    def test_second_school_opens_new_lot(self, norms):
+        """Второй корпус СОШ открывает новый лот."""
+        from urban_model.models.social import SchoolSpec
+        o = CalculationOptions(
+            floors=12, planning_doc=True,
+            school=SchoolSpec(num_objects=2),
+            kindergarten=KindergartenSpec(num_objects=4),
+            phasing=PhasingSpec(mode="auto"))
+        r = solve_max_kit(Site(area_m2=400_000), o, norms)
+        lots = [s.lot for s in r.phasing.stages]
+        assert max(lots) == 2
+        assert lots == sorted(lots)          # лоты монотонны по очередям
+        # новый лот начинается ровно в очереди со 2-м корпусом СОШ
+        second_school_stage = next(
+            s.index for s in r.phasing.stages[1:] if s.school_buckets)
+        assert next(s.lot for s in r.phasing.stages
+                    if s.index == second_school_stage) == 2
+
+    def test_lot_column_in_table(self, norms):
+        from urban_model.export.variant_tables import build_variant_table_blocks
+        o = CalculationOptions(floors=12, planning_doc=True,
+                               phasing=PhasingSpec(mode="auto"))
+        r = solve_max_kit(Site(area_m2=200_000), o, norms)
+        ph = next(b for b in build_variant_table_blocks(r) if b.key == "phasing")
+        assert "Лот" in ph.columns and "Лот" in ph.album_columns
+        assert "лоте(ах)" in ph.summary
+
+
 def test_deficit_when_social_undersized(norms):
     """Недостаточная вместимость ДОО (ручной override) → дефицит на этапе."""
     o = CalculationOptions(

@@ -156,10 +156,12 @@ def _phasing_chip(tep: TEPResult) -> str | None:
     shares = "/".join(f"{s.share * 100:.0f}" for s in ph.stages)
     n = len(ph.stages)
     word = "очереди" if 2 <= n <= 4 else "очередей"
+    n_lots = max((s.lot for s in ph.stages), default=1)
+    lots = f" · {n_lots} лот(а)" if n_lots > 1 else ""
     ok = all(s.is_ok for s in ph.stages)
     status = "" if ok else " · есть дефициты"
     auto = " · авто" if getattr(ph, "mode", "") == "auto" else ""
-    return f"Очерёдность: {n} {word} ({shares}%){auto}{status}"
+    return f"Очерёдность: {n} {word} ({shares}%){lots}{auto}{status}"
 
 
 def _var_label(v_index: int) -> str:

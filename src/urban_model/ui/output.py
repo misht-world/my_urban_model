@@ -333,9 +333,11 @@ def render_main_kpi_grid(result: TEPResult, options=None) -> None:
         _status = ("обеспеченность выдержана" if _ok
                    else "⚠ есть дефициты соцобъектов")
         _auto = " · авто" if getattr(ph, "mode", "") == "auto" else ""
+        _n_lots = max((s.lot for s in ph.stages), default=1)
+        _lots = f" · {_n_lots} лот(а)" if _n_lots > 1 else ""
         st.caption(
             f":material/stairs: Очерёдность: {len(ph.stages)} очереди "
-            f"({_shares}%{_auto}) — {_status}. "
+            f"({_shares}%{_auto}){_lots} — {_status}. "
             f"Детали — в «Очерёдность застройки» ниже."
         )
     elif ph is not None and getattr(ph, "note", None):
