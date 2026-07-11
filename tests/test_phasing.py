@@ -31,6 +31,17 @@ class TestPhasingSpec:
         with pytest.raises(ValueError):
             PhasingSpec(shares=[0.5, 0.0])
 
+    def test_rejects_nan_inf(self):
+        """v0.15.8: NaN/inf не проходят (nan<=0 ложно — нужен isfinite)."""
+        with pytest.raises(ValueError):
+            PhasingSpec(shares=[float("nan"), 0.5])
+        with pytest.raises(ValueError):
+            PhasingSpec(shares=[float("inf"), 0.5])
+        with pytest.raises(ValueError):
+            PhasingSpec(shares=["abc", 0.5])
+        with pytest.raises(ValueError):
+            PhasingSpec(shares=[-1.0, 2.0])
+
 
 class TestPhasingResult:
     @pytest.fixture(scope="class")

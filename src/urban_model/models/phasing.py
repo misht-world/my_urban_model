@@ -43,10 +43,13 @@ class PhasingSpec(BaseModel):
     @field_validator("shares")
     @classmethod
     def _validate_shares(cls, v: list[float]) -> list[float]:
+        import math
         if not 2 <= len(v) <= 4:
             raise ValueError(f"очередей должно быть 2–4, задано {len(v)}")
-        if any(s <= 0 for s in v):
-            raise ValueError("доля очереди должна быть > 0")
+        # isfinite отсекает NaN/inf: сравнение nan<=0 ложно, и без этой
+        # проверки NaN «проходил» валидатор и давал nan-доли.
+        if any(not math.isfinite(s) or s <= 0 for s in v):
+            raise ValueError("доля очереди должна быть конечным числом > 0")
         total = sum(v)
         if total <= 0:
             raise ValueError("сумма долей должна быть > 0")
