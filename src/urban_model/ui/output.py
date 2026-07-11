@@ -338,6 +338,9 @@ def render_main_kpi_grid(result: TEPResult, options=None) -> None:
             f"({_shares}%{_auto}) — {_status}. "
             f"Детали — в «Очерёдность застройки» ниже."
         )
+    elif ph is not None and getattr(ph, "note", None):
+        # v0.15.4: авто-режим решил не делить (единственный корпус соцобъектов).
+        st.caption(f":material/stairs: Очерёдность (авто): {ph.note}")
 
 
 def render_kpi(result: TEPResult, *, scenario_default_name: str | None = None,

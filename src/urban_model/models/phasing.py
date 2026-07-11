@@ -77,9 +77,14 @@ class StageProvision(BaseModel):
 
 
 class PhasingResult(BaseModel):
-    """Итог раскладки по очередям."""
+    """Итог раскладки по очередям.
+
+    stages может быть ПУСТЫМ (v0.15.4): авто-режим решил, что делить на
+    очереди нет смысла (единственный корпус ДОО/СОШ) — причина в `note`.
+    """
     model_config = ConfigDict(extra="forbid")
 
     mode: str = "manual"             # "auto" | "manual" — как получены доли
     stages: list[StageProvision] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
+    note: str | None = None          # пояснение, если stages пуст

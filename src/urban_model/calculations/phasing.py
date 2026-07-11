@@ -77,21 +77,25 @@ def _distribute_count(total: int, cum_shares: list[float]) -> list[int]:
     return out
 
 
-def _auto_shares(result) -> list[float]:
+def _auto_shares(result) -> list[float] | None:
     """Авто-доли очередей из дискретности соцобъектов (v0.15.2).
 
     Границы очередей — по ёмкости корпусов ДОО (сортировка по убыванию:
     крупные раньше): доля очереди k = вместимость корпуса k / Σ вместимостей.
     Тогда на конец каждой очереди введённые корпуса покрывают накопительную
     потребность с общим профицитом проекта (~95–105%) — каждая очередь
-    самодостаточна. Нет ДОО → по корпусам СОШ; нет ничего / 1 корпус → 2
-    равные доли. Больше 4 корпусов → мелкие сливаются в последнюю очередь.
+    самодостаточна. Нет ДОО (или 1 корпус) → по корпусам СОШ. Больше 4
+    корпусов → мелкие сливаются в последнюю очередь.
+
+    v0.15.4: если ни ДОО, ни СОШ не дают ≥2 корпусов — деление на очереди
+    не имеет опоры (единственный соцобъект нужен с первой очереди, любые
+    доли произвольны) → None: «не делить».
     """
     buckets = _buckets(result.kindergarten_places_accepted.formula)
     if len(buckets) < 2:
         buckets = _buckets(result.school_places_accepted.formula)
     if len(buckets) < 2:
-        return [0.5, 0.5]
+        return None
     caps = sorted(buckets, reverse=True)
     if len(caps) > 4:
         caps = caps[:3] + [sum(caps[3:])]   # мелкие корпуса → последняя очередь
@@ -99,9 +103,22 @@ def _auto_shares(result) -> list[float]:
     return [c / total for c in caps]
 
 
+_NO_SPLIT_NOTE = (
+    "Деление на очереди не выполнено: у проекта единственный корпус "
+    "соцобъектов (ДОО/СОШ) — он необходим с первой очереди, и границы "
+    "очередей по обеспеченности провести не по чему. Задайте доли вручную, "
+    "если очерёдность нужна по другим соображениям."
+)
+
+
 def compute_phasing(result, spec: PhasingSpec) -> PhasingResult:
     """Раскладка готового TEPResult по очередям. Не мутирует result."""
-    shares = _auto_shares(result) if spec.mode == "auto" else spec.shares
+    if spec.mode == "auto":
+        shares = _auto_shares(result)
+        if shares is None:
+            return PhasingResult(mode="auto", stages=[], note=_NO_SPLIT_NOTE)
+    else:
+        shares = spec.shares
     n = len(shares)
     cum_shares = [sum(shares[: k + 1]) for k in range(n)]
 

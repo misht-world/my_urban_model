@@ -109,15 +109,39 @@ class TestAutoMode:
         r = solve_max_kit(Site(area_m2=200_000), o, norms)
         assert sum(s.share for s in r.phasing.stages) == pytest.approx(1.0)
 
-    def test_auto_fallback_without_kg(self, norms):
-        """Без ДОО и СОШ (или 1 корпус) — 2 равные очереди."""
+    def test_auto_no_split_without_soc(self, norms):
+        """v0.15.4: нет корпусов ДОО/СОШ (≥2) → авто НЕ делит (stages пусты,
+        note объясняет), вместо прежних произвольных 50/50."""
         o = CalculationOptions(floors=9, planning_doc=True,
                                include_kindergarten=False, include_school=False,
                                phasing=PhasingSpec(mode="auto"))
         r = solve_max_kit(Site(area_m2=50_000), o, norms)
         ph = r.phasing
-        assert len(ph.stages) == 2
-        assert ph.stages[0].share == pytest.approx(0.5)
+        assert ph is not None and ph.stages == []
+        assert ph.note and "Деление на очереди не выполнено" in ph.note
+
+    def test_auto_no_split_single_kg(self, norms):
+        """Единственный корпус ДОО и единственная СОШ → не делим."""
+        from urban_model.models.social import KindergartenSpec, SchoolSpec
+        o = CalculationOptions(
+            floors=9, planning_doc=True,
+            kindergarten=KindergartenSpec(num_objects=1),
+            school=SchoolSpec(num_objects=1),
+            phasing=PhasingSpec(mode="auto"))
+        r = solve_max_kit(Site(area_m2=100_000), o, norms)
+        ph = r.phasing
+        assert ph.stages == [] and ph.note
+
+    def test_auto_single_kg_but_two_schools(self, norms):
+        """1 ДОО, но ≥2 корпусов СОШ → деление по школам остаётся."""
+        from urban_model.models.social import KindergartenSpec, SchoolSpec
+        o = CalculationOptions(
+            floors=12, planning_doc=True,
+            kindergarten=KindergartenSpec(num_objects=1),
+            school=SchoolSpec(num_objects=2),
+            phasing=PhasingSpec(mode="auto"))
+        r = solve_max_kit(Site(area_m2=200_000), o, norms)
+        assert len(r.phasing.stages) == 2
 
 
 def test_deficit_when_social_undersized(norms):
