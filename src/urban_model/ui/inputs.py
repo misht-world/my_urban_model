@@ -98,8 +98,18 @@ def _only_demand_toggle(label: str, key: str, help_text: str) -> bool:
     Toggle визуально отличается от обычной галочки и подразумевает
     переключение режима. На «выскакивающее сообщение» бейдж заменён
     штатным внешним видом toggle.
+
+    v0.16.1: при ВКЛЮЧЁННОМ режиме — явная подпись, что настройки объекта
+    не влияют на баланс и площадь квартир (по случаю «Далты»: ручные места
+    доп. образования «не работали» — тумблер был включён и забыт).
     """
-    return st.toggle(label, value=False, key=key, help=help_text)
+    on = st.toggle(label, value=False, key=key, help=help_text)
+    if on:
+        st.caption(
+            ":material/info: Объект вне баланса: настройки ниже не влияют "
+            "на площадь квартир (считается только потребность)."
+        )
+    return on
 
 
 def render_params_tab() -> UserInputs:

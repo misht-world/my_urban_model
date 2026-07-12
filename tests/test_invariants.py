@@ -16,7 +16,13 @@ import pytest
 from urban_model import solve_max_kit
 from urban_model.models import CalculationOptions, CustomObject, Site
 from urban_model.models.parking import ParkingConfig
-from urban_model.models.social import KindergartenSpec, SchoolSpec
+from urban_model.models.social import (
+    AdditionalEducationSpec,
+    KindergartenSpec,
+    PolyclinicSpec,
+    SchoolSpec,
+    SportFacilitiesSpec,
+)
 from urban_model.normatives import load_normatives
 
 
@@ -130,6 +136,74 @@ class TestDependencies:
                                        name="X", plot_area_m2=plot, vri_code="4.0")])
             apts.append(solve_max_kit(SITE, o, norms).apartments_area.value)
         assert apts[0] > apts[1] > apts[2], apts
+
+    # --- ручные параметры соцобъектов (v0.16.1, по случаю «Далты»:
+    # «60 vs 500 мест доп. образования — площадь не меняется» оказалось
+    # включённым only_demand; закрепляем ОБА поведения тестами) ---
+
+    def test_add_education_places_reduce_apartments(self, norms):
+        """Доп. образование отд. стоящее: больше мест → больше ЗУ → меньше квартир."""
+        apts = []
+        for places in (200, 500, 900):
+            o = CalculationOptions(
+                floors=12, planning_doc=True,
+                add_education=AdditionalEducationSpec(
+                    mode="manual", places_override=places))
+            apts.append(solve_max_kit(SITE, o, norms).apartments_area.value)
+        assert apts[0] > apts[1] > apts[2], apts
+
+    def test_add_education_vpp_places_reduce_apartments(self, norms):
+        """Доп. образование в ВПП: здание из жилой GFA → больше мест → меньше квартир."""
+        apts = []
+        for places in (60, 500):
+            o = CalculationOptions(
+                floors=12, planning_doc=True,
+                add_education=AdditionalEducationSpec(
+                    mode="manual", places_override=places, in_vpp=True))
+            apts.append(solve_max_kit(SITE, o, norms).apartments_area.value)
+        assert apts[0] > apts[1], apts
+
+    def test_add_education_only_demand_insensitive(self, norms):
+        """only_demand: места НЕ влияют на квартиры (бит-в-бит) — по дизайну."""
+        apts = []
+        for places in (60, 500):
+            o = CalculationOptions(
+                floors=12, planning_doc=True,
+                add_education=AdditionalEducationSpec(
+                    mode="manual", places_override=places, only_demand=True))
+            apts.append(solve_max_kit(SITE, o, norms).apartments_area.value)
+        assert apts[0] == apts[1], apts
+
+    def test_polyclinic_visits_reduce_apartments(self, norms):
+        """Поликлиника отд. стоящая: больше посещений → больше ЗУ → меньше квартир."""
+        apts = []
+        for visits in (300, 900):
+            o = CalculationOptions(
+                floors=12, planning_doc=True,
+                polyclinic=PolyclinicSpec(mode="manual", visits_override=visits))
+            apts.append(solve_max_kit(SITE, o, norms).apartments_area.value)
+        assert apts[0] > apts[1], apts
+
+    def test_sport_override_reduces_apartments(self, norms):
+        """Спортплощадки: больше заданной площади → меньше квартир."""
+        apts = []
+        for area in (1_000.0, 10_000.0):
+            o = CalculationOptions(
+                floors=12, planning_doc=True,
+                sport_facilities=SportFacilitiesSpec(area_override_m2=area))
+            apts.append(solve_max_kit(SITE, o, norms).apartments_area.value)
+        assert apts[0] > apts[1], apts
+
+    def test_kindergarten_manual_capacity_reduces_apartments(self, norms):
+        """ДОО вручную: 1 корпус на 120 мест vs 300 → больше ЗУ → меньше квартир."""
+        apts = []
+        for cap in (120, 300):
+            o = CalculationOptions(
+                floors=12, planning_doc=True,
+                kindergarten=KindergartenSpec(
+                    num_objects=1, capacity_per_object=cap))
+            apts.append(solve_max_kit(SITE, o, norms).apartments_area.value)
+        assert apts[0] > apts[1], apts
 
     def test_site_area_increases_apartments(self, norms):
         o = CalculationOptions(floors=12, planning_doc=True)
