@@ -388,9 +388,10 @@ class TestPhasingCombos:
         PhasingSpec(mode="manual", shares=[0.5, 0.5]),
         PhasingSpec(mode="manual", shares=[0.2, 0.2, 0.2, 0.2, 0.2]),
         PhasingSpec(mode="manual", shares=[0.125] * 8),
+        PhasingSpec(mode="manual", shares=[0.05] * 20),
         PhasingSpec(mode="manual", shares=[0.7, 0.3], engineering_by_lots=True),
     ], ids=["auto", "auto-lots-eng", "manual2", "manual5", "manual8",
-            "manual2-lots-eng"])
+            "manual20", "manual2-lots-eng"])
     def test_phasing_variants(self, norms, spec):
         big = Site(area_m2=200_000)
         o = CalculationOptions(floors=12, planning_doc=True,

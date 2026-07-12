@@ -694,17 +694,24 @@ def _render_phasing_tile():
                 "соцобъектами (≈95–100% на конец этапа)."
             )
             return PhasingSpec(mode="auto", engineering_by_lots=eng_lots)
-        n = int(st.number_input("Число очередей", min_value=2, max_value=8,
+        n = int(st.number_input("Число очередей", min_value=2, max_value=20,
                                 value=2, step=1, key="phasing_n"))
         shares: list[float] = []
-        cols = st.columns(n)
-        for i in range(n):
-            with cols[i]:
-                shares.append(float(st.number_input(
-                    f"Оч. {i + 1}, %", min_value=1.0, max_value=97.0,
-                    value=round(100.0 / n, 0), step=1.0,
-                    key=f"phase_share_{i + 1}",
-                )))
+        # v0.15.16: поля долей — рядами по 4 (при 20 очередях одна строка
+        # колонок сжимала поля до нечитаемых).
+        _PER_ROW = 4
+        for row_start in range(0, n, _PER_ROW):
+            cols = st.columns(_PER_ROW)
+            for j in range(_PER_ROW):
+                i = row_start + j
+                if i >= n:
+                    break
+                with cols[j]:
+                    shares.append(float(st.number_input(
+                        f"Оч. {i + 1}, %", min_value=0.5, max_value=97.0,
+                        value=max(0.5, round(100.0 / n, 1)), step=0.5,
+                        key=f"phase_share_{i + 1}",
+                    )))
         tot = sum(shares)
         note = "" if abs(tot - 100.0) < 0.5 else f" (Σ={tot:.0f}% → нормализуются)"
         st.caption(

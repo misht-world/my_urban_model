@@ -25,7 +25,7 @@ class TestPhasingSpec:
         with pytest.raises(ValueError):
             PhasingSpec(shares=[1.0])
         with pytest.raises(ValueError):
-            PhasingSpec(shares=[0.1] * 9)
+            PhasingSpec(shares=[0.05] * 21)
 
     def test_rejects_nonpositive(self):
         with pytest.raises(ValueError):
@@ -108,7 +108,7 @@ class TestAutoMode:
         import re
         m = re.search(r"\[([\d,\s]+)\]", r.kindergarten_places_accepted.formula)
         n_kg = len(m.group(1).split(","))
-        assert len(ph.stages) == min(8, max(2, n_kg))
+        assert len(ph.stages) == min(20, max(2, n_kg))
         for s in ph.stages:
             if s.kg_required_cum > 0:
                 assert s.kg_provided_cum / s.kg_required_cum >= 0.95
