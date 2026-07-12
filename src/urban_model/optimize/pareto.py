@@ -90,6 +90,36 @@ class ParetoConstraints:
     # порядке зон). None → этажность зон НЕ варьируется (берётся из базы).
     # Длина должна совпадать с числом зон; иначе варьирование игнорируется.
     cluster_floors_ranges: tuple[tuple[int, int], ...] | None = None
+    # v0.16.0: режим ЗНОП для подбора. По умолчанию — как в Базе (наследуется
+    # из options «Параметров»). "normative" — сбросить ручные оверрайды, ЗНОП
+    # считается piecewise от КИТ каждого варианта. "manual" — принудительное
+    # значение м²/чел (znop_value); связка ЗНОП→потолок КИТ (v0.7.4) применится
+    # автоматически, занизить норматив этим нельзя.
+    znop_mode: str = "base"          # "base" | "normative" | "manual"
+    znop_value: float | None = None  # м²/чел (только для znop_mode="manual")
+
+
+def apply_znop_constraints(
+    base_options: CalculationOptions, constraints: "ParetoConstraints | None",
+) -> CalculationOptions:
+    """Применить ЗНОП-режим настроек подбора к шаблону options (v0.16.0).
+
+    Возвращает НОВЫЙ options (копию) при отличии от режима «как в Базе»;
+    иначе исходный объект без копирования.
+    """
+    if constraints is None or constraints.znop_mode == "base":
+        return base_options
+    if constraints.znop_mode == "normative":
+        return base_options.model_copy(update={
+            "znop_per_person_override": None,
+            "znop_total_area_override": None,
+        })
+    if constraints.znop_mode == "manual" and constraints.znop_value is not None:
+        return base_options.model_copy(update={
+            "znop_per_person_override": float(constraints.znop_value),
+            "znop_total_area_override": None,
+        })
+    return base_options
 
 
 def _is_hybrid_parking(params: dict, threshold: float = 0.10) -> bool:
@@ -761,6 +791,11 @@ def generate_pareto_recommendations(
     """
     if constraints is None:
         constraints = ParetoConstraints()
+
+    # v0.16.0: ЗНОП-режим настроек подбора («по нормативу» / «вручную»)
+    # применяется к шаблону options ДО всех trial'ов и доуточнения. Дельты
+    # считаются по-прежнему против base_tep (настоящей Базы с «Расчёта»).
+    base_options = apply_znop_constraints(base_options, constraints)
 
     # v0.10.4: этажность зон варьируется ТОЛЬКО если заданы диапазоны ПО КАЖДОЙ
     # зоне (список совпадает по длине с числом зон). Иначе зоны фиксированы.

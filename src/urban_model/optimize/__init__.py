@@ -19,5 +19,12 @@ Optuna учится на TPE-семплере и сходится к лучше�
 
 from urban_model.optimize.space import SearchSpace
 from urban_model.optimize.runner import optimize_max_apartments, OptimizationResult
+from urban_model.optimize.target import TargetBundle, generate_target_recommendations
 
-__all__ = ["SearchSpace", "optimize_max_apartments", "OptimizationResult"]
+__all__ = [
+    "SearchSpace",
+    "optimize_max_apartments",
+    "OptimizationResult",
+    "TargetBundle",
+    "generate_target_recommendations",
+]

@@ -25,8 +25,10 @@ from urban_model.optimize.pareto import (
     ParetoBundle,
     ParetoConstraints,
     Recommendation,
+    apply_znop_constraints,
     generate_pareto_recommendations,
 )
+from urban_model.optimize.target import TargetBundle, generate_target_recommendations
 from urban_model.optimize.runner import OptimizationReport
 from urban_model.optimize.scans import (
     ScanResult,
@@ -214,6 +216,42 @@ def _render_pareto_constraints(base_options: CalculationOptions) -> ParetoConstr
                 )
                 floors_range = (int(lo), int(hi))
 
+            # v0.16.0: ЗНОП в подборе — по умолчанию как в Базе; можно принять
+            # норматив (piecewise от КИТ) или задать вручную для всех вариантов.
+            st.markdown("**ЗНОП в подборе**")
+            _znop_choice = st.radio(
+                "ЗНОП",
+                ["Как в Базе", "По нормативу (от КИТ)", "Задать вручную"],
+                key="pareto_znop_mode",
+                label_visibility="collapsed",
+                help=(
+                    "«Как в Базе» — наследуется настройка ЗНОП с вкладки "
+                    "«Параметры» (включая ручные значения). «По нормативу» — "
+                    "ЗНОП каждого варианта считается по ступеням ПЗЗ от его "
+                    "КИТ. «Вручную» — единое значение м²/чел для всех "
+                    "вариантов подбора; связка ЗНОП→потолок КИТ по ПЗЗ "
+                    "(0→1.59 / 3→1.79 / 4→1.99 / 6→2.50) применяется "
+                    "автоматически."
+                ),
+            )
+            znop_mode = {
+                "Как в Базе": "base",
+                "По нормативу (от КИТ)": "normative",
+                "Задать вручную": "manual",
+            }[_znop_choice]
+            znop_value: float | None = None
+            if znop_mode == "manual":
+                _zdef = (
+                    float(base_options.znop_per_person_override)
+                    if base_options.znop_per_person_override is not None else 6.0
+                )
+                znop_value = float(st.number_input(
+                    "ЗНОП, м²/чел", min_value=0.0, max_value=12.0,
+                    value=min(12.0, max(0.0, _zdef)), step=0.5,
+                    key="pareto_znop_value",
+                    help="Ступени ПЗЗ СПб: 0 / 3 / 4 / 6 м²/чел (можно любое значение).",
+                ))
+
         with c2:
             st.markdown("**Разрешённые типы парковок**")
             # v0.12.17 (#5): дефолт = набор парковок из «Параметров». Тип включён
@@ -281,13 +319,15 @@ def _render_pareto_constraints(base_options: CalculationOptions) -> ParetoConstr
             allow_stylobate=allow_stylobate,
             restrict_parking_combos=restrict_combos,
             cluster_floors_ranges=cluster_floors_ranges,
+            znop_mode=znop_mode,
+            znop_value=znop_value,
         )
 
 
 def _render_recommendations_section(
     site: Site, base_options: CalculationOptions, norms: Normatives, base_tep: TEPResult,
     vpp_request=None,
-) -> None:
+) -> ParetoConstraints:
     st.markdown("### :material/track_changes: Рекомендации — стратегии застройки")
     st.caption(
         "Подбор в широком диапазоне параметров находит несколько осмысленных "
@@ -297,6 +337,17 @@ def _render_recommendations_section(
     )
 
     constraints = _render_pareto_constraints(base_options)
+
+    # v0.16.0: ЗНОП-режим подбора применяется к шаблону options; карточки
+    # («В расчёт», xlsx, KPI) должны нести ТУ ЖЕ настройку, что и trial'ы.
+    card_base_options = apply_znop_constraints(base_options, constraints)
+    if constraints.znop_mode == "normative":
+        st.caption("ЗНОП в подборе: по нормативу ПЗЗ (может отличаться от Базы).")
+    elif constraints.znop_mode == "manual" and constraints.znop_value is not None:
+        st.caption(
+            f"ЗНОП в подборе: {constraints.znop_value:g} м²/чел вручную "
+            f"(может отличаться от Базы)."
+        )
 
     # Ключ для определения «устарел ли bundle»: hash от base_options + site_area
     # + constraints (если поменялся диапазон/разрешения — пересчитываем)
@@ -308,6 +359,7 @@ def _render_recommendations_section(
         + f"|park={constraints.allow_open}{constraints.allow_multilevel}{constraints.allow_underground}{constraints.allow_stylobate}"
         + f"|combos={constraints.restrict_parking_combos}"
         + f"|vpp={getattr(vpp_request, 'mode', None)}"  # v0.12.14
+        + f"|znop={constraints.znop_mode}:{constraints.znop_value}"  # v0.16.0
     )
     cached_bundle: ParetoBundle | None = st.session_state.get("pareto_bundle")
     cached_key: str | None = st.session_state.get("pareto_bundle_key")
@@ -357,7 +409,7 @@ def _render_recommendations_section(
         cached_bundle = bundle
 
     if cached_bundle is None:
-        return
+        return constraints
 
     # v0.9.11 (AUDIT S-1/P1-7): если Парето вернул 0 рекомендаций,
     # вместо пустых карточек показываем прицельное объяснение причины.
@@ -372,7 +424,7 @@ def _render_recommendations_section(
                 f"({cached_bundle.n_trials_feasible}/{cached_bundle.n_trials_total} "
                 f"feasible). Попробуйте изменить настройки подбора."
             )
-        return
+        return constraints
 
     # v0.9.13: TL;DR-строка над карточками — за секунду видно «есть ли
     # смысл смотреть детали». Показываем максимальные Δ% по двум главным
@@ -404,7 +456,8 @@ def _render_recommendations_section(
         cols = st.columns(2)
         for j, rec in enumerate(row):
             with cols[j]:
-                _render_recommendation_card(rec, row_start + j, base_options, vpp_request)
+                _render_recommendation_card(
+                    rec, row_start + j, card_base_options, vpp_request)
 
     # v0.15.9 (п.6 Михаила): все сценарии одним кликом — База + карточки.
     if recs and st.button(
@@ -432,6 +485,27 @@ def _render_recommendations_section(
         if advs:
             body += " Его сильные стороны в этом расчёте:\n\n" + "\n".join(f"• {a}" for a in advs)
         st.info(body, icon="💡")
+
+    # v0.9.12 (AUDIT S-3): если у нескольких рекомендаций ИДЕНТИЧНАЯ
+    # apartments_area — обычно это значит «КИТ упёрт в нормативный потолок
+    # ПЗЗ=2.5» (площадь становится фиксированной функцией от площади квартала
+    # и нормативов). Объясняем пользователю, что он видит.
+    # v0.16.0: блок восстановлен — с v0.12.11 он (вместе со сравнительной
+    # таблицей ниже) случайно оказался в мёртвом коде после return.
+    apts = [int(r.tep.apartments_area.value or 0) for r in cached_bundle.recommendations]
+    if len(apts) >= 2 and len(set(apts)) < len(apts):
+        st.caption(
+            "У нескольких рекомендаций одинаковая площадь квартир — это "
+            "значит, что КИТ упёрт в нормативный потолок ПЗЗ (с ДПТ = 2.5). "
+            "Площадь не увеличивается, варианты различаются ТОЛЬКО парковкой "
+            "и экономикой."
+        )
+
+    # v0.9.6: сравнительная таблица «База ↔ Рекомендации» — все варианты
+    # рядом по столбцам, с подсветкой лучшего значения в каждой строке.
+    _render_comparison_table(cached_bundle, base_options)
+
+    return constraints
 
 
 def _developer_advantages(dev, recs) -> list[str]:
@@ -480,22 +554,122 @@ def _developer_advantages(dev, recs) -> list[str]:
         out.append(f"больше озеленения (ЗНОП {zpp:.1f} м²/чел) — качественнее среда, легче продавать")
     return out[:4]
 
-    # v0.9.12 (AUDIT S-3): если у нескольких рекомендаций ИДЕНТИЧНАЯ
-    # apartments_area — обычно это значит «КИТ упёрт в нормативный потолок
-    # ПЗЗ=2.5» (площадь становится фиксированной функцией от площади квартала
-    # и нормативов). Объясняем пользователю, что он видит.
-    apts = [int(r.tep.apartments_area.value or 0) for r in cached_bundle.recommendations]
-    if len(apts) >= 2 and len(set(apts)) < len(apts):
-        st.caption(
-            "У нескольких рекомендаций одинаковая площадь квартир — это "
-            "значит, что КИТ упёрт в нормативный потолок ПЗЗ (с ДПТ = 2.5). "
-            "Площадь не увеличивается, варианты различаются ТОЛЬКО парковкой "
-            "и экономикой."
-        )
 
-    # v0.9.6: сравнительная таблица «База ↔ Рекомендации» — все варианты
-    # рядом по столбцам, с подсветкой лучшего значения в каждой строке.
-    _render_comparison_table(cached_bundle, base_options)
+# ---------------------------------------------------------------------------
+# Секция 2b (v0.16.0): подбор под ЦЕЛЕВУЮ площадь квартир — обратная
+# постановка («какими параметрами достижима заданная площадь»), варианты
+# по семействам парковок.
+# ---------------------------------------------------------------------------
+
+def _render_target_section(
+    site: Site, base_options: CalculationOptions, norms: Normatives,
+    base_tep: TEPResult, constraints: ParetoConstraints, vpp_request=None,
+) -> None:
+    st.markdown("### :material/flag: Подбор под целевую площадь квартир")
+    st.caption(
+        "Обратная задача: задайте требуемую площадь квартир — программа "
+        "проверит, достижима ли она по нормативам в рамках «Настроек подбора» "
+        "выше, и покажет варианты с РАЗНЫМИ составами парковок (только "
+        "открытые в уровне земли / с многоуровневыми / с подземными / со "
+        "стилобатом). Внутри каждого состава выбирается самый «дешёвый» "
+        "способ выйти на цель — минимальная этажность."
+    )
+
+    base_apt = float(base_tep.apartments_area.value or 0.0)
+    _default_target = max(1000.0, round(base_apt, -3))
+    c_in, c_btn = st.columns([1, 2])
+    with c_in:
+        target = float(st.number_input(
+            "Целевая площадь квартир, м²",
+            min_value=1000.0, max_value=5_000_000.0,
+            value=_default_target, step=1000.0,
+            key="target_apartments_m2",
+        ))
+
+    target_key = (
+        base_options.model_dump_json()
+        + f"|site={site.area_m2}"
+        + f"|floors={constraints.floors_range}"
+        + f"|zones={constraints.cluster_floors_ranges}"
+        + f"|park={constraints.allow_open}{constraints.allow_multilevel}"
+          f"{constraints.allow_underground}{constraints.allow_stylobate}"
+        + f"|combos={constraints.restrict_parking_combos}"
+        + f"|vpp={getattr(vpp_request, 'mode', None)}"
+        + f"|znop={constraints.znop_mode}:{constraints.znop_value}"
+        + f"|target={target}"
+    )
+    cached: TargetBundle | None = st.session_state.get("target_bundle")
+    cached_key: str | None = st.session_state.get("target_bundle_key")
+    is_stale = cached is None or cached_key != target_key
+
+    with c_btn:
+        st.markdown("")  # выравнивание кнопки с полем ввода
+        clicked = st.button(
+            ":material/flag: Найти варианты под цель",
+            key="target_run",
+            help="700 испытаний + детерминированная доводка этажности "
+                 "(типично 1-2 мин).",
+        )
+        if cached is not None and not is_stale:
+            st.caption(
+                f"Результат актуален "
+                f"({cached.n_trials_feasible}/{cached.n_trials_total} feasible)."
+            )
+        elif cached is not None and is_stale:
+            st.caption("Цель или параметры изменились — пересчитайте.")
+
+    if clicked:
+        progress = st.progress(0.0, text="Ищем варианты под цель...")
+
+        def _on_progress(current: int, total: int, best: float) -> None:
+            best_str = f"{best:,.0f} м²".replace(",", " ") if best > 0 else "—"
+            progress.progress(
+                current / total,
+                text=f"Вариант {current}/{total} · лучшая площадь: {best_str}",
+            )
+
+        cached = generate_target_recommendations(
+            site=site, base_options=base_options, norms=norms,
+            base_tep=base_tep, target_m2=target, n_trials=700, seed=42,
+            constraints=constraints, progress_callback=_on_progress,
+            vpp_request=vpp_request,
+        )
+        progress.empty()
+        st.session_state["target_bundle"] = cached
+        st.session_state["target_bundle_key"] = target_key
+
+    if cached is None or is_stale and not clicked:
+        return
+
+    # Резюме достижимости
+    _t = f"{cached.target_m2:,.0f}".replace(",", " ")
+    _m = f"{cached.max_apartments:,.0f}".replace(",", " ")
+    if cached.achievable:
+        st.success(
+            f"Цель **{_t} м²** достижима. Максимум в заданных рамках — {_m} м²."
+        )
+    elif cached.note:
+        st.warning(cached.note)
+
+    if not cached.recommendations:
+        if cached.achievable:
+            st.warning(
+                "Достигающие цель варианты нашлись, но фильтры «реалистичных "
+                "сочетаний парковок» отсеяли все семейства. Ослабьте "
+                "ограничения в «Настройках подбора»."
+            )
+        return
+
+    # Карточки по семействам парковок — сеткой 2×2 (как рекомендации).
+    card_base_options = apply_znop_constraints(base_options, constraints)
+    recs = cached.recommendations
+    for row_start in range(0, len(recs), 2):
+        row = recs[row_start:row_start + 2]
+        cols = st.columns(2)
+        for j, rec in enumerate(row):
+            with cols[j]:
+                _render_recommendation_card(
+                    rec, 200 + row_start + j, card_base_options, vpp_request)
 
 
 def _render_comparison_table(
@@ -1709,7 +1883,16 @@ def render_optimizer_tab(
     st.markdown("")  # отступ
 
     # 2. Рекомендации (по кнопке)
-    _render_recommendations_section(site, base_options, norms, base_tep, vpp_request)
+    constraints = _render_recommendations_section(
+        site, base_options, norms, base_tep, vpp_request)
+
+    st.markdown("")
+
+    # 2b. Подбор под целевую площадь квартир (v0.16.0) — использует те же
+    # «Настройки подбора» (ограничения этажности/парковок/ЗНОП), что и
+    # рекомендации выше.
+    _render_target_section(
+        site, base_options, norms, base_tep, constraints, vpp_request)
 
     st.markdown("")
 
