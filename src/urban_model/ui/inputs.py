@@ -768,10 +768,18 @@ def _render_clusters_editor(area_m2: float, floors: int) -> list[FloorCluster]:
     # data_editor не мешает (программно его восстановить нельзя).
     import json as _json
     _saved = st.session_state.get("fc_zones_json") or ""
+    # v0.15.13: ключ редактора СТАБИЛЕН при обычных правках (иначе каждая
+    # правка пересоздавала виджет, и следующий ввод уходил в мёртвый ключ —
+    # «срабатывает со второго раза»). Reseed — ТОЛЬКО при внешней загрузке
+    # (fc_zones_json изменился не правкой этого редактора).
+    if _saved and st.session_state.get("_fc_seeded") != _saved:
+        st.session_state["_fc_editor_seed"] = _saved
+        st.session_state["_fc_seeded"] = _saved
+    _ed_seed = st.session_state.get("_fc_editor_seed") or ""
     default_df = None
-    if _saved:
+    if _ed_seed:
         try:
-            _rows = _json.loads(_saved)
+            _rows = _json.loads(_ed_seed)
             if isinstance(_rows, list) and _rows:
                 default_df = pd.DataFrame(_rows)
                 for _c in ("Зона", "Площадь, м²", "Этажность"):
@@ -785,7 +793,7 @@ def _render_clusters_editor(area_m2: float, floors: int) -> list[FloorCluster]:
             {"Зона": "Зона А", "Площадь, м²": round(area_m2 * 0.5), "Этажность": min(floors, 9)},
             {"Зона": "Зона Б", "Площадь, м²": round(area_m2 * 0.5), "Этажность": max(floors, 16)},
         ])
-    _ed_key = f"floor_clusters_editor_{abs(hash(_saved)) % 10**8}"
+    _ed_key = f"floor_clusters_editor_{abs(hash(_ed_seed)) % 10**8}"
     edited = st.data_editor(
         default_df,
         key=_ed_key,
@@ -810,6 +818,8 @@ def _render_clusters_editor(area_m2: float, floors: int) -> list[FloorCluster]:
         _cur = _json.dumps(_cur_rows, ensure_ascii=False)
         if _cur != _saved:
             st.session_state["fc_zones_json"] = _cur
+            # правка ЭТОГО редактора — не повод для reseed
+            st.session_state["_fc_seeded"] = _cur
     except (TypeError, ValueError):
         pass
 
@@ -1709,6 +1719,8 @@ def _render_custom_objects_tile() -> list[CustomObject]:
         if "custom_objects" not in st.session_state:
             st.session_state.custom_objects = []
         _saved_co = st.session_state.get("co_objects_json") or ""
+        # v0.15.13: reseed редактора — ТОЛЬКО при внешней загрузке проекта
+        # (см. зоны: ключ стабилен при обычных правках, иначе ввод терялся).
         if _saved_co and st.session_state.get("_co_seeded") != _saved_co:
             try:
                 _loaded = _json.loads(_saved_co)
@@ -1717,6 +1729,8 @@ def _render_custom_objects_tile() -> list[CustomObject]:
             except (ValueError, TypeError):
                 pass
             st.session_state["_co_seeded"] = _saved_co
+            st.session_state["_co_editor_seed"] = _saved_co
+        _co_ed_seed = st.session_state.get("_co_editor_seed") or ""
 
         rows = []
         for obj in st.session_state.custom_objects:
@@ -1762,7 +1776,7 @@ def _render_custom_objects_tile() -> list[CustomObject]:
                     help="Сумма площадей этажных перекрытий объекта",
                 ),
             },
-            key=f"objects_editor_{abs(hash(_saved_co)) % 10**8}",
+            key=f"objects_editor_{abs(hash(_co_ed_seed)) % 10**8}",
         )
 
         # Живое применение: каждая правка таблицы -> список объектов + зеркало
@@ -1800,6 +1814,7 @@ def _render_custom_objects_tile() -> list[CustomObject]:
             st.session_state.custom_objects = []
             st.session_state["co_objects_json"] = "[]"
             st.session_state["_co_seeded"] = "[]"
+            st.session_state["_co_editor_seed"] = "[]"   # визуальный сброс таблицы
             st.rerun()
 
     return [CustomObject(**obj) for obj in st.session_state.custom_objects]
