@@ -1730,10 +1730,23 @@ def _render_custom_objects_tile() -> list[CustomObject]:
                 pass
             st.session_state["_co_seeded"] = _saved_co
             st.session_state["_co_editor_seed"] = _saved_co
-        _co_ed_seed = st.session_state.get("_co_editor_seed") or ""
+        # v0.15.14: ВХОД редактора строится ТОЛЬКО из стабильного seed (как у
+        # зон). Раньше вход собирался из живого custom_objects (обновляемого
+        # выходом редактора) — Streamlit при том же ключе накатывал старые
+        # edited_rows поверх новых данных, и каждый второй ввод «съедался».
+        if "_co_editor_seed" not in st.session_state:
+            st.session_state["_co_editor_seed"] = _json.dumps(
+                st.session_state.custom_objects, ensure_ascii=False)
+        _co_ed_seed = st.session_state.get("_co_editor_seed") or "[]"
+        try:
+            _seed_objs = _json.loads(_co_ed_seed)
+            if not isinstance(_seed_objs, list):
+                _seed_objs = []
+        except (ValueError, TypeError):
+            _seed_objs = []
 
         rows = []
-        for obj in st.session_state.custom_objects:
+        for obj in _seed_objs:
             rows.append({
                 "Название": obj.get("name", "Объект"),
                 "Площадь ЗУ, м²": float(obj.get("plot_area_m2", 1000.0)),
