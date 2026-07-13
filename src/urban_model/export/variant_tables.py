@@ -237,9 +237,10 @@ def build_variant_table_blocks(result: TEPResult) -> list[TableBlock]:
         rows = [
             _row("Площадь сооружений", result.sport_facilities_area, fmt_m2),
             _row("Озеленение требуется (40%)", result.sport_facilities_greening_required, fmt_m2),
-            _row("Доп. озеленение на ЗУ (после substitution)",
+            _row("Доп. озеленение на ЗУ (сверх замещаемого спортплощадкой)",
                  result.sport_facilities_greening_extra, fmt_m2),
-            _row("Полный ЗУ (sport + доп. озеленение)", result.sport_facilities_plot_area, fmt_m2),
+            _row("Полный ЗУ (спортплощадки + доп. озеленение)",
+                 result.sport_facilities_plot_area, fmt_m2),
         ]
         _sum_sport = (
             f"Спортплощадки {fmt_m2(result.sport_facilities_area.value)}; "

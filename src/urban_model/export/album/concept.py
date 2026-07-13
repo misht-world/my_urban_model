@@ -17,7 +17,7 @@ from __future__ import annotations
 import datetime as _dt
 
 from urban_model.export.album import theme as T
-from urban_model.export.table import results_to_dataframe
+from urban_model.export.table import KPI_SECTION_LABELS, results_to_dataframe
 from urban_model.export.variant_tables import build_variant_table_blocks
 from urban_model.models.result import TEPResult
 from pptx.enum.text import PP_ALIGN
@@ -317,10 +317,6 @@ def _card_slide(deck, name: str, tep: TEPResult, kind: str, v_index: int,
     # Единый стиль имени варианта на всех карточках (как на слайдах-таблицах).
     T.text(s, _MARGIN, 1.3, _CONTENT_W, 0.6, _clean_name(name),
            size=11, color=T.MUTED, spacing=1.05, align=PP_ALIGN.RIGHT)
-    # Очерёдность (v0.15.1) — чип слева (правый край занят именем варианта).
-    _chip = _phasing_chip(tep)
-    if _chip:
-        T.text(s, _MARGIN, 1.3, 5.5, 0.35, _chip, size=10, color=T.MUTED)
 
     def _draw_row(pairs, top):
         n = len(pairs)
@@ -339,6 +335,10 @@ def _card_slide(deck, name: str, tep: TEPResult, kind: str, v_index: int,
     if econ:
         T.section_label(s, _MARGIN, 4.6, _CONTENT_W, "Экономика")
         _draw_row(econ, 5.0)
+    # Очерёдность (v0.15.1; v0.16.2 п.9 — перенесена ВНИЗ карточки).
+    _chip = _phasing_chip(tep)
+    if _chip:
+        T.text(s, _MARGIN, 6.6, _CONTENT_W, 0.35, _chip, size=10, color=T.MUTED)
     T.footer(s)
 
 
@@ -393,6 +393,31 @@ def _table_slide(deck, name: str, block, v_index: int,
         T.footer(s)
 
 
+def _divider_slide(deck, plain: str, bold: str) -> None:
+    """Лист-прокладка (раздел альбома): крупный заголовок по центру листа,
+    амбер-черта — в стиле титульного (v0.16.2, п.1 Михаила)."""
+    s = deck.slide()
+    T.top_right_brand(s)
+    T.text(s, 0.9, 2.85, 11.5, 0.85, plain, size=34, font_name=T.FONT_LIGHT)
+    T.text(s, 0.9, 3.6, 11.5, 0.85, bold, size=34, font_name=T.FONT_BLACK)
+    T.rect(s, 0.92, 4.62, 2.2, 0.06, T.AMBER)
+    T.footer(s)
+
+
+def _reorder_blocks_for_album(blocks: list) -> list:
+    """Порядок листов в альбоме (v0.16.2, п.2 Михаила): «Баланс территории»
+    — сразу после «Жильё», ПЕРЕД ДОО и СОШ. На «Расчёте» порядок вкладок
+    остаётся прежним (правка только для альбома)."""
+    bal = next((b for b in blocks if getattr(b, "key", "") == "balance"), None)
+    if bal is None:
+        return blocks
+    rest = [b for b in blocks if b is not bal]
+    for i, b in enumerate(rest):
+        if getattr(b, "key", "") in ("kindergarten", "school"):
+            return rest[:i] + [bal] + rest[i:]
+    return blocks
+
+
 # Показатели, где БОЛЬШЕ = лучше (подсвечиваем максимум в строке).
 _HL_MORE_IS_BETTER = ("Площадь квартир", "Эконом-индекс")
 
@@ -434,12 +459,18 @@ def _comparison_slides(deck, scenarios: list[tuple[str, TEPResult]],
         headers = ["Показатель"] + names
         rows = []
         hl_cells = set()
+        section_rows = set()
         for i, lab in enumerate(sub, 1):     # i — 1-based строка данных в таблице
             row = [lab]
             for nm in names:
                 v = df.loc[lab, nm]
                 row.append("" if v is None else str(v))
             rows.append(row)
+            # v0.16.2 (п.4): строки-заголовки категорий (ДОО/СОШ/ЗНОП/парковки…)
+            # — серая заливка + жирный (см. theme.table section_rows).
+            if lab in KPI_SECTION_LABELS:
+                section_rows.add(i)
+                continue
             bj = best_by_label.get(lab)
             if bj is not None:
                 hl_cells.add((i, bj + 1))    # +1: столбец 0 — «Показатель»
@@ -452,7 +483,7 @@ def _comparison_slides(deck, scenarios: list[tuple[str, TEPResult]],
             T.text(s, x0, top - 0.28, cw, 0.24, _var_label(j),
                    size=8, color=T.SOFT, align=PP_ALIGN.CENTER)
         T.table(s, _MARGIN, top, _CONTENT_W, headers, rows, col_ratios=ratios,
-                fsize=10, hl_cells=hl_cells)
+                fsize=10, hl_cells=hl_cells, section_rows=section_rows)
         T.footer(s)
 
 
@@ -504,10 +535,16 @@ def build_concept_album(
         except Exception:  # noqa: BLE001
             pass
 
+    # Лист-прокладка перед детальными таблицами (v0.16.2, п.1).
+    try:
+        _divider_slide(deck, "Аналитическая", "часть")
+    except Exception:  # noqa: BLE001
+        pass
+
     # Детальные таблицы — по каждому варианту.
     for v_idx, (name, tep) in enumerate(scenarios):
         try:
-            blocks = build_variant_table_blocks(tep)
+            blocks = _reorder_blocks_for_album(build_variant_table_blocks(tep))
         except Exception:  # noqa: BLE001
             blocks = []
         for blk in blocks:

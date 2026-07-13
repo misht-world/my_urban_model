@@ -186,7 +186,7 @@ class TestResultsToDataframe:
         assert "A" in df.columns
         assert "B" in df.columns
         assert "КИТ" in df.index
-        assert "Баланс статус" in df.index
+        assert "Статус баланса территории" in df.index
 
 
 # ---------------------------------------------------------------------------

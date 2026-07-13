@@ -21,24 +21,36 @@ from urban_model.models.result import TEPField, TEPResult
 # Ключевые КПЭ — строки сравнительной таблицы
 # ---------------------------------------------------------------------------
 
+# Маркер строки-заголовка секции (v0.16.2, п.4 Михаила): визуально группирует
+# показатели одной категории. Значений у такой строки нет (пустые ячейки) —
+# это переживают ВСЕ рендеры df (st.dataframe / xlsx / PPTX); альбом
+# дополнительно подкрашивает такие строки (KPI_SECTION_LABELS).
+_SECTION = "__section__"
+
 _KPI_ROWS: list[tuple[str, str]] = [
     # (label, attr.subattr)
+    ("ОСНОВНЫЕ ПОКАЗАТЕЛИ", _SECTION),
     ("КИТ", "kit"),
     ("КИТ норм. макс.", "kit_normative_max"),
+    # v0.16.2 (п.3): эконом-индекс — перед GFA (ключевая метрика выше).
+    ("Эконом-индекс (100=окуп.)", "_economy_index"),  # специальный случай
     ("GFA, м²", "gfa"),
     ("Площадь квартир, м²", "apartments_area"),
     ("Население, чел", "population"),
-    ("Эконом-индекс (100=окуп.)", "_economy_index"),  # специальный случай
     ("Плотность, чел/га", "density_chel_per_ga"),
     ("Плотность статус", "_density_status"),        # специальный случай
+    ("ДЕТСКИЕ САДЫ (ДОО)", _SECTION),
     ("ДОО мест (требуется)", "kindergarten_places_required"),
     ("ДОО мест (принято)", "kindergarten_places_accepted"),
     ("ДОО участок, м²", "kindergarten_plot_area"),
+    ("ШКОЛЫ (СОШ)", _SECTION),
     ("СОШ мест (требуется)", "school_places_required"),
     ("СОШ мест (принято)", "school_places_accepted"),
     ("СОШ участок, м²", "school_plot_area"),
+    ("ЗНОП И ОЗЕЛЕНЕНИЕ", _SECTION),
     ("ЗНОП, м²/чел", "znop_per_person"),
     ("ЗНОП итого, м²", "znop_area"),
+    ("ПАРКОВКИ", _SECTION),
     ("Парковки всего, м/м", "parking_required_places"),
     ("Откр. парковки, м/м", "parking_open_places"),
     ("Откр. парковки, м²", "parking_open_area"),
@@ -46,18 +58,27 @@ _KPI_ROWS: list[tuple[str, str]] = [
     ("Многоуровн. паркинги, шт", "parking_multilevel_objects"),
     ("Многоуровн. паркинги, м²", "parking_multilevel_area"),
     ("Подземные парковки, м/м", "parking_underground_places"),
-    ("Баланс территории, м²", "_balance_surplus"),  # специальный случай
-    ("Баланс статус", "_balance_status"),            # специальный случай
+    ("БАЛАНС ТЕРРИТОРИИ", _SECTION),
+    # v0.16.2 (п.5): строка «Баланс территории, м²» (surplus) убрана — модель
+    # обратным ходом всегда жмёт резерв к нулю, число не информативно;
+    # достаточно статуса. (п.6) статус переименован.
+    ("Статус баланса территории", "_balance_status"),  # специальный случай
     ("Ограничивающий фактор", "_limiting_factor"),  # специальный случай
 ]
+
+# Публичный набор строк-заголовков секций — для стилизации в рендерах
+# (альбом PPTX подкрашивает их серым и делает жирными).
+KPI_SECTION_LABELS: frozenset[str] = frozenset(
+    lab for lab, attr in _KPI_ROWS if attr == _SECTION
+)
 
 
 def _get_value(result: TEPResult, attr: str) -> Any:
     """Получить значение по имени атрибута (поддерживает _-алиасы)."""
+    if attr == _SECTION:
+        return ""            # строка-заголовок секции — без значений
     if attr == "_density_status":
         return result.density_chel_per_ga.status.value
-    if attr == "_balance_surplus":
-        return round(result.balance.surplus, 1)
     if attr == "_balance_status":
         return "OK" if result.balance.is_feasible else "ДЕФИЦИТ"
     if attr == "_limiting_factor":

@@ -309,7 +309,7 @@ HL_FILL = (0xFD, 0xEF, 0xD3)      # палевый амбер — подсвет
 
 
 def table(slide, left, top, w, headers, rows, *, col_ratios=None, fsize=11,
-          row_colors=None, bold_last=False, hl_cells=None):
+          row_colors=None, bold_last=False, hl_cells=None, section_rows=None):
     nr, nc = len(rows) + 1, len(headers)
     h = 0.4 + 0.32 * len(rows)
     gt = slide.shapes.add_table(nr, nc, int(left * EMU), int(top * EMU),
@@ -340,19 +340,26 @@ def table(slide, left, top, w, headers, rows, *, col_ratios=None, fsize=11,
         txt_col = (row_colors[i - 1] if row_colors and i - 1 < len(row_colors)
                    else INK)
         is_last = bold_last and i == n
+        # v0.16.2: строка-заголовок секции (1-based индексы) — серая заливка +
+        # жирный текст, визуально группирует показатели одной категории.
+        is_section = bool(section_rows) and i in section_rows
         for j, val in enumerate(row):
             cell = tbl.cell(i, j)
             cell.text = str(val)
             hl = bool(hl_cells) and (i, j) in hl_cells
             cell.fill.solid()
-            cell.fill.fore_color.rgb = _c(HL_FILL if hl else (WHITE if i % 2 else ZEBRA))
+            if is_section:
+                cell.fill.fore_color.rgb = _c((0xE3, 0xE4, 0xE6))
+            else:
+                cell.fill.fore_color.rgb = _c(
+                    HL_FILL if hl else (WHITE if i % 2 else ZEBRA))
             cell.margin_left = Emu(int(0.08 * EMU))
             cell.margin_top = Emu(int(0.015 * EMU))
             cell.margin_bottom = Emu(int(0.015 * EMU))
             for p in cell.text_frame.paragraphs:
                 for r_ in p.runs:
-                    r_.font.size = Pt(fsize)
-                    r_.font.bold = is_last or hl
+                    r_.font.size = Pt(fsize if not is_section else fsize - 1)
+                    r_.font.bold = is_last or hl or is_section
                     r_.font.color.rgb = _c(txt_col)
                     _font(r_.font)
     return gt

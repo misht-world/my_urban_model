@@ -46,7 +46,11 @@ _FONT_BODY   = Font(size=10)
 _THIN = Side(style="thin", color="999999")
 _BORDER = Border(left=_THIN, right=_THIN, top=_THIN, bottom=_THIN)
 
-_STATUS_ROWS = {"Плотность статус", "Баланс статус"}
+_STATUS_ROWS = {"Плотность статус", "Статус баланса территории"}
+
+# Серый фон строк-заголовков секций сравнительной таблицы (v0.16.2).
+_FILL_SECTION = PatternFill("solid", fgColor="D9DCE0")
+_FONT_SECTION = Font(size=10, bold=True)
 
 
 def _auto_width(ws, min_col: int = 1, min_width: int = 12, max_width: int = 60) -> None:
@@ -86,15 +90,20 @@ def _write_comparison_sheet(wb: Workbook, pairs: list[tuple[str, TEPResult]]) ->
         "Плотность статус": [
             res.density_chel_per_ga.status.value for _, res in pairs
         ],
-        "Баланс статус": [
+        "Статус баланса территории": [
             "OK" if res.balance.is_feasible else "ДЕФИЦИТ" for _, res in pairs
         ],
     }
 
+    from urban_model.export.table import KPI_SECTION_LABELS
+
     for row_idx, (label, row_data) in enumerate(df.iterrows(), start=2):
-        ws.cell(row=row_idx, column=1, value=label).fill = _FILL_LABEL
-        ws.cell(row=row_idx, column=1).font = _FONT_LABEL
-        ws.cell(row=row_idx, column=1).border = _BORDER
+        # v0.16.2 (п.4): строка-заголовок секции — серый фон по всей ширине.
+        is_section = str(label) in KPI_SECTION_LABELS
+        lab_cell = ws.cell(row=row_idx, column=1, value=label)
+        lab_cell.fill = _FILL_SECTION if is_section else _FILL_LABEL
+        lab_cell.font = _FONT_SECTION if is_section else _FONT_LABEL
+        lab_cell.border = _BORDER
 
         statuses = status_map.get(str(label), [None] * len(scenario_names))
 
@@ -103,8 +112,10 @@ def _write_comparison_sheet(wb: Workbook, pairs: list[tuple[str, TEPResult]]) ->
             cell.font = _FONT_BODY
             cell.border = _BORDER
             cell.alignment = Alignment(horizontal="center")
+            if is_section:
+                cell.fill = _FILL_SECTION
             # Окрашиваем строки-статусов
-            if str(label) in _STATUS_ROWS and status_str in _FILL:
+            elif str(label) in _STATUS_ROWS and status_str in _FILL:
                 cell.fill = _FILL[status_str]
             # Для остальных строк — только значение
 
