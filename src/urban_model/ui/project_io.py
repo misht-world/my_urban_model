@@ -25,22 +25,35 @@ from urban_model import __version__
 _PRESETS_PATH = Path.home() / ".my_urban_model_presets.json"
 
 # Ключи session_state, которые НЕ являются параметрами формы.
+# ВАЖНО (v0.16.3): сюда обязаны попадать ключи КНОПОК (st.button/
+# st.download_button с явным key) — их значение (bool) проходит скалярный
+# фильтр и сохраняется в проект, а при применении запись в session_state
+# ключа кнопки роняет приложение (StreamlitValueAssignmentNotAllowedError
+# при создании виджета). Новую кнопку с key= — добавлять сюда.
 _EXCLUDE_KEYS = {
     "scenarios", "applied_options", "applied_label", "applied_vpp_request",
     "last_calc_result", "last_calc_options", "last_calc_site_area",
     "album_variant_select",
+    # кнопки-действия с явными key
+    "target_run", "add_all_scenarios",
 }
-_EXCLUDE_PREFIXES = ("_", "FormSubmitter", "close_", "proj_")
+_EXCLUDE_PREFIXES = (
+    "_", "FormSubmitter", "close_", "proj_",
+    # семейства кнопок карточек/сканов/списков (key=f"...{idx}")
+    "add_rec_", "apply_rec_", "xlsx_rec_", "add_scan_", "del_",
+)
+
+
+def _is_form_param(key: str, value) -> bool:
+    """True, если пара (key, value) — сохраняемый скалярный параметр формы."""
+    if key in _EXCLUDE_KEYS or key.startswith(_EXCLUDE_PREFIXES):
+        return False
+    return isinstance(value, (bool, int, float, str))
 
 
 def snapshot_state() -> dict:
     """Снимок скалярных параметров формы из session_state."""
-    data: dict = {}
-    for k, v in st.session_state.items():
-        if k in _EXCLUDE_KEYS or k.startswith(_EXCLUDE_PREFIXES):
-            continue
-        if isinstance(v, (bool, int, float, str)):
-            data[k] = v
+    data = {k: v for k, v in st.session_state.items() if _is_form_param(k, v)}
     return {
         "_kind": "my_urban_model_project",
         "_version": __version__,
@@ -54,11 +67,15 @@ def apply_state(payload: dict) -> int:
 
     Возвращает число применённых ключей. Вызывать строго ДО рендера формы,
     затем st.rerun().
+
+    v0.16.3: фильтр _is_form_param применяется и ЗДЕСЬ — уже сохранённые
+    файлы проектов могут содержать ключи кнопок (напр. target_run из
+    v0.16.0–0.16.2); запись такого ключа роняла приложение.
     """
     params = payload.get("params", payload)  # поддержка и «голого» словаря
     n = 0
     for k, v in params.items():
-        if k.startswith("_") or not isinstance(v, (bool, int, float, str)):
+        if not _is_form_param(k, v):
             continue
         st.session_state[k] = v
         n += 1

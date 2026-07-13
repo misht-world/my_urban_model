@@ -51,6 +51,32 @@ def test_apply_bare_dict():
     assert st.session_state["floors"] == 9
 
 
+def test_button_keys_excluded_both_ways():
+    """v0.16.3: ключи кнопок НЕ сохраняются и НЕ применяются — запись
+    значения в session_state ключа кнопки роняет Streamlit
+    (StreamlitValueAssignmentNotAllowedError). Регрессия по «Далте»:
+    target_run попадал в файл проекта и валил «Применить проект»."""
+    _clear_state()
+    st.session_state["floors"] = 12
+    st.session_state["target_run"] = False           # st.button
+    st.session_state["add_all_scenarios"] = False    # st.button
+    st.session_state["add_rec_0"] = False            # st.button (семейство)
+    st.session_state["xlsx_rec_1"] = False           # st.download_button
+    st.session_state["del_2"] = False                # st.button (семейство)
+    snap = snapshot_state()
+    p = snap["params"]
+    assert "floors" in p
+    for bad in ("target_run", "add_all_scenarios", "add_rec_0",
+                "xlsx_rec_1", "del_2"):
+        assert bad not in p, bad
+    # Применение СТАРОГО файла, где ключ кнопки уже сохранён (v0.16.0–0.16.2):
+    _clear_state()
+    n = apply_state({"params": {"floors": 9, "target_run": False}})
+    assert n == 1
+    assert "target_run" not in st.session_state
+    assert st.session_state["floors"] == 9
+
+
 def test_zones_saved_via_fc_zones_json():
     """v0.15.11: зоны этажности сохраняются в проект через fc_zones_json."""
     import json
