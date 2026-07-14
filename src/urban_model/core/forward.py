@@ -791,6 +791,19 @@ def compute_tep_for_kit(
     drive_intra_v = driveways.intra_quarter_area(site.area_m2, drive_intra_share)
     drive_lot_v = driveways.housing_lot_driveways_area(footprint_v, drive_lot_share)
 
+    # v0.17.0: подъезд к каждому соцобъекту — добавка к внутриквартальным
+    # проездам за КАЖДЫЙ корпус ДОО (включая встроенные — подъезд/разворот
+    # нужен и им), СОШ и иной отдельно стоящий объект (доп. образование,
+    # поликлиника, пользовательские объекты). «Только потребность» — объект
+    # вне квартала, подъезд не нужен (n_*_obj уже это учитывают).
+    _soc_access_m2 = norms.resolve("driveways.social_object_access_m2")
+    n_drive_soc = (
+        n_kg_obj + n_sch_obj + n_ae_obj + n_poly_obj
+        + len(options.custom_objects)
+    )
+    drive_soc_access_v = _soc_access_m2 * n_drive_soc
+    drive_intra_v += drive_soc_access_v
+
     # === Эффективные значения с учётом include_* флагов (v0.6.7) ===
     # Если компонент отключён — он размещается за пределами квартала и не
     # занимает территорию (но информационные поля по нему рассчитываются).
@@ -1571,10 +1584,22 @@ def compute_tep_for_kit(
         ),
         # --- Проезды ---
         driveways_intra_quarter_area=_F(
-            drive_intra_v, unit="m2", formula=f"S_квартала × {drive_intra_share}"
+            drive_intra_v, unit="m2",
+            formula=(
+                f"S_квартала × {drive_intra_share}"
+                + (f" + {_soc_access_m2:g} м² × {n_drive_soc} соцобъект(ов)"
+                   if n_drive_soc > 0 else "")
+            ),
+            source=(norms.source_of("driveways.social_object_access_m2")
+                    if n_drive_soc > 0 else None),
         ),
         driveways_housing_lot_area=_F(
             drive_lot_v, unit="m2", formula=f"S_застройки × {drive_lot_share}"
+        ),
+        driveways_social_access_area=_F(
+            drive_soc_access_v, unit="m2",
+            formula=f"{_soc_access_m2:g} м² × {n_drive_soc} соцобъект(ов)",
+            source=norms.source_of("driveways.social_object_access_m2"),
         ),
         housing_lot_area=_F(
             housing_lot_v,

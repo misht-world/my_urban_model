@@ -180,6 +180,9 @@ class TEPResult(BaseModel):
     # Проезды
     driveways_intra_quarter_area: TEPField
     driveways_housing_lot_area: TEPField
+    # v0.17.0: в т.ч. подъезды к соцобъектам (600 м² × число объектов) —
+    # добавка уже ВКЛЮЧЕНА в driveways_intra_quarter_area, поле справочное.
+    driveways_social_access_area: TEPField | None = None
 
     # Площади территорий
     housing_lot_area: TEPField     # площадь ЗУ жилой застройки

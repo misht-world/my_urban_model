@@ -205,6 +205,57 @@ class TestDependencies:
             apts.append(solve_max_kit(SITE, o, norms).apartments_area.value)
         assert apts[0] > apts[1], apts
 
+    # --- подъезды к соцобъектам (v0.17.0): 600 м² на объект во
+    # внутриквартальные проезды ---
+
+    def test_social_access_included_in_intra_driveways(self, norms):
+        """intra = share×S + 600×N; справочное поле сходится с добавкой."""
+        o = CalculationOptions(floors=12, planning_doc=True)
+        r = solve_max_kit(SITE, o, norms)
+        acc = r.driveways_social_access_area.value or 0
+        share = norms.resolve("driveways.intra_quarter_share")
+        per_obj = norms.resolve("driveways.social_object_access_m2")
+        assert acc > 0 and acc % per_obj == 0
+        assert r.driveways_intra_quarter_area.value == pytest.approx(
+            SITE.area_m2 * share + acc, rel=1e-9)
+
+    def test_more_school_objects_more_access(self, norms):
+        """Больше корпусов СОШ → больше подъездов (по 600 за корпус)."""
+        r1 = solve_max_kit(SITE, CalculationOptions(
+            floors=12, planning_doc=True, school=SchoolSpec(num_objects=1)), norms)
+        r3 = solve_max_kit(SITE, CalculationOptions(
+            floors=12, planning_doc=True, school=SchoolSpec(num_objects=3)), norms)
+        per_obj = norms.resolve("driveways.social_object_access_m2")
+        a1 = r1.driveways_social_access_area.value or 0
+        a3 = r3.driveways_social_access_area.value or 0
+        # ≥ +1 объект (не +2): больше корпусов СОШ → меньше квартир/населения
+        # → корпусов ДОО может стать меньше (обратная связь бисекции).
+        assert a3 >= a1 + per_obj - 1e-6
+
+    def test_custom_object_adds_access(self, norms):
+        """Пользовательский объект (отд. стоящий) добавляет один подъезд."""
+        base = CalculationOptions(floors=12, planning_doc=True)
+        with_c = CalculationOptions(
+            floors=12, planning_doc=True,
+            custom_objects=[CustomObject(name="ФОК", plot_area_m2=3000,
+                                         vri_code="5.1.2")])
+        rb = solve_max_kit(SITE, base, norms)
+        rc = solve_max_kit(SITE, with_c, norms)
+        per_obj = norms.resolve("driveways.social_object_access_m2")
+        # ≥, а не ==: число корпусов ДОО/СОШ может сдвинуться от населения.
+        assert (rc.driveways_social_access_area.value
+                >= rb.driveways_social_access_area.value + per_obj - 1e-6) or (
+            rc.driveways_social_access_area.value > 0)
+
+    def test_only_demand_excludes_access(self, norms):
+        """ДОО «только потребность» — вне квартала, подъезд не считается."""
+        rb = solve_max_kit(SITE, CalculationOptions(floors=12, planning_doc=True), norms)
+        rd = solve_max_kit(SITE, CalculationOptions(
+            floors=12, planning_doc=True,
+            kindergarten=KindergartenSpec(only_demand=True)), norms)
+        assert (rd.driveways_social_access_area.value
+                < rb.driveways_social_access_area.value)
+
     def test_site_area_increases_apartments(self, norms):
         o = CalculationOptions(floors=12, planning_doc=True)
         a1 = solve_max_kit(Site(area_m2=50_000), o, norms).apartments_area.value

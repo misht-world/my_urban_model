@@ -138,8 +138,12 @@ class TestDrivewayOverrides:
         )
         r_default = compute_tep_for_kit(1.0, site, opts_default, spb)
         r_override = compute_tep_for_kit(1.0, site, opts_override, spb)
-        assert abs(r_default.driveways_intra_quarter_area.value - 3750) < 1
-        assert abs(r_override.driveways_intra_quarter_area.value - 10000) < 1
+        # v0.17.0: к базе share×S добавляются подъезды к соцобъектам
+        # (600 м² × N) — вычитаем справочное поле, чтобы проверить долю.
+        acc_d = r_default.driveways_social_access_area.value or 0
+        acc_o = r_override.driveways_social_access_area.value or 0
+        assert abs(r_default.driveways_intra_quarter_area.value - acc_d - 3750) < 1
+        assert abs(r_override.driveways_intra_quarter_area.value - acc_o - 10000) < 1
 
     def test_lot_override_applies(self, spb):
         from urban_model.core.forward import compute_tep_for_kit
