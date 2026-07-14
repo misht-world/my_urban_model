@@ -386,7 +386,9 @@ def table(slide, left, top, w, headers, rows, *, col_ratios=None, fsize=11,
                 # уходит НАВЕРХ — перед заголовком, а не после него.
                 cell.vertical_anchor = MSO_ANCHOR.BOTTOM
                 cell.margin_top = Emu(int(0.10 * EMU))
-                cell.margin_bottom = Emu(int(0.02 * EMU))
+                # v0.16.6: небольшой зазор между текстом и линией (высота
+                # строки прежняя — воздух сверху чуть меньше).
+                cell.margin_bottom = Emu(int(0.055 * EMU))
             else:
                 cell.margin_top = Emu(int(0.015 * EMU))
                 cell.margin_bottom = Emu(int(0.015 * EMU))
