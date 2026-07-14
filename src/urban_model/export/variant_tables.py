@@ -319,17 +319,11 @@ def build_variant_table_blocks(result: TEPResult) -> list[TableBlock]:
         _row("Внутриквартальные", result.driveways_intra_quarter_area, fmt_m2),
         _row("На ЗУ жилой застройки", result.driveways_housing_lot_area, fmt_m2),
     ]
-    # v0.17.0: подъезды к соцобъектам — справочная строка (уже входят
-    # во «Внутриквартальные»).
-    _soc_acc = getattr(result, "driveways_social_access_area", None)
-    if _soc_acc is not None and (_soc_acc.value or 0) > 0:
-        rows.insert(1, _row(
-            "— в т.ч. подъезды к соцобъектам", _soc_acc, fmt_m2))
+    # v0.17.1: подъезды к соцобъектам входят во «Внутриквартальные» БЕЗ
+    # отдельной строки (решение Михаила); разбивка видна в формуле поля.
     for r in rows:
         r["Формула"] = ""
         r["Источник"] = ""
-    if _soc_acc is not None and (_soc_acc.value or 0) > 0:
-        rows[1]["Формула"] = _soc_acc.formula or ""
     _sum_dw = (
         f"Внутриквартальные {fmt_m2(result.driveways_intra_quarter_area.value)}, "
         f"на ЗУ жилья {fmt_m2(result.driveways_housing_lot_area.value)}."
