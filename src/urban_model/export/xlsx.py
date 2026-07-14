@@ -48,9 +48,11 @@ _BORDER = Border(left=_THIN, right=_THIN, top=_THIN, bottom=_THIN)
 
 _STATUS_ROWS = {"Плотность статус", "Статус баланса территории"}
 
-# Серый фон строк-заголовков секций сравнительной таблицы (v0.16.2).
-_FILL_SECTION = PatternFill("solid", fgColor="D9DCE0")
+# Строки-заголовки секций сравнительной таблицы (v0.16.2; v0.16.4 — без
+# заливки: жирный текст + линия-подчёркивание по всей ширине строки).
 _FONT_SECTION = Font(size=10, bold=True)
+_MEDIUM = Side(style="medium", color="444444")
+_BORDER_SECTION = Border(left=_THIN, right=_THIN, top=_THIN, bottom=_MEDIUM)
 
 
 def _auto_width(ws, min_col: int = 1, min_width: int = 12, max_width: int = 60) -> None:
@@ -101,21 +103,20 @@ def _write_comparison_sheet(wb: Workbook, pairs: list[tuple[str, TEPResult]]) ->
         # v0.16.2 (п.4): строка-заголовок секции — серый фон по всей ширине.
         is_section = str(label) in KPI_SECTION_LABELS
         lab_cell = ws.cell(row=row_idx, column=1, value=label)
-        lab_cell.fill = _FILL_SECTION if is_section else _FILL_LABEL
+        if not is_section:
+            lab_cell.fill = _FILL_LABEL
         lab_cell.font = _FONT_SECTION if is_section else _FONT_LABEL
-        lab_cell.border = _BORDER
+        lab_cell.border = _BORDER_SECTION if is_section else _BORDER
 
         statuses = status_map.get(str(label), [None] * len(scenario_names))
 
         for col_idx, (val, status_str) in enumerate(zip(row_data, statuses), start=2):
             cell = ws.cell(row=row_idx, column=col_idx, value=val)
             cell.font = _FONT_BODY
-            cell.border = _BORDER
+            cell.border = _BORDER_SECTION if is_section else _BORDER
             cell.alignment = Alignment(horizontal="center")
-            if is_section:
-                cell.fill = _FILL_SECTION
             # Окрашиваем строки-статусов
-            elif str(label) in _STATUS_ROWS and status_str in _FILL:
+            if not is_section and str(label) in _STATUS_ROWS and status_str in _FILL:
                 cell.fill = _FILL[status_str]
             # Для остальных строк — только значение
 

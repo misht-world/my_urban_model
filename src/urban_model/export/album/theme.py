@@ -308,6 +308,26 @@ def status_pill(slide, left, top, w, label, color):
 HL_FILL = (0xFD, 0xEF, 0xD3)      # палевый амбер — подсветка лучшего значения
 
 
+def _cell_bottom_border(cell, rgb, w_pt: float = 1.0) -> None:
+    """Нижняя граница ячейки таблицы (python-pptx не даёт API — XML a:lnB)."""
+    from pptx.oxml.ns import qn
+    tcPr = cell._tc.get_or_add_tcPr()
+    # убрать прежнюю lnB, если есть
+    for old in tcPr.findall(qn("a:lnB")):
+        tcPr.remove(old)
+    lnB = tcPr.makeelement(qn("a:lnB"), {
+        "w": str(int(w_pt * 12700)), "cap": "flat",
+        "cmpd": "sng", "algn": "ctr",
+    })
+    fill = lnB.makeelement(qn("a:solidFill"), {})
+    clr = lnB.makeelement(qn("a:srgbClr"),
+                          {"val": f"{rgb[0]:02X}{rgb[1]:02X}{rgb[2]:02X}"})
+    fill.append(clr)
+    lnB.append(fill)
+    # a:lnB должна стоять ПЕРЕД заливкой ячейки в tcPr (порядок схемы DrawingML)
+    tcPr.insert(0, lnB)
+
+
 def table(slide, left, top, w, headers, rows, *, col_ratios=None, fsize=11,
           row_colors=None, bold_last=False, hl_cells=None, section_rows=None):
     nr, nc = len(rows) + 1, len(headers)
@@ -340,8 +360,8 @@ def table(slide, left, top, w, headers, rows, *, col_ratios=None, fsize=11,
         txt_col = (row_colors[i - 1] if row_colors and i - 1 < len(row_colors)
                    else INK)
         is_last = bold_last and i == n
-        # v0.16.2: строка-заголовок секции (1-based индексы) — серая заливка +
-        # жирный текст, визуально группирует показатели одной категории.
+        # v0.16.2/0.16.4: строка-заголовок секции (1-based индексы) — БЕЗ
+        # заливки; жирный текст + линия-подчёркивание по всей ширине строки.
         is_section = bool(section_rows) and i in section_rows
         for j, val in enumerate(row):
             cell = tbl.cell(i, j)
@@ -349,7 +369,8 @@ def table(slide, left, top, w, headers, rows, *, col_ratios=None, fsize=11,
             hl = bool(hl_cells) and (i, j) in hl_cells
             cell.fill.solid()
             if is_section:
-                cell.fill.fore_color.rgb = _c((0xE3, 0xE4, 0xE6))
+                cell.fill.fore_color.rgb = _c(WHITE)
+                _cell_bottom_border(cell, INK, 1.4)
             else:
                 cell.fill.fore_color.rgb = _c(
                     HL_FILL if hl else (WHITE if i % 2 else ZEBRA))

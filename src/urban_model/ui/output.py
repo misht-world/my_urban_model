@@ -1019,13 +1019,13 @@ def render_comparison_tab() -> None:
         st.markdown("---")
         st.subheader("Сводка")
         df = results_to_dataframe(clean_pairs)
-        # v0.16.2 (п.4): строки-заголовки секций (ДОО/СОШ/ЗНОП/парковки…) —
-        # серый фон + жирный, визуально группируют показатели.
+        # v0.16.2/0.16.4 (п.4): строки-заголовки секций (ДОО/СОШ/ЗНОП/парковки…)
+        # — без заливки: жирный текст + линия-подчёркивание по всей строке.
         from urban_model.export.table import KPI_SECTION_LABELS
 
         def _sec_style(row):
             if row.name in KPI_SECTION_LABELS:
-                return ["background-color:#E8EAED; font-weight:700;"] * len(row)
+                return ["border-bottom:2px solid #444; font-weight:700;"] * len(row)
             return [""] * len(row)
 
         st.dataframe(df.style.apply(_sec_style, axis=1), use_container_width=True)
