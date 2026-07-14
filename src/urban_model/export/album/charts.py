@@ -77,6 +77,41 @@ def chart_balance(tep: TEPResult) -> BytesIO | None:
     return _save(fig, plt)
 
 
+def chart_per_capita(tep: TEPResult) -> BytesIO | None:
+    """Удельные показатели на жителя, м²/чел (v0.17.2, п.10 Михаила):
+    озеленение жилого ЗУ / ЗНОП / спортплощадки / ВПП. Горизонтальные бары."""
+    pop = float(tep.population.value or 0.0)
+    if pop <= 0:
+        return None
+
+    def _pc(field) -> float:
+        return float((field.value or 0.0)) / pop if field is not None else 0.0
+
+    items = [
+        ("Озеленение жилого ЗУ", _pc(tep.greening_housing_area), _CC["znop"]),
+        ("ЗНОП", float(tep.znop_per_person.value or 0.0), _CC["housing"]),
+        ("Спортплощадки", _pc(tep.sport_facilities_area), _CC["sport"]),
+        ("ВПП (коммерция/сервисы)", _pc(tep.built_in_area), _CC["amber"]),
+    ]
+    items = [it for it in items if it[1] > 0.005]
+    if not items:
+        return None
+    plt = _mpl()
+    fig, ax = plt.subplots(figsize=(5.6, 0.6 + 0.55 * len(items)))
+    labels = [it[0] for it in items][::-1]
+    vals = [it[1] for it in items][::-1]
+    cols = [it[2] for it in items][::-1]
+    bars = ax.barh(labels, vals, color=cols, height=0.55)
+    for b, v in zip(bars, vals):
+        ax.text(b.get_width() + max(vals) * 0.02,
+                b.get_y() + b.get_height() / 2,
+                f"{v:.1f}", va="center", fontsize=9, color=_CC["ink"])
+    ax.set_xlim(0, max(vals) * 1.18)
+    ax.set_xlabel("м² на жителя", fontsize=9, color=_CC["ink"])
+    _style(ax)
+    return _save(fig, plt)
+
+
 def chart_parking(tep: TEPResult) -> BytesIO | None:
     parts = [
         ("Открытые", int(tep.parking_open_places.value or 0), _CC["amber"]),

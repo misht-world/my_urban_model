@@ -11,7 +11,7 @@ from __future__ import annotations
 import streamlit as st
 
 from urban_model.ui.inputs import render_params_tab
-from urban_model.ui.optimizer import render_optimizer_tab
+from urban_model.ui.optimizer import render_analysis_tab, render_optimizer_tab
 from urban_model.ui.output import (
     render_actions,
     render_comparison_tab,
@@ -789,13 +789,16 @@ with st.sidebar:
 # Вкладки
 # ---------------------------------------------------------------------------
 
-_n_scenarios = len(st.session_state.scenarios)
-
-tab_params, tab_calc, tab_optimize, tab_compare = st.tabs([
+# v0.17.2: (п.1) новая вкладка «Анализ» после «Расчёта»; (п.4) метка
+# «Сравнение» СТАТИЧНА (без счётчика): динамическая метка меняла identity
+# st.tabs и при каждом изменении числа сценариев (напр. удалении варианта)
+# Streamlit сбрасывал активную вкладку на «Параметры». Счётчик — внутри вкладки.
+tab_params, tab_calc, tab_analysis, tab_optimize, tab_compare = st.tabs([
     "Параметры",
     "Расчёт",
+    "Анализ",
     "Оптимизация",
-    f"Сравнение ({_n_scenarios})" if _n_scenarios else "Сравнение",
+    "Сравнение",
 ])
 
 # --- Параметры (новая вкладка с полной формой) ---
@@ -870,6 +873,14 @@ with tab_calc:
         options=calc_options,
     )
     render_details(result)
+
+with tab_analysis:
+    render_analysis_tab(
+        site=inputs.site,
+        base_options=inputs.options,
+        norms=norms,
+        vpp_request=inputs.vpp_request,
+    )
 
 with tab_optimize:
     render_optimizer_tab(

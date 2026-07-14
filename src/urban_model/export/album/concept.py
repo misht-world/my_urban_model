@@ -298,21 +298,32 @@ def _split_title(title: str) -> tuple[str, str]:
     return "", title
 
 
-def _chrome(s, rail_labels: list[str], current: int | None) -> None:
+def _chrome(s, rail_labels: list[str], current: int | None,
+            accents: dict | None = None) -> None:
     """Общие элементы слайда: бренд справа-сверху + рейка вариантов справа."""
     T.top_right_brand(s)
-    T.variant_rail(s, rail_labels, current)
+    T.variant_rail(s, rail_labels, current, accents=accents)
+
+
+def _variant_accents(scenarios: list[tuple[str, TEPResult]]) -> dict:
+    """Слабые цветовые акценты вариантов (v0.17.2, п.8): База — синий,
+    «Девелоперский» (по имени сценария) — амбер."""
+    acc: dict = {0: T.ACCENT_BASE}
+    for i, (nm, _) in enumerate(scenarios):
+        if "девелоперск" in str(nm).lower():
+            acc[i] = T.ACCENT_DEV
+    return acc
 
 
 def _card_slide(deck, name: str, tep: TEPResult, kind: str, v_index: int,
-                rail_labels: list[str]) -> None:
+                rail_labels: list[str], accents: dict | None = None) -> None:
     """Слайд-карточка варианта: KPI-сетка как на сайте (2 ряда × 5 + экономика)."""
     s = deck.slide()
     # Заголовок с частичным жирным (как «Сравнение вариантов»): последнее слово
     # — Black. «Базовый вариант» → Базовый + **вариант**; «Вариант 1» → Вариант + **1**.
     _plain, _bold = _split_title(kind)
     T.title_band(s, _plain, _bold)
-    _chrome(s, rail_labels, v_index)
+    _chrome(s, rail_labels, v_index, accents)
     # Длинное имя — отдельной строкой под чертой (перенос), по правому краю.
     # Единый стиль имени варианта на всех карточках (как на слайдах-таблицах).
     T.text(s, _MARGIN, 1.3, _CONTENT_W, 0.6, _clean_name(name),
@@ -326,7 +337,11 @@ def _card_slide(deck, name: str, tep: TEPResult, kind: str, v_index: int,
         cw = (_CONTENT_W - gap * (n - 1)) / n
         for i, (val, lbl, extra) in enumerate(pairs):
             left = _MARGIN + i * (cw + gap)
-            T.kpi_card(s, left, top, cw, 1.15, val, lbl, delta=extra)
+            # v0.17.2 (п.9): «Площадь квартир» — слабый амбер-«текстовыделитель»
+            # за значением.
+            _hl = "Площадь квартир" in lbl
+            T.kpi_card(s, left, top, cw, 1.15, val, lbl, delta=extra,
+                       value_hl=_hl)
 
     kp = _kpi_pairs(tep)
     _draw_row(kp[:5], 1.95)
@@ -343,11 +358,11 @@ def _card_slide(deck, name: str, tep: TEPResult, kind: str, v_index: int,
 
 
 def _table_slide(deck, name: str, block, v_index: int,
-                 rail_labels: list[str]) -> None:
+                 rail_labels: list[str], accents: dict | None = None) -> None:
     """Слайд-таблица одной вкладки варианта (из общего билдера) + итог раздела."""
     s = deck.slide()
     T.title_band(s, block.title, "")
-    _chrome(s, rail_labels, v_index)
+    _chrome(s, rail_labels, v_index, accents)
     T.text(s, _MARGIN, 1.28, _CONTENT_W, 0.35, _clean_name(name),
            size=11, color=T.MUTED, align=PP_ALIGN.RIGHT)
     if block.columns is None:
@@ -374,7 +389,7 @@ def _table_slide(deck, name: str, block, v_index: int,
         if pi > 0:
             s = deck.slide()
             T.title_band(s, block.title, "(продолжение)")
-            _chrome(s, rail_labels, v_index)
+            _chrome(s, rail_labels, v_index, accents)
             T.text(s, _MARGIN, 1.28, _CONTENT_W, 0.35, _clean_name(name),
                    size=11, color=T.MUTED, align=PP_ALIGN.RIGHT)
         T.table(s, _MARGIN, top, _CONTENT_W, headers, page,
@@ -393,6 +408,72 @@ def _table_slide(deck, name: str, block, v_index: int,
         T.footer(s)
 
 
+def _charts_slide(deck, name: str, tep: TEPResult, v_index: int,
+                  rail_labels: list[str], accents: dict | None = None) -> None:
+    """Слайд «Диаграммы» в конце варианта (v0.17.2, п.10 Михаила):
+    баланс территории (стек-полоса) + удельные показатели на жителя."""
+    from urban_model.export.album import charts as C
+    buf_bal = C.chart_balance(tep)
+    buf_pc = C.chart_per_capita(tep)
+    if buf_bal is None and buf_pc is None:
+        return
+    s = deck.slide()
+    T.title_band(s, "Диаграммы", "")
+    _chrome(s, rail_labels, v_index, accents)
+    T.text(s, _MARGIN, 1.28, _CONTENT_W, 0.35, _clean_name(name),
+           size=11, color=T.MUTED, align=PP_ALIGN.RIGHT)
+    # Две диаграммы рядом: слева широкая полоса баланса, справа удельные.
+    y = 1.95
+    if buf_bal is not None:
+        T.section_label(s, _MARGIN, y, 6.9, "Баланс территории")
+        s.shapes.add_picture(buf_bal, int(_MARGIN * T.EMU),
+                             int((y + 0.4) * T.EMU),
+                             width=int(6.9 * T.EMU))
+    if buf_pc is not None:
+        _x = _MARGIN + 7.25
+        T.section_label(s, _x, y, _CONTENT_W - 7.25, "На одного жителя")
+        s.shapes.add_picture(buf_pc, int(_x * T.EMU),
+                             int((y + 0.4) * T.EMU),
+                             width=int(4.3 * T.EMU))
+    T.footer(s)
+
+
+_WC_TAG_RE = None
+
+
+def _clean_warning(w: str) -> str:
+    """Убрать служебный тег кода «[CODE] …» из текста предупреждения."""
+    import re
+    global _WC_TAG_RE
+    if _WC_TAG_RE is None:
+        _WC_TAG_RE = re.compile(r"^\[[A-Z0-9_]+\]\s*")
+    return _WC_TAG_RE.sub("", str(w)).strip()
+
+
+def _notes_slide(deck, name: str, tep: TEPResult, v_index: int,
+                 rail_labels: list[str], accents: dict | None = None) -> None:
+    """Лист «Примечания» в конце варианта (v0.17.2, п.5 Михаила):
+    предупреждения и информационные пометки расчёта (те же, что показываются
+    на «Расчёте»). Если предупреждений нет — лист не создаётся."""
+    notes = [_clean_warning(w) for w in (tep.warnings or []) if str(w).strip()]
+    if not notes:
+        return
+    per_page = 9
+    pages = [notes[i:i + per_page] for i in range(0, len(notes), per_page)]
+    for pi, page in enumerate(pages):
+        s = deck.slide()
+        T.title_band(s, "Примечания", "(продолжение)" if pi else "")
+        _chrome(s, rail_labels, v_index, accents)
+        T.text(s, _MARGIN, 1.28, _CONTENT_W, 0.35, _clean_name(name),
+               size=11, color=T.MUTED, align=PP_ALIGN.RIGHT)
+        y = 1.85
+        for w in page:
+            T.text(s, _MARGIN, y, _CONTENT_W, 0.55, "•  " + w,
+                   size=10, color=T.INK, spacing=1.05)
+            y += 0.56
+        T.footer(s)
+
+
 def _divider_slide(deck, plain: str, bold: str) -> None:
     """Лист-прокладка (раздел альбома): крупный заголовок по центру листа,
     амбер-черта — в стиле титульного (v0.16.2, п.1 Михаила)."""
@@ -405,17 +486,13 @@ def _divider_slide(deck, plain: str, bold: str) -> None:
 
 
 def _reorder_blocks_for_album(blocks: list) -> list:
-    """Порядок листов в альбоме (v0.16.2, п.2 Михаила): «Баланс территории»
-    — сразу после «Жильё», ПЕРЕД ДОО и СОШ. На «Расчёте» порядок вкладок
-    остаётся прежним (правка только для альбома)."""
+    """Порядок листов в альбоме: «Баланс территории» — ПЕРВЫМ, перед «Жильём»
+    (v0.17.2, п.7 Михаила; в v0.16.2 был после «Жилья»). На «Расчёте» порядок
+    вкладок остаётся прежним (правка только для альбома)."""
     bal = next((b for b in blocks if getattr(b, "key", "") == "balance"), None)
     if bal is None:
         return blocks
-    rest = [b for b in blocks if b is not bal]
-    for i, b in enumerate(rest):
-        if getattr(b, "key", "") in ("kindergarten", "school"):
-            return rest[:i] + [bal] + rest[i:]
-    return blocks
+    return [bal] + [b for b in blocks if b is not bal]
 
 
 # Показатели, где БОЛЬШЕ = лучше (подсвечиваем максимум в строке).
@@ -436,7 +513,8 @@ def _best_col_for(df, lab: str, names: list[str]) -> int | None:
 
 
 def _comparison_slides(deck, scenarios: list[tuple[str, TEPResult]],
-                       rail_labels: list[str]) -> None:
+                       rail_labels: list[str],
+                       accents: dict | None = None) -> None:
     """Сводная сравнительная таблица (как в xlsx). Разбита по слайдам."""
     clean = [(_clean_name(n), t) for n, t in scenarios]
     df = results_to_dataframe(clean)
@@ -454,7 +532,7 @@ def _comparison_slides(deck, scenarios: list[tuple[str, TEPResult]],
         s = deck.slide()
         part = "" if len(labels) <= chunk else f" ({start // chunk + 1})"
         T.title_band(s, "Сравнение", "вариантов" + part)
-        _chrome(s, rail_labels, None)   # рейка со всеми вариантами (обзор)
+        _chrome(s, rail_labels, None, accents)   # рейка со всеми вариантами
         sub = labels[start:start + chunk]
         headers = ["Показатель"] + names
         rows = []
@@ -482,6 +560,11 @@ def _comparison_slides(deck, scenarios: list[tuple[str, TEPResult]],
             cw = _CONTENT_W * 1.0 / _tot
             T.text(s, x0, top - 0.28, cw, 0.24, _var_label(j),
                    size=8, color=T.SOFT, align=PP_ALIGN.CENTER)
+            # v0.17.2 (п.8): слабая цветовая полоска под подписью варианта
+            # (синий — База, амбер — Девелоперский).
+            _acc = (accents or {}).get(j)
+            if _acc is not None:
+                T.rect(s, x0 + cw * 0.2, top - 0.055, cw * 0.6, 0.04, _acc)
         T.table(s, _MARGIN, top, _CONTENT_W, headers, rows, col_ratios=ratios,
                 fsize=10, hl_cells=hl_cells, section_rows=section_rows)
         T.footer(s)
@@ -513,6 +596,8 @@ def build_concept_album(
 
     # Фиксированные подписи ушек-рейки: сверху вниз — База, Вариант 1, 2…
     rail_labels = [_var_label(i) for i in range(n_var)]
+    # Слабые цветовые акценты (v0.17.2, п.8): База — синий, Девелоперский — амбер.
+    accents = _variant_accents(scenarios)
 
     # Общая информация о территории (из параметров Базы).
     if base_options is not None and site_area:
@@ -523,7 +608,7 @@ def build_concept_album(
 
     # Сводное сравнение (обзор всех вариантов).
     try:
-        _comparison_slides(deck, scenarios, rail_labels)
+        _comparison_slides(deck, scenarios, rail_labels, accents)
     except Exception:  # noqa: BLE001
         pass
 
@@ -531,7 +616,7 @@ def build_concept_album(
     for v_idx, (name, tep) in enumerate(scenarios):
         kind = "Базовый вариант" if v_idx == 0 else f"Вариант {v_idx}"
         try:
-            _card_slide(deck, name, tep, kind, v_idx, rail_labels)
+            _card_slide(deck, name, tep, kind, v_idx, rail_labels, accents)
         except Exception:  # noqa: BLE001
             pass
 
@@ -541,7 +626,8 @@ def build_concept_album(
     except Exception:  # noqa: BLE001
         pass
 
-    # Детальные таблицы — по каждому варианту.
+    # Детальные таблицы — по каждому варианту; в конце варианта — диаграммы
+    # (баланс + удельные на жителя) и лист примечаний (v0.17.2, пп.5/10).
     for v_idx, (name, tep) in enumerate(scenarios):
         try:
             blocks = _reorder_blocks_for_album(build_variant_table_blocks(tep))
@@ -549,8 +635,16 @@ def build_concept_album(
             blocks = []
         for blk in blocks:
             try:
-                _table_slide(deck, name, blk, v_idx, rail_labels)
+                _table_slide(deck, name, blk, v_idx, rail_labels, accents)
             except Exception:  # noqa: BLE001
                 pass
+        try:
+            _charts_slide(deck, name, tep, v_idx, rail_labels, accents)
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            _notes_slide(deck, name, tep, v_idx, rail_labels, accents)
+        except Exception:  # noqa: BLE001
+            pass
 
     return deck.save(path)

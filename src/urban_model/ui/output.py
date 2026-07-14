@@ -1007,7 +1007,8 @@ def render_comparison_tab() -> None:
     for idx, (name, _) in enumerate(pairs):
         c1, c2 = st.columns([10, 1])
         c1.write(f"**{idx + 1}.** {_clean(name)}")
-        if c2.button("🗑️", key=f"del_{idx}"):
+        if c2.button(":material/delete:", key=f"del_{idx}",
+                     help="Удалить из сравнения"):
             st.session_state.scenarios.pop(idx)
             st.rerun()
 

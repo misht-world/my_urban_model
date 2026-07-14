@@ -214,7 +214,14 @@ _RAIL_BOT = 7.0
 _EDGE = 13.28          # правая кромка листа (13.333 − поле)
 
 
-def variant_rail(slide, labels: list[str], current: int | None) -> None:
+# v0.17.2 (п.8 Михаила): слабые цветовые акценты вариантов в альбоме —
+# синий для Базы, амбер для «Девелоперского».
+ACCENT_BASE = (0xD7, 0xE6, 0xF7)
+ACCENT_DEV = (0xFC, 0xE3, 0xB5)
+
+
+def variant_rail(slide, labels: list[str], current: int | None,
+                 accents: dict | None = None) -> None:
     """Вертикальная «рейка» ушек с ФИКСИРОВАННЫМИ позициями (сверху вниз —
     База, Вариант 1, 2…). Каждое ушко сохраняет свою высоту на всех слайдах.
 
@@ -238,6 +245,13 @@ def variant_rail(slide, labels: list[str], current: int | None) -> None:
         w = 0.36                           # одинаковый размер везде; различие — оттенком
         x = _EDGE - w                      # впритык к правому краю
         color = _TAB_ACTIVE if active else _TAB_INACTIVE
+        accent = (accents or {}).get(i)
+        txt_color = WHITE
+        if accent is not None:
+            # Слабый цветовой акцент варианта (синий База / амбер Девелоперский):
+            # светлая заливка → тёмный текст.
+            color = accent
+            txt_color = INK
         rect(slide, x, y, w, tab_h, color)
         cx, cy = x + w / 2, y + tab_h / 2
         half = tab_h / 2 + 0.6
@@ -252,13 +266,19 @@ def variant_rail(slide, labels: list[str], current: int | None) -> None:
         p.text = label.upper()
         p.font.size = Pt(10 if active else 8.5)
         p.font.bold = active
-        p.font.color.rgb = _c(WHITE)
+        p.font.color.rgb = _c(txt_color)
         _font(p.font)
 
 
 def kpi_card(slide, left, top, w, h, value, label, *, status=None,
-             status_color=None, delta=None):
+             status_color=None, delta=None, value_hl=False):
     rect(slide, left, top, w, h, WHITE, line=HAIR)
+    if value_hl:
+        # v0.17.2 (п.9 Михаила): слабое «текстовыделитель»-выделение значения —
+        # палевый амбер-прямоугольник за цифрами, со смещением вниз-вправо
+        # (как маркер, проведённый по строке).
+        _hw = min(w - 0.28, 0.13 * len(str(value)) + 0.18)
+        rect(slide, left + 0.09, top + 0.20, _hw, 0.28, HL_FILL)
     tb = slide.shapes.add_textbox(int((left + 0.12) * EMU), int((top + 0.1) * EMU),
                                   int((w - 0.24) * EMU), int(0.5 * EMU))
     tf = tb.text_frame

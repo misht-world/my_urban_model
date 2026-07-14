@@ -575,7 +575,7 @@ def _balance_block(result: TEPResult) -> TableBlock:
         "Доля квартала, %": f"{b.required_total / site_area * 100:.1f}%",
     }, b.required_total))
     comp_rows.append(_with_zones({
-        "Компонент": "— Резерв (surplus)", "Требуется, м²": "",
+        "Компонент": "— Резерв", "Требуется, м²": "",
         "В балансе, м²": f"{b.surplus:,.0f}".replace(",", " "),
         "Доля квартала, %": f"{b.surplus / site_area * 100:.1f}%",
     }, b.surplus))

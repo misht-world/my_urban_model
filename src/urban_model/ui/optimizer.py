@@ -565,7 +565,9 @@ def _render_target_section(
     site: Site, base_options: CalculationOptions, norms: Normatives,
     base_tep: TEPResult, constraints: ParetoConstraints, vpp_request=None,
 ) -> None:
-    st.markdown("### :material/flag: Подбор под целевую площадь квартир")
+    # v0.17.2 (п.2): заголовок и оформление — как у секции «Рекомендации»
+    # («Подбор сценариев»): тот же стиль заголовка, primary-кнопка.
+    st.markdown("### :material/flag: Подбор по площади квартир")
     st.caption(
         "Обратная задача: задайте требуемую площадь квартир — программа "
         "проверит, достижима ли она по нормативам в рамках «Настроек подбора» "
@@ -577,7 +579,8 @@ def _render_target_section(
 
     base_apt = float(base_tep.apartments_area.value or 0.0)
     _default_target = max(1000.0, round(base_apt, -3))
-    c_in, c_btn = st.columns([1, 2])
+    # v0.17.2 (п.3): кнопка выровнена по НИЗУ с полем ввода (раньше висела выше).
+    c_in, c_btn = st.columns([1, 2], vertical_alignment="bottom")
     with c_in:
         target = float(st.number_input(
             "Целевая площадь квартир, м²",
@@ -603,20 +606,22 @@ def _render_target_section(
     is_stale = cached is None or cached_key != target_key
 
     with c_btn:
-        st.markdown("")  # выравнивание кнопки с полем ввода
         clicked = st.button(
             ":material/flag: Найти варианты под цель",
+            type="primary",
             key="target_run",
             help="700 испытаний + детерминированная доводка этажности "
                  "(типично 1-2 мин).",
         )
-        if cached is not None and not is_stale:
-            st.caption(
-                f"Результат актуален "
-                f"({cached.n_trials_feasible}/{cached.n_trials_total} feasible)."
-            )
-        elif cached is not None and is_stale:
-            st.caption("Цель или параметры изменились — пересчитайте.")
+    # Подписи об актуальности — ПОД строкой ввода (иначе ломают выравнивание
+    # кнопки по низу с полем ввода).
+    if cached is not None and not is_stale:
+        st.caption(
+            f"Результат актуален "
+            f"({cached.n_trials_feasible}/{cached.n_trials_total} feasible)."
+        )
+    elif cached is not None and is_stale:
+        st.caption("Цель или параметры изменились — пересчитайте.")
 
     if clicked:
         progress = st.progress(0.0, text="Ищем варианты под цель...")
@@ -1888,26 +1893,14 @@ def render_optimizer_tab(
 
     st.markdown("")
 
-    # 2b. Подбор под целевую площадь квартир (v0.16.0) — использует те же
+    # 2b. Подбор по площади квартир (v0.16.0) — использует те же
     # «Настройки подбора» (ограничения этажности/парковок/ЗНОП), что и
     # рекомендации выше.
     _render_target_section(
         site, base_options, norms, base_tep, constraints, vpp_request)
 
-    st.markdown("")
-
-    # 3. One-factor сканы (автоматически)
-    _render_what_to_improve_section(site, base_options, norms)
-
-    st.markdown("")
-
-    # 3a-bis. Советы — текстовые рекомендации из сканов (v0.14.1)
-    _render_advice_section(site, base_options, base_tep)
-
-    st.markdown("")
-
-    # 3b. Чувствительность — какой фактор сильнее влияет (tornado)
-    _render_sensitivity_section(site, base_options)
+    # v0.17.2 (п.1 Михаила): пофакторный анализ / советы / чувствительность
+    # перенесены на отдельную вкладку «Анализ» (render_analysis_tab).
 
     # 4. v0.9.14: «Продвинутый режим» полностью скрыт от пользователя
     # (по запросу — не используется в типовых сценариях).
@@ -1916,3 +1909,32 @@ def render_optimizer_tab(
     # st.markdown("---")
     # with st.expander("⚙ Продвинутый режим (полный перебор)", expanded=False):
     #     _render_advanced_optuna_mode(site, base_options, norms)
+
+
+def render_analysis_tab(
+    site: Site, base_options: CalculationOptions, norms: Normatives,
+    vpp_request=None,
+) -> None:
+    """Вкладка «Анализ» (v0.17.2): пофакторный анализ + советы +
+    чувствительность — перенесены с «Оптимизации» (п.1 Михаила)."""
+    st.markdown("# Анализ **факторов**")
+    st.caption(
+        "Что даёт изменение каждого параметра по отдельности: детерминированные "
+        "сканы (парковки / ЗНОП / этажность / ДОО / СОШ), текстовые советы и "
+        "чувствительность. База — текущий вариант с вкладки «Расчёт»."
+    )
+
+    base_tep, _synced = _get_base_tep(site, base_options, norms, vpp_request)
+
+    # Пофакторный анализ (детерминированные сканы)
+    _render_what_to_improve_section(site, base_options, norms)
+
+    st.markdown("")
+
+    # Советы — текстовые рекомендации из сканов (v0.14.1)
+    _render_advice_section(site, base_options, base_tep)
+
+    st.markdown("")
+
+    # Чувствительность — какой фактор сильнее влияет (tornado)
+    _render_sensitivity_section(site, base_options)
