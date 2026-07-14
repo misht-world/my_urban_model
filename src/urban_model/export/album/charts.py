@@ -50,6 +50,12 @@ def chart_balance(tep: TEPResult) -> BytesIO | None:
         "custom_objects": ("Доп. объекты", _CC["engineering"]),
         "engineering_plot": ("Инж. инфр.", _CC["engineering"]),
     }
+    pretty = {
+        **pretty,
+        "add_education_plot": ("Доп. образование", _CC["kindergarten"]),
+        "polyclinic_plot": ("Поликлиника", _CC["school"]),
+        "built_in_greening": ("Озеленение ВПП", _CC["sport"]),
+    }
     items = []
     for name, val in sorted(b.components.items(), key=lambda kv: -kv[1]):
         if val > 0:
@@ -60,20 +66,26 @@ def chart_balance(tep: TEPResult) -> BytesIO | None:
         items.append(("Резерв", surplus, _CC["reserve"]))
     if not items:
         return None
+    # v0.17.4 (утверждено Михаилом): горизонтальные бары по компонентам вместо
+    # стек-полосы — подписи мелких компонентов не слипаются.
     plt = _mpl()
-    fig, ax = plt.subplots(figsize=(7.2, 2.2))
-    left = 0.0
-    for lbl, val, col in items:
-        pct = val / site * 100
-        ax.barh(0, val, left=left, color=col, edgecolor="white", height=0.6)
-        if pct >= 4:
-            ax.text(left + val / 2, 0, f"{lbl}\n{pct:.0f}%", ha="center",
-                    va="center", fontsize=8,
-                    color="white" if col != _CC["reserve"] else _CC["ink"])
-        left += val
-    ax.set_xlim(0, max(site, left))
-    ax.set_ylim(-0.5, 0.5)
-    ax.axis("off")
+    fig, ax = plt.subplots(figsize=(7.5, 0.55 + 0.40 * len(items)))
+    labels = [it[0] for it in items][::-1]
+    vals = [it[1] for it in items][::-1]
+    cols = [it[2] for it in items][::-1]
+    bars = ax.barh(labels, vals, color=cols, height=0.62)
+    vmax = max(vals)
+    for bar, v in zip(bars, vals):
+        pct = v / site * 100
+        ax.text(bar.get_width() + vmax * 0.015,
+                bar.get_y() + bar.get_height() / 2,
+                f"{v:,.0f} м² · {pct:.0f}%".replace(",", " "),
+                va="center", fontsize=8.5, color=_CC["ink"])
+    ax.set_xlim(0, vmax * 1.30)
+    ax.tick_params(axis="y", labelsize=8.5)
+    ax.set_xticks([])
+    _style(ax)
+    ax.spines["bottom"].set_visible(False)
     return _save(fig, plt)
 
 
@@ -108,6 +120,50 @@ def chart_per_capita(tep: TEPResult) -> BytesIO | None:
                 f"{v:.1f}", va="center", fontsize=9, color=_CC["ink"])
     ax.set_xlim(0, max(vals) * 1.18)
     ax.set_xlabel("м² на жителя", fontsize=9, color=_CC["ink"])
+    _style(ax)
+    return _save(fig, plt)
+
+
+def chart_social_provision(tep: TEPResult) -> BytesIO | None:
+    """Обеспеченность соцобъектами, % (v0.17.4, утверждено Михаилом):
+    принято/требуется × 100 для ДОО / СОШ / доп. образования / поликлиники,
+    пунктирная линия на 100%. Подпись у бара — «принято/требуется»."""
+    def _pair(req_f, acc_f):
+        req = float(req_f.value or 0.0) if req_f is not None else 0.0
+        acc = float(acc_f.value or 0.0) if acc_f is not None else 0.0
+        return req, acc
+
+    raw = [
+        ("ДОО", *_pair(tep.kindergarten_places_required,
+                       tep.kindergarten_places_accepted), "мест"),
+        ("СОШ", *_pair(tep.school_places_required,
+                       tep.school_places_accepted), "мест"),
+        ("Доп. образование", *_pair(tep.add_education_places_required,
+                                    tep.add_education_places_accepted), "мест"),
+        ("Поликлиника", *_pair(getattr(tep, "polyclinic_visits_required", None),
+                               getattr(tep, "polyclinic_visits_accepted", None)),
+         "посещ."),
+    ]
+    items = [(lbl, req, acc, unit) for lbl, req, acc, unit in raw if req > 0]
+    if not items:
+        return None
+    plt = _mpl()
+    fig, ax = plt.subplots(figsize=(5.6, 0.5 + 0.5 * len(items)))
+    labels = [it[0] for it in items][::-1]
+    pcts = [it[2] / it[1] * 100 for it in items][::-1]
+    cols = [(_CC["ok"] if p >= 100 - 1e-6 else _CC["bad"]) for p in pcts]
+    bars = ax.barh(labels, pcts, color=cols, height=0.55)
+    vmax = max(pcts + [100])
+    for bar, (lbl, req, acc, unit) in zip(bars, items[::-1]):
+        ax.text(bar.get_width() + vmax * 0.02,
+                bar.get_y() + bar.get_height() / 2,
+                f"{acc:.0f}/{req:.0f} {unit}",
+                va="center", fontsize=8.5, color=_CC["ink"])
+    ax.axvline(100, color=_CC["ink"], linestyle="--", linewidth=1)
+    ax.set_xlim(0, vmax * 1.35)
+    ax.set_xlabel("обеспеченность, % (пунктир = 100%)",
+                  fontsize=8.5, color=_CC["ink"])
+    ax.tick_params(axis="y", labelsize=8.5)
     _style(ax)
     return _save(fig, plt)
 

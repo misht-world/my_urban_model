@@ -412,31 +412,40 @@ def _table_slide(deck, name: str, block, v_index: int,
 
 def _charts_slide(deck, name: str, tep: TEPResult, v_index: int,
                   rail_labels: list[str], accents: dict | None = None) -> None:
-    """Слайд «Диаграммы» в конце варианта (v0.17.2, п.10 Михаила):
-    баланс территории (стек-полоса) + удельные показатели на жителя."""
+    """Слайд «Диаграммы» в конце варианта (v0.17.2/0.17.4, п.10 Михаила):
+    баланс территории (горизонтальные бары) + удельные на жителя +
+    обеспеченность соцобъектами."""
     from urban_model.export.album import charts as C
     buf_bal = C.chart_balance(tep)
     buf_pc = C.chart_per_capita(tep)
-    if buf_bal is None and buf_pc is None:
+    buf_soc = C.chart_social_provision(tep)
+    if buf_bal is None and buf_pc is None and buf_soc is None:
         return
     s = deck.slide()
     T.title_band(s, "Диаграммы", "")
     _chrome(s, rail_labels, v_index, accents)
     T.text(s, _MARGIN, 1.28, _CONTENT_W, 0.35, _clean_name(name),
            size=11, color=T.MUTED, align=PP_ALIGN.RIGHT)
-    # Две диаграммы рядом: слева широкая полоса баланса, справа удельные.
+    # Слева — баланс (высокий), справа колонкой — удельные + обеспеченность.
     y = 1.95
     if buf_bal is not None:
         T.section_label(s, _MARGIN, y, 6.9, "Баланс территории")
         s.shapes.add_picture(buf_bal, int(_MARGIN * T.EMU),
                              int((y + 0.4) * T.EMU),
                              width=int(6.9 * T.EMU))
+    _x = _MARGIN + 7.25
+    _rw = _CONTENT_W - 7.25
     if buf_pc is not None:
-        _x = _MARGIN + 7.25
-        T.section_label(s, _x, y, _CONTENT_W - 7.25, "На одного жителя")
+        T.section_label(s, _x, y, _rw, "На одного жителя")
         s.shapes.add_picture(buf_pc, int(_x * T.EMU),
                              int((y + 0.4) * T.EMU),
-                             width=int(4.3 * T.EMU))
+                             width=int(4.15 * T.EMU))
+    if buf_soc is not None:
+        _y2 = 4.65
+        T.section_label(s, _x, _y2, _rw, "Обеспеченность соцобъектами")
+        s.shapes.add_picture(buf_soc, int(_x * T.EMU),
+                             int((_y2 + 0.4) * T.EMU),
+                             width=int(4.15 * T.EMU))
     T.footer(s)
 
 
