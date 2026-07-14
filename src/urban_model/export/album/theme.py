@@ -214,14 +214,14 @@ _RAIL_BOT = 7.0
 _EDGE = 13.28          # правая кромка листа (13.333 − поле)
 
 
-# v0.17.2 (п.8 Михаила): слабые цветовые акценты вариантов в альбоме —
-# синий для Базы, амбер для «Девелоперского».
+# v0.17.2/0.17.3 (п.8 Михаила): слабые цветовые акценты вариантов — синий для
+# Базы, амбер для «Девелоперского». Применяются к ячейкам «Площадь квартир»
+# сравнительной таблицы (cell_fills); рейка остаётся серой (v0.17.3).
 ACCENT_BASE = (0xD7, 0xE6, 0xF7)
 ACCENT_DEV = (0xFC, 0xE3, 0xB5)
 
 
-def variant_rail(slide, labels: list[str], current: int | None,
-                 accents: dict | None = None) -> None:
+def variant_rail(slide, labels: list[str], current: int | None) -> None:
     """Вертикальная «рейка» ушек с ФИКСИРОВАННЫМИ позициями (сверху вниз —
     База, Вариант 1, 2…). Каждое ушко сохраняет свою высоту на всех слайдах.
 
@@ -245,13 +245,6 @@ def variant_rail(slide, labels: list[str], current: int | None,
         w = 0.36                           # одинаковый размер везде; различие — оттенком
         x = _EDGE - w                      # впритык к правому краю
         color = _TAB_ACTIVE if active else _TAB_INACTIVE
-        accent = (accents or {}).get(i)
-        txt_color = WHITE
-        if accent is not None:
-            # Слабый цветовой акцент варианта (синий База / амбер Девелоперский):
-            # светлая заливка → тёмный текст.
-            color = accent
-            txt_color = INK
         rect(slide, x, y, w, tab_h, color)
         cx, cy = x + w / 2, y + tab_h / 2
         half = tab_h / 2 + 0.6
@@ -266,7 +259,7 @@ def variant_rail(slide, labels: list[str], current: int | None,
         p.text = label.upper()
         p.font.size = Pt(10 if active else 8.5)
         p.font.bold = active
-        p.font.color.rgb = _c(txt_color)
+        p.font.color.rgb = _c(WHITE)
         _font(p.font)
 
 
@@ -349,7 +342,8 @@ def _cell_bottom_border(cell, rgb, w_pt: float = 1.0) -> None:
 
 
 def table(slide, left, top, w, headers, rows, *, col_ratios=None, fsize=11,
-          row_colors=None, bold_last=False, hl_cells=None, section_rows=None):
+          row_colors=None, bold_last=False, hl_cells=None, section_rows=None,
+          cell_fills=None):
     nr, nc = len(rows) + 1, len(headers)
     # v0.16.4: строки-секции чуть выше обычных (воздух ПЕРЕД заголовком).
     _n_sec = len(section_rows) if section_rows else 0
@@ -393,10 +387,16 @@ def table(slide, left, top, w, headers, rows, *, col_ratios=None, fsize=11,
             cell = tbl.cell(i, j)
             cell.text = str(val)
             hl = bool(hl_cells) and (i, j) in hl_cells
+            # v0.17.3: точечная заливка ячейки (акценты вариантов: синий База /
+            # амбер Девелоперский в строке «Площадь квартир»). Приоритет выше
+            # подсветки лучшего (жирный от hl сохраняется).
+            _cf = (cell_fills or {}).get((i, j))
             cell.fill.solid()
             if is_section:
                 cell.fill.fore_color.rgb = _c(WHITE)
                 _cell_bottom_border(cell, INK, 1.4)
+            elif _cf is not None:
+                cell.fill.fore_color.rgb = _c(_cf)
             else:
                 cell.fill.fore_color.rgb = _c(
                     HL_FILL if hl else (WHITE if i % 2 else ZEBRA))

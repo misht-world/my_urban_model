@@ -300,13 +300,15 @@ def _split_title(title: str) -> tuple[str, str]:
 
 def _chrome(s, rail_labels: list[str], current: int | None,
             accents: dict | None = None) -> None:
-    """Общие элементы слайда: бренд справа-сверху + рейка вариантов справа."""
+    """Общие элементы слайда: бренд справа-сверху + рейка вариантов справа.
+    (v0.17.3: рейка снова серая — акценты только в сравнительной таблице.)"""
     T.top_right_brand(s)
-    T.variant_rail(s, rail_labels, current, accents=accents)
+    T.variant_rail(s, rail_labels, current)
 
 
 def _variant_accents(scenarios: list[tuple[str, TEPResult]]) -> dict:
-    """Слабые цветовые акценты вариантов (v0.17.2, п.8): База — синий,
+    """Слабые цветовые акценты вариантов (п.8; v0.17.3 — применяются к
+    ячейкам «Площадь квартир» сравнительной таблицы): База — синий,
     «Девелоперский» (по имени сценария) — амбер."""
     acc: dict = {0: T.ACCENT_BASE}
     for i, (nm, _) in enumerate(scenarios):
@@ -538,6 +540,7 @@ def _comparison_slides(deck, scenarios: list[tuple[str, TEPResult]],
         rows = []
         hl_cells = set()
         section_rows = set()
+        cell_fills: dict = {}
         for i, lab in enumerate(sub, 1):     # i — 1-based строка данных в таблице
             row = [lab]
             for nm in names:
@@ -545,13 +548,21 @@ def _comparison_slides(deck, scenarios: list[tuple[str, TEPResult]],
                 row.append("" if v is None else str(v))
             rows.append(row)
             # v0.16.2 (п.4): строки-заголовки категорий (ДОО/СОШ/ЗНОП/парковки…)
-            # — серая заливка + жирный (см. theme.table section_rows).
+            # — подчёркивание + жирный (см. theme.table section_rows).
             if lab in KPI_SECTION_LABELS:
                 section_rows.add(i)
                 continue
             bj = best_by_label.get(lab)
             if bj is not None:
                 hl_cells.add((i, bj + 1))    # +1: столбец 0 — «Показатель»
+            # v0.17.3 (п.8, уточнение): в строке «Площадь квартир» — слабые
+            # цветовые акценты ячеек: синий у Базы, амбер у «Девелоперского»
+            # (как зелёная подсветка «максимума площади» в UI).
+            if lab.startswith("Площадь квартир") and accents:
+                for j in range(len(names)):
+                    _acc = accents.get(j)
+                    if _acc is not None:
+                        cell_fills[(i, j + 1)] = _acc
         # (item 3) Серые подписи «База»/«Вариант N» над колонками — для сопоставления
         # с боковой рейкой. Позиции колонок из ratios.
         _tot = sum(ratios)
@@ -560,13 +571,9 @@ def _comparison_slides(deck, scenarios: list[tuple[str, TEPResult]],
             cw = _CONTENT_W * 1.0 / _tot
             T.text(s, x0, top - 0.28, cw, 0.24, _var_label(j),
                    size=8, color=T.SOFT, align=PP_ALIGN.CENTER)
-            # v0.17.2 (п.8): слабая цветовая полоска под подписью варианта
-            # (синий — База, амбер — Девелоперский).
-            _acc = (accents or {}).get(j)
-            if _acc is not None:
-                T.rect(s, x0 + cw * 0.2, top - 0.055, cw * 0.6, 0.04, _acc)
         T.table(s, _MARGIN, top, _CONTENT_W, headers, rows, col_ratios=ratios,
-                fsize=10, hl_cells=hl_cells, section_rows=section_rows)
+                fsize=10, hl_cells=hl_cells, section_rows=section_rows,
+                cell_fills=cell_fills)
         T.footer(s)
 
 

@@ -88,8 +88,8 @@ def chart_per_capita(tep: TEPResult) -> BytesIO | None:
         return float((field.value or 0.0)) / pop if field is not None else 0.0
 
     items = [
-        ("Озеленение жилого ЗУ", _pc(tep.greening_housing_area), _CC["znop"]),
-        ("ЗНОП", float(tep.znop_per_person.value or 0.0), _CC["housing"]),
+        ("ЗНОП", float(tep.znop_per_person.value or 0.0), _CC["znop"]),
+        ("Озеленение жилого ЗУ", _pc(tep.greening_housing_area), _CC["housing"]),
         ("Спортплощадки", _pc(tep.sport_facilities_area), _CC["sport"]),
         ("ВПП (коммерция/сервисы)", _pc(tep.built_in_area), _CC["amber"]),
     ]
