@@ -105,6 +105,11 @@ def _write_comparison_sheet(wb: Workbook, pairs: list[tuple[str, TEPResult]]) ->
         lab_cell = ws.cell(row=row_idx, column=1, value=label)
         if not is_section:
             lab_cell.fill = _FILL_LABEL
+        else:
+            # v0.16.4: воздух ПЕРЕД заголовком секции — строка выше,
+            # текст прижат к низу (к своей линии-подчёркиванию).
+            ws.row_dimensions[row_idx].height = 26
+            lab_cell.alignment = Alignment(vertical="bottom")
         lab_cell.font = _FONT_SECTION if is_section else _FONT_LABEL
         lab_cell.border = _BORDER_SECTION if is_section else _BORDER
 
@@ -114,7 +119,9 @@ def _write_comparison_sheet(wb: Workbook, pairs: list[tuple[str, TEPResult]]) ->
             cell = ws.cell(row=row_idx, column=col_idx, value=val)
             cell.font = _FONT_BODY
             cell.border = _BORDER_SECTION if is_section else _BORDER
-            cell.alignment = Alignment(horizontal="center")
+            cell.alignment = Alignment(
+                horizontal="center",
+                vertical="bottom" if is_section else None)
             # Окрашиваем строки-статусов
             if not is_section and str(label) in _STATUS_ROWS and status_str in _FILL:
                 cell.fill = _FILL[status_str]

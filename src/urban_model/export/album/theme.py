@@ -331,12 +331,18 @@ def _cell_bottom_border(cell, rgb, w_pt: float = 1.0) -> None:
 def table(slide, left, top, w, headers, rows, *, col_ratios=None, fsize=11,
           row_colors=None, bold_last=False, hl_cells=None, section_rows=None):
     nr, nc = len(rows) + 1, len(headers)
-    h = 0.4 + 0.32 * len(rows)
+    # v0.16.4: строки-секции чуть выше обычных (воздух ПЕРЕД заголовком).
+    _n_sec = len(section_rows) if section_rows else 0
+    h = 0.4 + 0.32 * len(rows) + 0.10 * _n_sec
     gt = slide.shapes.add_table(nr, nc, int(left * EMU), int(top * EMU),
                                 int(w * EMU), int(h * EMU))
     tbl = gt.table
     tbl.first_row = True
     tbl.horz_banding = False
+    if section_rows:
+        for _i in section_rows:
+            if 0 < _i < nr:
+                tbl.rows[_i].height = Emu(int(0.42 * EMU))
     if col_ratios:
         tot = sum(col_ratios)
         for j, rr in enumerate(col_ratios):
@@ -375,8 +381,15 @@ def table(slide, left, top, w, headers, rows, *, col_ratios=None, fsize=11,
                 cell.fill.fore_color.rgb = _c(
                     HL_FILL if hl else (WHITE if i % 2 else ZEBRA))
             cell.margin_left = Emu(int(0.08 * EMU))
-            cell.margin_top = Emu(int(0.015 * EMU))
-            cell.margin_bottom = Emu(int(0.015 * EMU))
+            if is_section:
+                # Текст секции прижат к СВОЕЙ линии (низ ячейки): отступ
+                # уходит НАВЕРХ — перед заголовком, а не после него.
+                cell.vertical_anchor = MSO_ANCHOR.BOTTOM
+                cell.margin_top = Emu(int(0.10 * EMU))
+                cell.margin_bottom = Emu(int(0.02 * EMU))
+            else:
+                cell.margin_top = Emu(int(0.015 * EMU))
+                cell.margin_bottom = Emu(int(0.015 * EMU))
             for p in cell.text_frame.paragraphs:
                 for r_ in p.runs:
                     r_.font.size = Pt(fsize if not is_section else fsize - 1)
