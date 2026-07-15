@@ -64,16 +64,6 @@ class UserInputs:
 # Допустимые ВРИ для произвольных объектов
 _VRI_OPTIONS = ["3.4", "3.5", "3.6", "3.7", "4.0", "4.1", "4.4", "4.5", "4.6", "5.1"]
 
-# v0.19.0: режимы финансирования пользовательских объектов (колонка «Экономика»
-# в их таблице). «Как общий» для них = «Застройщик» — общая настройка карточки
-# «Экономика» распространяется только на соцобъекты НГП.
-_CO_FUND_RU: dict[str, str] = {
-    "default": "Застройщик",
-    "compensated": "Компенсация %",
-    "not_developer": "Не за счёт застройщика",
-}
-_CO_FUND_BY_LABEL: dict[str, str] = {v: k for k, v in _CO_FUND_RU.items()}
-
 
 def _close_tile_cb(include_key: str) -> None:
     """on_click callback для крестика плитки.
@@ -405,7 +395,15 @@ def render_params_tab() -> UserInputs:
             custom_objects_list = results.get("custom", custom_objects_list)
             if "economy" in results:
                 (residential_class, social_funding, social_comp_share,
-                 object_funding) = results["economy"]
+                 object_funding, co_funding) = results["economy"]
+                # v0.19.5: режимы доп. объектов заданы в карточке «Экономика»
+                # и привязаны к ИМЕНИ — проставляем их объектам здесь.
+                if co_funding:
+                    custom_objects_list = [
+                        o.model_copy(update={
+                            "funding": co_funding.get(o.name, o.funding)})
+                        for o in custom_objects_list
+                    ]
 
     # ==================================================================
     # Сборка опций
@@ -1730,16 +1728,16 @@ def _render_parking_custom() -> ParkingConfig:
 
 # v0.19.3: матрица «объект × режим» — строки объектов, столбцы режимов,
 # выбор одним кликом. Чекбоксы с radio-семантикой (см. _fund_pick).
+# v0.19.5: «Компенсация» и «Не за счёт застройщика» поменяны местами —
+# «%» стоит вплотную к своей галочке «Компенсация».
 _FUND_MODES: list[tuple[str, str]] = [
     ("default", "Как общий"),
     ("developer", "Застройщик"),
-    ("compensated", "Компенсация"),
     ("not_developer", "Не за счёт застройщика"),
+    ("compensated", "Компенсация"),
 ]
-# Колонки: Объект | 4 режима | «%». Поле «%» — В КОНЦЕ (v0.19.4): раньше оно
-# делило колонку с галочкой «Компенсация», из-за чего заголовок сжимался.
-# Теперь режимы ложатся на cols[1..4] подряд, без смещений.
-_FUND_COLS = [1.7, 0.95, 1.05, 1.15, 1.75, 0.75]
+# Колонки: Объект | 4 режима | «%» (в конце, вплотную к «Компенсации»).
+_FUND_COLS = [1.7, 0.95, 1.05, 1.75, 1.15, 0.6]
 
 
 def _fund_pick(obj_key: str, mode: str) -> None:
@@ -1751,22 +1749,68 @@ def _fund_pick(obj_key: str, mode: str) -> None:
         st.session_state[f"fund_{obj_key}_{m}"] = (m == mode)
 
 
-def _render_funding_grid(active_keys: list[str]) -> dict[str, ObjectFunding]:
-    """Матрица «за чей счёт» (v0.19.3): строки — только реально участвующие
-    объекты, столбцы — режимы. Обычные виджеты со стабильными ключами
-    (не data_editor) — надёжнее и предсказуемее.
+def _fund_row(row_key: str, label: str, follows_global: bool,
+              seed_mode: str | None = None) -> ObjectFunding:
+    """Одна строка матрицы «за чей счёт». Возвращает выбранный режим.
+
+    row_key — стабильный ключ строки (для доп. объектов — их ИМЯ, а не
+    индекс: тогда режим переживает удаление и перестановку строк таблицы).
+    follows_global=False → галочка «Как общий» неактивна: общая настройка
+    распространяется только на соцобъекты НГП.
+    """
+    cols = st.columns(_FUND_COLS, vertical_alignment="center")
+    cols[0].markdown(
+        f"<div style='font-size:0.86rem;padding-top:4px;'>{label}</div>",
+        unsafe_allow_html=True)
+    for i, (m, lbl) in enumerate(_FUND_MODES):
+        ck = f"fund_{row_key}_{m}"
+        if ck not in st.session_state:
+            # По умолчанию всё на застройщике: соцобъекты НГП — через «Как
+            # общий» (общая настройка по умолчанию = «Полностью застройщик»),
+            # остальные — явным «Застройщик» (общей настройке не подчиняются).
+            _dflt = seed_mode or ("default" if follows_global else "developer")
+            st.session_state[ck] = (m == _dflt)
+        cols[i + 1].checkbox(
+            lbl, key=ck, on_change=_fund_pick, args=(row_key, m),
+            label_visibility="collapsed",
+            disabled=(m == "default" and not follows_global),
+            help=("Общая настройка распространяется только на соцобъекты НГП"
+                  if (m == "default" and not follows_global) else None),
+        )
+    mode = next((m for m, _ in _FUND_MODES
+                 if st.session_state.get(f"fund_{row_key}_{m}")), "default")
+    share = None
+    if mode == "compensated":
+        share = cols[5].number_input(
+            "%", min_value=0, max_value=100, value=70, step=5,
+            key=f"fund_share_{row_key}", label_visibility="collapsed",
+            help="Доля себестоимости, которую компенсирует город",
+        ) / 100.0
+    return ObjectFunding(mode=mode, compensation_share=share)
+
+
+def _render_funding_grid(
+    active_keys: list[str], custom_objects: list | None = None,
+) -> tuple[dict[str, ObjectFunding], dict[str, ObjectFunding]]:
+    """Матрица «за чей счёт» (v0.19.3; v0.19.5 — + доп. объекты).
+
+    Строки — только реально участвующие объекты (нормативные + польз.),
+    столбцы — режимы. Обычные виджеты со стабильными ключами (не data_editor).
+
+    Возвращает (режимы нормативных объектов, режимы польз. объектов по ИМЕНИ).
     """
     st.markdown("**За чей счёт объекты**")
     st.caption(
-        "«Как общий» — по настройке выше. «Не за счёт застройщика» — строит "
-        "город или другой инвестор либо объект уже существует: ни затрат, ни "
-        "выручки. Парковки соцобъекта наследуют режим своего объекта. "
-        "Режим «только потребность» экономику НЕ отключает — он лишь выносит "
-        "объект за баланс территории."
+        "«Как общий» — по настройке выше (только для соцобъектов НГП). "
+        "«Не за счёт застройщика» — строит город или другой инвестор либо "
+        "объект уже существует: ни затрат, ни выручки. Парковки соцобъекта "
+        "наследуют режим своего объекта. Режим «только потребность» экономику "
+        "НЕ отключает — он лишь выносит объект за баланс территории."
     )
-    if not active_keys:
+    custom_objects = custom_objects or []
+    if not active_keys and not custom_objects:
         st.caption("Нет включённых объектов — нечего настраивать.")
-        return {}
+        return {}, {}
 
     _HDR = ("<div style='font-size:0.72rem;color:#8A8A8A;line-height:1.15;"
             "text-transform:uppercase;'>{}</div>")
@@ -1774,37 +1818,33 @@ def _render_funding_grid(active_keys: list[str]) -> dict[str, ObjectFunding]:
     hdr[0].markdown(_HDR.format("Объект"), unsafe_allow_html=True)
     for i, (_, lbl) in enumerate(_FUND_MODES):
         hdr[i + 1].markdown(_HDR.format(lbl), unsafe_allow_html=True)
-    hdr[5].markdown(_HDR.format("Компенс., %"), unsafe_allow_html=True)
+    hdr[5].markdown(_HDR.format("%"), unsafe_allow_html=True)
 
     out: dict[str, ObjectFunding] = {}
     for key in active_keys:
-        cols = st.columns(_FUND_COLS, vertical_alignment="center")
-        cols[0].markdown(
-            f"<div style='font-size:0.86rem;padding-top:4px;'>"
-            f"{FUNDING_LABELS[key]}</div>", unsafe_allow_html=True)
-        for i, (m, lbl) in enumerate(_FUND_MODES):
-            ck = f"fund_{key}_{m}"
-            if ck not in st.session_state:
-                # v0.19.3 (п.4): по умолчанию всё на застройщике. Соцобъекты
-                # НГП — через «Как общий» (общая настройка по умолчанию =
-                # «Полностью застройщик»); спорт и инженерия общей настройке
-                # не подчиняются, поэтому им «Застройщик» отмечается явно.
-                _dflt = ("default" if key in FUNDING_FOLLOW_GLOBAL
-                         else "developer")
-                st.session_state[ck] = (m == _dflt)
-            cols[i + 1].checkbox(lbl, key=ck, on_change=_fund_pick,
-                                 args=(key, m), label_visibility="collapsed")
-        mode = next((m for m, _ in _FUND_MODES
-                     if st.session_state.get(f"fund_{key}_{m}")), "default")
-        share = None
-        if mode == "compensated":
-            share = cols[5].number_input(
-                "%", min_value=0, max_value=100, value=70, step=5,
-                key=f"fund_share_{key}", label_visibility="collapsed",
-                help="Доля себестоимости, которую компенсирует город",
-            ) / 100.0
-        out[key] = ObjectFunding(mode=mode, compensation_share=share)
-    return out
+        out[key] = _fund_row(key, FUNDING_LABELS[key],
+                             follows_global=key in FUNDING_FOLLOW_GLOBAL)
+
+    # v0.19.5: доп. объекты — здесь же (вся экономика в одном месте).
+    # Ключ строки — ИМЯ объекта: режим переживает удаление/перестановку строк
+    # в таблице объектов. Переименование = новый объект (режим по умолчанию).
+    co_out: dict[str, ObjectFunding] = {}
+    if custom_objects:
+        st.markdown(
+            "<div style='font-size:0.72rem;color:#8A8A8A;margin:6px 0 2px;"
+            "text-transform:uppercase;'>Дополнительные объекты</div>",
+            unsafe_allow_html=True)
+        for obj in custom_objects:
+            nm = str(getattr(obj, "name", "") or "Объект")
+            if nm in co_out:
+                continue    # одинаковые имена делят одну строку
+            # Миграция со старых проектов: режим мог храниться в самом объекте
+            # (co_objects_json, v0.19.3) — берём его как начальное значение.
+            _seed = getattr(getattr(obj, "funding", None), "mode", None)
+            co_out[nm] = _fund_row(
+                f"co_{nm}", nm, follows_global=False,
+                seed_mode=(_seed if _seed and _seed != "default" else None))
+    return out, co_out
 
 
 def _render_economy_tile() -> tuple[str, str, float | None, dict[str, ObjectFunding]]:
@@ -1863,12 +1903,14 @@ def _render_economy_tile() -> tuple[str, str, float | None, dict[str, ObjectFund
         # выключенный из расчёта объект в экономике не показываем.
         _active = [k for k in FUNDING_KEYS
                    if st.session_state.get(FUNDING_INCLUDE_FLAGS[k], True)]
-        obj_funding = _render_funding_grid(_active)
-        st.caption(
-            ":material/info: Дополнительные объекты (офис, ФОК, торговля) "
-            "настраиваются в своей карточке — колонка «Экономика»."
-        )
-    return cls_label, fund, comp_share, obj_funding
+        # v0.19.5: доп. объекты — в этой же матрице. Карточка «Экономика»
+        # рендерится ПОСЛЕ карточки объектов (обе в WIDE_KEYS, порядок
+        # active_tiles), поэтому список уже актуален для текущего прогона.
+        _co = (st.session_state.get("custom_objects") or []
+               if st.session_state.get("include_custom_objects") else [])
+        _co_objs = [CustomObject(**o) if isinstance(o, dict) else o for o in _co]
+        obj_funding, co_funding = _render_funding_grid(_active, _co_objs)
+    return cls_label, fund, comp_share, obj_funding, co_funding
 
 
 def _render_custom_objects_tile() -> list[CustomObject]:
@@ -1926,16 +1968,14 @@ def _render_custom_objects_tile() -> list[CustomObject]:
                     if obj.get("floor_area_m2") is not None
                     else float(obj.get("plot_area_m2", 1000.0))
                 ),
-                # v0.19.0: режим финансирования живёт вместе с объектом —
-                # переживает удаление/перестановку строк.
-                "Экономика": _CO_FUND_RU.get(
-                    (obj.get("funding") or {}).get("mode", "default"),
-                    _CO_FUND_RU["default"]),
             })
+        # v0.19.5: колонка «Экономика» УБРАНА — режим финансирования задаётся
+        # в карточке «Экономика» (вся экономика в одном месте). Здесь её быть
+        # не должно: два редактора писали бы одно и то же поле и затирали друг
+        # друга (таблица пересобирает co_objects_json на каждую правку).
         df = pd.DataFrame(
             rows,
-            columns=["Название", "Площадь ЗУ, м²", "ВРИ-код", "Общая площадь, м²",
-                     "Экономика"],
+            columns=["Название", "Площадь ЗУ, м²", "ВРИ-код", "Общая площадь, м²"],
         )
 
         edited_df = st.data_editor(
@@ -1964,18 +2004,6 @@ def _render_custom_objects_tile() -> list[CustomObject]:
                     step=100.0, format="%.0f",
                     help="Сумма площадей этажных перекрытий объекта",
                 ),
-                "Экономика": st.column_config.SelectboxColumn(
-                    "Экономика",
-                    options=list(_CO_FUND_RU.values()),
-                    required=False,
-                    help=(
-                        "За чей счёт объект. «Застройщик» — затраты на нас, "
-                        "выручка по ВРИ (кроме 3.x — соцнагрузка). "
-                        "«Не за счёт застройщика» — строит город/другой "
-                        "инвестор либо объект существует: ни затрат, ни "
-                        "выручки."
-                    ),
-                ),
             },
             key=f"objects_editor_{abs(hash(_co_ed_seed)) % 10**8}",
         )
@@ -1983,6 +2011,13 @@ def _render_custom_objects_tile() -> list[CustomObject]:
         # Живое применение: каждая правка таблицы -> список объектов + зеркало
         # в co_objects_json (в файл проекта). Невалидные/недозаполненные
         # строки молча пропускаются (появятся в расчёте, когда заполнены).
+        # v0.19.5: прежние режимы финансирования по ИМЕНИ — чтобы правка
+        # геометрии их не затирала (владелец режима — карточка «Экономика»).
+        _prev_funding = {
+            str(o.get("name", "")): o["funding"]
+            for o in st.session_state.custom_objects
+            if isinstance(o, dict) and o.get("funding")
+        }
         new_list = []
         for _, row in edited_df.iterrows():
             try:
@@ -1993,9 +2028,11 @@ def _render_custom_objects_tile() -> list[CustomObject]:
                 vri = str(vri_raw).strip() if pd.notna(vri_raw) and str(vri_raw).strip() else "4.0"
                 if not name or name == "None" or plot <= 0:
                     continue
-                _fund_raw = row.get("Экономика")
-                _fund_mode = _CO_FUND_BY_LABEL.get(
-                    str(_fund_raw).strip() if pd.notna(_fund_raw) else "", "default")
+                # v0.19.5: `funding` тут НЕ трогаем — его владелец карточка
+                # «Экономика». Сохраняем режим, уже записанный для этого имени
+                # (в т.ч. из старых файлов проекта), чтобы правка геометрии
+                # не сбрасывала финансирование.
+                _prev = _prev_funding.get(name)
                 new_list.append({
                     "name": name,
                     "plot_area_m2": plot,
@@ -2004,7 +2041,7 @@ def _render_custom_objects_tile() -> list[CustomObject]:
                         float(row["Общая площадь, м²"])
                         if pd.notna(row["Общая площадь, м²"]) else None
                     ),
-                    "funding": {"mode": _fund_mode, "compensation_share": None},
+                    **({"funding": _prev} if _prev else {}),
                 })
             except (ValueError, TypeError, KeyError):
                 continue

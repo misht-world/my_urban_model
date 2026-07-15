@@ -236,6 +236,41 @@ class TestCustomObjectFunding:
         assert r.balance.components.get("custom_objects", 0) == pytest.approx(5000)
         assert r.economy.cost.custom_objects == 0
 
+    def test_ui_matrix_keys_by_name(self):
+        """v0.19.5: режим доп. объекта задаётся в карточке «Экономика» и
+        привязан к ИМЕНИ — переживает удаление/перестановку строк таблицы."""
+        import json
+
+        from streamlit.testing.v1 import AppTest
+
+        co = [{"name": "Магазин", "plot_area_m2": 5000.0, "vri_code": "4.4",
+               "floor_area_m2": 5000.0},
+              {"name": "ФОК города", "plot_area_m2": 4000.0, "vri_code": "4.4",
+               "floor_area_m2": 4000.0}]
+        at = AppTest.from_file("src/urban_model/ui/app.py", default_timeout=900)
+        at.session_state["_auth_ok"] = True
+        at.session_state["area_input_m2"] = 200_000.0
+        at.session_state["include_custom_objects"] = True
+        at.session_state["co_objects_json"] = json.dumps(co, ensure_ascii=False)
+        at.run()
+        assert not at.exception, at.exception
+        # строки доп. объектов есть в матрице, ключи — по имени
+        cb = next(c for c in at.checkbox
+                  if c.key == "fund_co_ФОК города_not_developer")
+        cb.check()
+        at.run()
+        assert not at.exception, at.exception
+        o = at.session_state["last_calc_options"]
+        modes = {c.name: c.funding.mode for c in o.custom_objects}
+        assert modes == {"Магазин": "developer", "ФОК города": "not_developer"}
+        # удаляем ПЕРВЫЙ объект — режим ФОКа не должен съехать по индексу
+        at.session_state["co_objects_json"] = json.dumps(co[1:], ensure_ascii=False)
+        at.run()
+        assert not at.exception, at.exception
+        o2 = at.session_state["last_calc_options"]
+        assert [(c.name, c.funding.mode) for c in o2.custom_objects] == [
+            ("ФОК города", "not_developer")]
+
     def test_per_object_independent(self, norms):
         e = _econ(norms, custom_objects=[
             CustomObject(name="Город", plot_area_m2=4000, vri_code="4.4",
