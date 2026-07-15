@@ -9,7 +9,10 @@
 
 Таблицы берутся из ЕДИНОГО билдера `export/variant_tables.py` — те же строки,
 что на «Расчёте», поэтому Базовый и оптимизационные варианты идентичны.
-Экономика и полный аудит в альбом не входят (по запросу).
+
+v0.19.1: по каждому варианту добавлен слайд «Экономика» (структура
+себестоимости/выручки, эконом-индекс, «за чей счёт» — отличия от общей
+настройки). Полный аудит в альбом по-прежнему не входит.
 """
 
 from __future__ import annotations
@@ -486,6 +489,78 @@ def _charts_slide(deck, name: str, tep: TEPResult, v_index: int,
     T.footer(s)
 
 
+def _fmt_u(v: float) -> str:
+    return f"{v:,.0f}".replace(",", " ")
+
+
+def _economy_slide(deck, name: str, tep: TEPResult, options, v_index: int,
+                   rail_labels: list[str], accents: dict | None = None) -> None:
+    """Слайд «Экономика» варианта (v0.19.1, запрос Михаила).
+
+    Слева — структура себестоимости и выручки (стек-колонки + индекс),
+    справа — таблица статей и «за чей счёт» по каждому объекту.
+    """
+    e = getattr(tep, "economy", None)
+    if e is None:
+        return
+    from urban_model.export.album import charts as C
+    s = deck.slide()
+    T.title_band(s, "Экономика", "варианта")
+    _chrome(s, rail_labels, v_index, accents)
+    T.text(s, _MARGIN, 1.28, _CONTENT_W, 0.35, _clean_name(name),
+           size=11, color=T.MUTED, align=PP_ALIGN.RIGHT)
+
+    y = 1.95
+    buf = C.chart_economy_structure(tep)
+    if buf is not None:
+        T.section_label(s, _MARGIN, y, 6.2, "Себестоимость и выручка, усл. баллы")
+        # Ширина подобрана так, чтобы диаграмма (аспект 6.4×4.2) закончилась
+        # выше строки «за чей счёт»: 5.8 × 4.2/6.4 ≈ 3.81 → низ ≈ 6.16.
+        s.shapes.add_picture(buf, int((_MARGIN + 0.2) * T.EMU),
+                             int((y + 0.4) * T.EMU), width=int(5.8 * T.EMU))
+
+    _x = _MARGIN + 6.6
+    _w = _CONTENT_W - 6.6
+    c, rv = e.cost, e.revenue
+    soc = c.kindergarten + c.school + c.add_education + c.polyclinic + c.social_parking
+    park = (c.parking_open + c.parking_multilevel + c.parking_underground
+            + c.parking_stylobate)
+    over = c.networks + c.landscaping + c.design + c.contingency + c.fixed
+    rows = [
+        ("Эконом-индекс (100 = окупаемость)", f"{e.economy_index:.0f}"),
+        ("Выход жилья, %", f"{e.sellable_ratio * 100:.0f}"),
+        ("— Себестоимость итого", _fmt_u(c.total)),
+        ("Жильё", _fmt_u(c.residential)),
+        ("Соцобъекты", _fmt_u(soc)),
+        ("Парковки", _fmt_u(park)),
+        ("Инженерия", _fmt_u(c.engineering)),
+        ("Накладные (сети/проект/…)", _fmt_u(over)),
+        ("— Выручка итого", _fmt_u(rv.total)),
+        ("Квартиры", _fmt_u(rv.residential)),
+        ("ВПП / коммерция", _fmt_u(rv.vpp_commercial + rv.custom_commercial)),
+        ("Компенсация соцобъектов", _fmt_u(rv.social_compensation)),
+        ("— Соц. нагрузка (нетто)", _fmt_u(e.net_social_burden)),
+    ]
+    T.section_label(s, _x, y, _w, "Показатели")
+    T.table(s, _x, y + 0.4, _w, ["Показатель", "Знач."], rows,
+            col_ratios=[2.3, 1.0], fsize=9)
+
+    # «За чей счёт» — только отличия от общей настройки (v0.19). Компактной
+    # строкой ПОД диаграммой: таблица показателей справа занимает всю высоту.
+    if options is not None:
+        try:
+            exc = _funding_exceptions(options)
+        except Exception:  # noqa: BLE001
+            exc = []
+        _txt = ("За чей счёт (отличия от общей настройки): "
+                + "  ·  ".join(f"{lbl} — {mode}" for lbl, mode in exc)
+                if exc else
+                "За чей счёт: все объекты по общей настройке карточки «Экономика».")
+        T.text(s, _MARGIN, 6.32, 6.4, 0.7, _txt, size=8.5, color=T.MUTED,
+               spacing=1.05)
+    T.footer(s)
+
+
 _WC_TAG_RE = None
 
 
@@ -693,6 +768,14 @@ def build_concept_album(
                 pass
         try:
             _charts_slide(deck, name, tep, v_idx, rail_labels, accents)
+        except Exception:  # noqa: BLE001
+            pass
+        # v0.19.1: слайд экономики варианта (запрос Михаила). Режимы
+        # финансирования берём из базовых опций — подбор их не варьирует,
+        # варианты наследуют настройку Базы.
+        try:
+            _economy_slide(deck, name, tep, base_options, v_idx, rail_labels,
+                           accents)
         except Exception:  # noqa: BLE001
             pass
         try:

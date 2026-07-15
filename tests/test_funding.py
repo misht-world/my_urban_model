@@ -139,6 +139,53 @@ class TestPerObjectModes:
         assert off == 0
 
 
+class TestDuplicateWarning:
+    """v0.19.1: польз. объект с ВРИ нормативного соцобъекта → предупреждение
+    о возможном двойном счёте (запрос Михаила: доп.обр «только рассчитать»
+    + он же в доп. объектах)."""
+
+    _CODE = "[CUSTOM_OBJECT_MAY_DUPLICATE]"
+
+    def _warns(self, norms, **kw):
+        r = solve_max_kit(SITE, CalculationOptions(
+            floors=12, planning_doc=True, **kw), norms)
+        return [w for w in (r.warnings or []) if w.startswith(self._CODE)]
+
+    def test_warns_on_same_category(self, norms):
+        w = self._warns(norms, add_education=AdditionalEducationSpec(only_demand=True),
+                        custom_objects=[CustomObject(
+                            name="Школа искусств", plot_area_m2=3000, vri_code="3.5.1")])
+        assert len(w) == 1 and "Школа искусств" in w[0]
+        assert "доп. образование" in w[0]
+
+    def test_warns_polyclinic_and_sport(self, norms):
+        w = self._warns(norms, custom_objects=[
+            CustomObject(name="Мед. центр", plot_area_m2=2000, vri_code="3.4.1"),
+            CustomObject(name="Площадка", plot_area_m2=1000, vri_code="5.1.3")])
+        assert len(w) == 2
+
+    def test_no_warning_for_commercial(self, norms):
+        assert self._warns(norms, custom_objects=[CustomObject(
+            name="Офис", plot_area_m2=3000, vri_code="4.0")]) == []
+
+    def test_no_warning_when_normative_off(self, norms):
+        """Нормативный объект выключен → польз. объект его не дублирует."""
+        assert self._warns(
+            norms, include_polyclinic=False,
+            custom_objects=[CustomObject(name="Поликлиника",
+                                         plot_area_m2=2000, vri_code="3.4.1")]) == []
+
+    def test_double_count_is_real(self, norms):
+        """Дубль действительно удваивает экономику — предупреждение по делу."""
+        e1 = _econ(norms, add_education=AdditionalEducationSpec(only_demand=True))
+        e2 = _econ(norms, add_education=AdditionalEducationSpec(only_demand=True),
+                   custom_objects=[CustomObject(name="Школа искусств",
+                                                plot_area_m2=3000, vri_code="3.5.1")])
+        assert e1.cost.add_education > 0
+        assert e2.cost.custom_objects > 0      # тот же объект вторым счётом
+        assert e2.cost.add_education > 0
+
+
 class TestCustomObjectFunding:
     def test_default_is_developer(self, norms):
         e = _econ(norms, custom_objects=[

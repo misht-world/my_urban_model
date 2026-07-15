@@ -552,6 +552,38 @@ def compute_tep_for_kit(
     else:
         sport_br = sport.SportBreakdown(0.0, 0.0, 0.0, 0.0, 0.0)
 
+    # === Возможный двойной счёт: норматив + такой же польз. объект (v0.19.1) ===
+    # Модель сама считает ДОО/СОШ/доп.обр/поликлинику/спорт. Если пользователь
+    # ДОПОЛНИТЕЛЬНО завёл объект с тем же ВРИ, он попадёт в баланс и экономику
+    # ВТОРОЙ раз. Намерение модели неизвестно (это может быть другой объект той
+    # же категории), поэтому — предупреждение, а не запрет.
+    if options.custom_objects:
+        _dup_map: list[tuple[str, list[tuple[bool, str]]]] = [
+            ("3.5", [(options.include_kindergarten, "ДОО"),
+                     (options.include_school, "СОШ"),
+                     (options.include_add_education, "доп. образование")]),
+            ("3.4", [(options.include_polyclinic, "поликлиника")]),
+            ("5.1", [(options.include_sport_facilities, "спортплощадки")]),
+        ]
+        for _o in options.custom_objects:
+            _vri = (_o.vri_code or "").strip()
+            for _prefix, _objs in _dup_map:
+                if not _vri.startswith(_prefix):
+                    continue
+                _names = [nm for on, nm in _objs if on]
+                if not _names:
+                    continue
+                warnings.append(_wcprefix(
+                    WC.CUSTOM_OBJECT_MAY_DUPLICATE,
+                    f"Объект «{_o.name}» (ВРИ {_vri}) относится к той же "
+                    f"категории, что и нормативные: {', '.join(_names)}. "
+                    f"Они уже посчитаны моделью — проверьте, не учтён ли "
+                    f"объект дважды (в балансе территории и в экономике). "
+                    f"Режим «только рассчитать потребность» экономику не "
+                    f"отключает — для этого поставьте объекту «не за счёт "
+                    f"застройщика»."
+                ))
+
     # === Эффективные площади соцобъектов для баланса/озеленения ===
     # При only_demand=True объект размещается ВНЕ квартала и не занимает
     # территорию (но потребность считается и отображается как обычно).

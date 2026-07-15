@@ -168,6 +168,64 @@ def chart_social_provision(tep: TEPResult) -> BytesIO | None:
     return _save(fig, plt)
 
 
+def chart_economy_structure(tep: TEPResult) -> BytesIO | None:
+    """Структура экономики варианта (v0.19.1): две стек-колонки —
+    себестоимость по статьям и выручка по источникам, в одном масштабе.
+    Сразу видно, чем покрываются затраты и где перекос."""
+    e = getattr(tep, "economy", None)
+    if e is None or e.cost.total <= 0:
+        return None
+    c, rv = e.cost, e.revenue
+    cost_items = [
+        ("Жильё", c.residential, _CC["housing"]),
+        ("ВПП", c.vpp, _CC["amber"]),
+        ("Соцобъекты", c.kindergarten + c.school + c.add_education
+         + c.polyclinic + c.social_parking, _CC["school"]),
+        ("Парковки", c.parking_open + c.parking_multilevel
+         + c.parking_underground + c.parking_stylobate, _CC["parking"]),
+        ("Спорт", c.sport, _CC["sport"]),
+        ("Доп. объекты", c.custom_objects, _CC["znop"]),
+        ("Инженерия", c.engineering, _CC["engineering"]),
+        ("Накладные", c.networks + c.landscaping + c.design + c.contingency
+         + c.fixed, _CC["driveways"]),
+    ]
+    rev_items = [
+        ("Квартиры", rv.residential, _CC["housing"]),
+        ("ВПП/коммерция", rv.vpp_commercial, _CC["amber"]),
+        ("Доп. объекты", rv.custom_commercial, _CC["znop"]),
+        ("Парковки", rv.parking_open + rv.parking_multilevel
+         + rv.parking_underground + rv.parking_stylobate, _CC["parking"]),
+        ("Компенсация соц.", rv.social_compensation, _CC["ok"]),
+    ]
+    cost_items = [i for i in cost_items if i[1] > 0]
+    rev_items = [i for i in rev_items if i[1] > 0]
+    plt = _mpl()
+    fig, ax = plt.subplots(figsize=(6.4, 4.2))
+    _top = max(c.total, rv.total)
+    for x, items, total in ((0, cost_items, c.total), (1, rev_items, rv.total)):
+        bottom = 0.0
+        for lbl, val, col in items:
+            ax.bar(x, val, bottom=bottom, color=col, width=0.5,
+                   edgecolor="white", linewidth=1)
+            if val / _top >= 0.05:      # подпись только для заметных долей
+                ax.text(x, bottom + val / 2, f"{lbl}\n{val / total * 100:.0f}%",
+                        ha="center", va="center", fontsize=7.5, color="white")
+            bottom += val
+        ax.text(x, total + _top * 0.02, f"{total:,.0f}".replace(",", " "),
+                ha="center", va="bottom", fontsize=10, color=_CC["ink"])
+    ax.set_xticks([0, 1])
+    ax.set_xticklabels(["Себестоимость", "Выручка"], fontsize=9.5)
+    ax.set_ylim(0, _top * 1.12)
+    ax.set_yticks([])
+    ax.set_xlim(-0.55, 1.55)
+    # Индекс — подпись между колонками.
+    ax.text(0.5, _top * 0.5, f"индекс\n{e.economy_index:.0f}",
+            ha="center", va="center", fontsize=13, color=_CC["ink"])
+    _style(ax)
+    ax.spines["left"].set_visible(False)
+    return _save(fig, plt)
+
+
 def chart_parking(tep: TEPResult) -> BytesIO | None:
     parts = [
         ("Открытые", int(tep.parking_open_places.value or 0), _CC["amber"]),
