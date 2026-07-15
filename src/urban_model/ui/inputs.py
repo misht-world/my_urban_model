@@ -313,6 +313,7 @@ def render_params_tab() -> UserInputs:
     built_in = None
     vpp_auto = False
     intra_override = None
+    drive_mode = "by_objects"      # v0.18.0: схема внутриквартальных проездов
     custom_objects_list: list = []
     engineering_spec = EngineeringSpec()
     residential_class = "economy"
@@ -330,9 +331,9 @@ def render_params_tab() -> UserInputs:
     if include_parking:  active_tiles.append(("parking", _render_parking_tile))
     if include_znop:     active_tiles.append(("znop", _render_znop_tile))
     if include_vpp:      active_tiles.append(("vpp", _render_vpp_tile))
-    # v0.10.19: плитка настроек проездов СКРЫТА (на время тестирования —
-    # детали расчёта проездов пользователю знать не нужно). Флаг include_intra
-    # продолжает учитываться в расчёте, доля — по нормативу (override=None).
+    # v0.18.0: плитка проездов ВОЗВРАЩЕНА (была скрыта в v0.10.19) — появился
+    # выбор схемы расчёта (гибрид по объектам / доля от квартала).
+    if include_intra:    active_tiles.append(("driveways", _render_driveways_tile))
     if include_engineering: active_tiles.append(("engineering", _render_engineering_tile))
     if include_phasing:  active_tiles.append(("phasing", _render_phasing_tile))
     if include_custom:   active_tiles.append(("custom", _render_custom_objects_tile))
@@ -378,7 +379,8 @@ def render_params_tab() -> UserInputs:
             if "znop" in results:
                 znop_pp_override, znop_total_override, znop_only_demand = results["znop"]
             vpp_request = results.get("vpp", vpp_request)
-            intra_override = results.get("intra", intra_override)
+            if "driveways" in results:
+                drive_mode, intra_override = results["driveways"]
             engineering_spec = results.get("engineering", engineering_spec)
             phasing_spec = results.get("phasing", phasing_spec)
             custom_objects_list = results.get("custom", custom_objects_list)
@@ -413,6 +415,7 @@ def render_params_tab() -> UserInputs:
         znop_total_area_override=znop_total_override,
         znop_only_demand=znop_only_demand,
         custom_objects=custom_objects_list,
+        driveways_intra_mode=drive_mode,
         driveways_intra_share_override=intra_override,
         driveways_lot_share_override=lot_override,
         include_economy=include_economy,
@@ -483,23 +486,59 @@ def _render_sport_tile() -> SportFacilitiesSpec:
     )
 
 
-def _render_intra_driveways_tile() -> float | None:
-    """Плитка настроек внутриквартальных проездов. Override на долю."""
+def _render_driveways_tile() -> tuple[str, float | None]:
+    """Плитка внутриквартальных проездов (v0.18.0).
+
+    Возвращает (режим, override_доли). Режимы:
+      «По объектам» — гибрид: территориальная база + подъезды к каждому объекту;
+      «Доля от квартала» — схема до v0.18 (для сверки со старыми расчётами).
+    """
     with st.container(border=True):
         _tile_header(":material/route: Внутриквартальные проезды", "include_intra_driveways")
+        st.caption(
+            "Проезды между лотами (магистральная сеть квартала). Проезды "
+            "внутри ЗУ жилой застройки считаются отдельно — от площади застройки."
+        )
+        mode_label = st.radio(
+            "Схема расчёта",
+            ["По объектам (рекомендуется)", "Доля от площади квартала"],
+            index=0, key="drive_mode",
+            help=(
+                "«По объектам» — территориальная база (6% квартала, откалибровано "
+                "по фактическим проектам) плюс подъезд к каждому объекту: "
+                "600 м² на корпус ДОО/СОШ, 300 м² на иной отдельно стоящий "
+                "объект и крупную инженерию (котельная, ОСПС), 150 м² на "
+                "компактную инженерию (ТП, РТП, ГРП, насосная), 120 м² на "
+                "многоуровневый паркинг.\n\n"
+                "«Доля от квартала» — прежняя схема (7.5% + 600 м² на соцобъект), "
+                "оставлена для сверки со старыми расчётами."
+            ),
+        )
+        mode = ("by_objects" if mode_label.startswith("По объектам")
+                else "quarter_share")
         use_override = st.checkbox(
-            "Задать долю вручную (вместо норматива)",
+            "Задать базовую долю вручную",
             value=False, key="drive_intra_override",
+            help="Заменяет территориальную базу. Подъезды к объектам в режиме "
+                 "«По объектам» считаются сверх заданной доли.",
         )
         if not use_override:
-            st.caption("По умолчанию: 10% от площади квартала (норматив).")
-            return None
+            st.caption(
+                "База: 6% площади квартала + подъезды к объектам."
+                if mode == "by_objects"
+                else "7.5% площади квартала + 600 м² на каждый соцобъект."
+            )
+            return mode, None
+        # NB: ключ новый (`drive_base_pct`), а не прежний `drive_intra_pct`:
+        # тот хранил ЦЕЛЫЕ проценты, а здесь шаг 0.5 → float. Старое int-значение
+        # в session_state конфликтовало бы с float-слайдером при загрузке проекта.
         intra_pct = st.slider(
-            "Доля от S_квартала, %",
-            min_value=0, max_value=30, value=10, step=1,
-            key="drive_intra_pct",
+            "Базовая доля от S_квартала, %",
+            min_value=0.0, max_value=30.0,
+            value=6.0 if mode == "by_objects" else 7.5, step=0.5,
+            key="drive_base_pct",
         )
-        return intra_pct / 100
+        return mode, intra_pct / 100
 
 
 def _render_engineering_tile() -> EngineeringSpec:

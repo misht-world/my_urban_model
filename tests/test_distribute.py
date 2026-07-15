@@ -129,8 +129,9 @@ class TestDrivewayOverrides:
         from urban_model.core.forward import compute_tep_for_kit
         from urban_model.models import CalculationOptions, Site
         site = Site(area_m2=50_000)
-        # По умолчанию 7.5% → 3750 м² (v0.12: было 10%, инженерка вынесена
-        # в отдельный компонент); override 20% → 10000 м²
+        # v0.18.0: дефолтная схема — гибрид, база 6% → 3000 м²;
+        # override 20% → 10000 м². Override заменяет БАЗУ; подъезды к объектам
+        # считаются сверх неё (вычитаются ниже).
         opts_default = CalculationOptions(floors=12, planning_doc=True)
         opts_override = CalculationOptions(
             floors=12, planning_doc=True,
@@ -138,12 +139,22 @@ class TestDrivewayOverrides:
         )
         r_default = compute_tep_for_kit(1.0, site, opts_default, spb)
         r_override = compute_tep_for_kit(1.0, site, opts_override, spb)
-        # v0.17.0: к базе share×S добавляются подъезды к соцобъектам
-        # (600 м² × N) — вычитаем справочное поле, чтобы проверить долю.
         acc_d = r_default.driveways_social_access_area.value or 0
         acc_o = r_override.driveways_social_access_area.value or 0
-        assert abs(r_default.driveways_intra_quarter_area.value - acc_d - 3750) < 1
+        assert abs(r_default.driveways_intra_quarter_area.value - acc_d - 3000) < 1
         assert abs(r_override.driveways_intra_quarter_area.value - acc_o - 10000) < 1
+
+    def test_legacy_quarter_share_mode(self, spb):
+        """Режим «доля от квартала» сохраняет прежние 7.5% (сверка со старыми
+        расчётами)."""
+        from urban_model.core.forward import compute_tep_for_kit
+        from urban_model.models import CalculationOptions, Site
+        site = Site(area_m2=50_000)
+        opts = CalculationOptions(floors=12, planning_doc=True,
+                                  driveways_intra_mode="quarter_share")
+        r = compute_tep_for_kit(1.0, site, opts, spb)
+        acc = r.driveways_social_access_area.value or 0
+        assert abs(r.driveways_intra_quarter_area.value - acc - 3750) < 1
 
     def test_lot_override_applies(self, spb):
         from urban_model.core.forward import compute_tep_for_kit

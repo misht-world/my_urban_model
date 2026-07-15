@@ -768,10 +768,19 @@ def compute_tep_for_kit(
             ))
 
     # === Проезды ===
+    # v0.18.0: две схемы внутриквартальных проездов (`driveways_intra_mode`):
+    #   by_objects (по умолчанию) — гибрид: территориальная база (магистральная
+    #       сеть между лотами) + подъезды к КАЖДОМУ объекту. Калибровка базы
+    #       0.06 — по фактическим проектам (см. driveways в spb.yaml).
+    #   quarter_share — только доля от квартала (схема до v0.18, для сверки).
+    # Override доли работает в обоих режимах: заменяет базовую долю.
+    _by_objects = options.driveways_intra_mode == "by_objects"
+    _base_key = ("driveways.intra_quarter_base_share" if _by_objects
+                 else "driveways.intra_quarter_share")
     drive_intra_share = (
         options.driveways_intra_share_override
         if options.driveways_intra_share_override is not None
-        else norms.resolve("driveways.intra_quarter_share")
+        else norms.resolve(_base_key)
     )
     if options.driveways_lot_share_override is not None:
         drive_lot_share = options.driveways_lot_share_override
@@ -791,17 +800,43 @@ def compute_tep_for_kit(
     drive_intra_v = driveways.intra_quarter_area(site.area_m2, drive_intra_share)
     drive_lot_v = driveways.housing_lot_driveways_area(footprint_v, drive_lot_share)
 
-    # v0.17.0: подъезд к каждому соцобъекту — добавка к внутриквартальным
-    # проездам за КАЖДЫЙ корпус ДОО (включая встроенные — подъезд/разворот
-    # нужен и им), СОШ и иной отдельно стоящий объект (доп. образование,
-    # поликлиника, пользовательские объекты). «Только потребность» — объект
-    # вне квартала, подъезд не нужен (n_*_obj уже это учитывают).
+    # Подъезды к объектам (v0.17.0 — соцобъекты; v0.18.0 — все группы).
+    # Начисляются за КАЖДЫЙ физически размещаемый объект:
+    #   600 — корпус ДОО (включая встроенный: подъезд/разворот нужен и ему) и СОШ;
+    #   300 — иной отд. стоящий (доп. образование, поликлиника, пользовательские
+    #         объекты) и крупная инженерия (котельная, ОСПС);
+    #   150 — компактная инженерия (ТП, РТП, ГРП, насосная);
+    #   120 — многоуровневый паркинг (по периметру застройки).
+    # «Только потребность» → объект вне квартала, подъезд не нужен (n_*_obj и
+    # in_balance это уже учитывают). Спортплощадки не считаются — обслуживаются
+    # общей сетью.
     _soc_access_m2 = norms.resolve("driveways.social_object_access_m2")
-    n_drive_soc = (
-        n_kg_obj + n_sch_obj + n_ae_obj + n_poly_obj
-        + len(options.custom_objects)
-    )
-    drive_soc_access_v = _soc_access_m2 * n_drive_soc
+    n_drive_soc = n_kg_obj + n_sch_obj
+    n_drive_other = n_ae_obj + n_poly_obj + len(options.custom_objects)
+    n_drive_eng_small = n_drive_eng_big = 0
+    if options.include_engineering and eng_result is not None:
+        for _o in eng_result.objects:
+            if not _o.in_balance or _o.count <= 0:
+                continue
+            if _o.key in ("tp", "rtp", "grp", "pump"):
+                n_drive_eng_small += _o.count
+            elif _o.key in ("boiler", "osps"):
+                n_drive_eng_big += _o.count
+    n_drive_ml = int(park.multilevel_objects or 0) if options.include_parking else 0
+
+    if _by_objects:
+        _other_m2 = norms.resolve("driveways.other_object_access_m2")
+        _eng_m2 = norms.resolve("driveways.engineering_object_access_m2")
+        _ml_m2 = norms.resolve("driveways.parking_multilevel_access_m2")
+        drive_soc_access_v = (
+            _soc_access_m2 * n_drive_soc
+            + _other_m2 * (n_drive_other + n_drive_eng_big)
+            + _eng_m2 * n_drive_eng_small
+            + _ml_m2 * n_drive_ml
+        )
+    else:
+        # Схема до v0.18: подъезды только к соцобъектам, все по 600.
+        drive_soc_access_v = _soc_access_m2 * (n_drive_soc + n_drive_other)
     drive_intra_v += drive_soc_access_v
 
     # === Эффективные значения с учётом include_* флагов (v0.6.7) ===
@@ -1587,18 +1622,33 @@ def compute_tep_for_kit(
             drive_intra_v, unit="m2",
             formula=(
                 f"S_квартала × {drive_intra_share}"
-                + (f" + {_soc_access_m2:g} м² × {n_drive_soc} соцобъект(ов)"
-                   if n_drive_soc > 0 else "")
+                + (f" + подъезды к объектам {drive_soc_access_v:,.0f} м²".replace(",", " ")
+                   if drive_soc_access_v > 0 else "")
             ),
-            source=(norms.source_of("driveways.social_object_access_m2")
-                    if n_drive_soc > 0 else None),
+            source=norms.source_of(_base_key),
         ),
         driveways_housing_lot_area=_F(
             drive_lot_v, unit="m2", formula=f"S_застройки × {drive_lot_share}"
         ),
         driveways_social_access_area=_F(
             drive_soc_access_v, unit="m2",
-            formula=f"{_soc_access_m2:g} м² × {n_drive_soc} соцобъект(ов)",
+            formula=(
+                " + ".join(_p for _p in [
+                    (f"{_soc_access_m2:g}×{n_drive_soc} ДОО/СОШ"
+                     if n_drive_soc else ""),
+                    (f"{norms.resolve('driveways.other_object_access_m2'):g}×"
+                     f"{n_drive_other + n_drive_eng_big} отд. стоящих"
+                     if _by_objects and (n_drive_other + n_drive_eng_big) else ""),
+                    (f"{norms.resolve('driveways.engineering_object_access_m2'):g}×"
+                     f"{n_drive_eng_small} инж."
+                     if _by_objects and n_drive_eng_small else ""),
+                    (f"{norms.resolve('driveways.parking_multilevel_access_m2'):g}×"
+                     f"{n_drive_ml} МУ-паркинг"
+                     if _by_objects and n_drive_ml else ""),
+                    (f"{_soc_access_m2:g}×{n_drive_other} иных"
+                     if not _by_objects and n_drive_other else ""),
+                ] if _p) or "—"
+            ),
             source=norms.source_of("driveways.social_object_access_m2"),
         ),
         housing_lot_area=_F(

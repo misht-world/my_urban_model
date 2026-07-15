@@ -205,19 +205,48 @@ class TestDependencies:
             apts.append(solve_max_kit(SITE, o, norms).apartments_area.value)
         assert apts[0] > apts[1], apts
 
-    # --- подъезды к соцобъектам (v0.17.0): 600 м² на объект во
-    # внутриквартальные проезды ---
+    # --- подъезды к объектам во внутриквартальных проездах
+    # (v0.17.0 — соцобъекты по 600; v0.18.0 — гибрид по всем группам) ---
 
     def test_social_access_included_in_intra_driveways(self, norms):
-        """intra = share×S + 600×N; справочное поле сходится с добавкой."""
+        """Гибрид (дефолт): intra = base_share×S + подъезды; справочное поле
+        сходится с добавкой."""
         o = CalculationOptions(floors=12, planning_doc=True)
+        assert o.driveways_intra_mode == "by_objects"  # дефолт с v0.18.0
+        r = solve_max_kit(SITE, o, norms)
+        acc = r.driveways_social_access_area.value or 0
+        share = norms.resolve("driveways.intra_quarter_base_share")
+        assert acc > 0
+        assert r.driveways_intra_quarter_area.value == pytest.approx(
+            SITE.area_m2 * share + acc, rel=1e-9)
+
+    def test_quarter_share_mode_keeps_legacy_scheme(self, norms):
+        """Режим «доля от квартала» = схема до v0.18: 7.5%×S + 600×N."""
+        o = CalculationOptions(floors=12, planning_doc=True,
+                               driveways_intra_mode="quarter_share")
         r = solve_max_kit(SITE, o, norms)
         acc = r.driveways_social_access_area.value or 0
         share = norms.resolve("driveways.intra_quarter_share")
         per_obj = norms.resolve("driveways.social_object_access_m2")
-        assert acc > 0 and acc % per_obj == 0
+        assert acc > 0 and acc % per_obj == 0     # все объекты по 600
         assert r.driveways_intra_quarter_area.value == pytest.approx(
             SITE.area_m2 * share + acc, rel=1e-9)
+
+    def test_hybrid_counts_engineering_and_multilevel(self, norms):
+        """Гибрид начисляет подъезды инженерке и МУ-паркингам, а схема
+        «доля от квартала» — нет (там только соцобъекты)."""
+        cfg = dict(floors=12, planning_doc=True,
+                   parking=ParkingConfig(mode="custom", open_share=0.3,
+                                         multilevel_share=0.7,
+                                         underground_share=0.0,
+                                         multilevel_levels=2))
+        r_hy = solve_max_kit(SITE, CalculationOptions(**cfg), norms)
+        r_qs = solve_max_kit(SITE, CalculationOptions(
+            driveways_intra_mode="quarter_share", **cfg), norms)
+        # у гибрида в формуле подъездов есть инженерия и МУ
+        f = r_hy.driveways_social_access_area.formula or ""
+        assert "инж." in f and "МУ-паркинг" in f, f
+        assert "инж." not in (r_qs.driveways_social_access_area.formula or "")
 
     def test_more_school_objects_more_access(self, norms):
         """Больше корпусов СОШ → больше подъездов (по 600 за корпус)."""
