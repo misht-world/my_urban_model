@@ -245,9 +245,35 @@ def calc_cost(tep, options, norms: Normatives) -> CostBreakdown:
 
     # --- Парковки соцобъектов (P0-6): открытые на ЗУ соцобъекта, та же ---
     # удельная стоимость, что у обычных открытых парковок (c_surface).
-    soc_park_area = float(tep.social_parking_area.value or 0.0)
-    _sp_mode, _ = resolve_funding(options, "social_parking", norms)
-    cost_soc_park = 0.0 if _sp_mode == "not_developer" else soc_park_area * c_surface
+    # v0.19.3: парковка соцобъекта НАСЛЕДУЕТ режим финансирования своего
+    # объекта (парковка ДОО — за счёт того же, за чей счёт само ДОО).
+    # Отдельной настройки у неё нет: складываем по родителям.
+    #   ДОО/СОШ            — social_parking_kindergarten / _school (м/м);
+    #   доп.обр/поликлиника — только ОТДЕЛЬНО СТОЯЩИЕ (у встроенных парковка
+    #                        уходит на ЗУ жилья и сидит в housing_lot).
+    # Σ по родителям == social_parking_area, когда все на застройщике.
+    _m2_pp = float(norms.resolve("parking.open_space_per_place"))
+
+    def _pk(field: str) -> float:
+        f = getattr(tep, field, None)
+        return float(f.value or 0.0) if f is not None else 0.0
+
+    _ae_standalone = 0.0 if getattr(tep, "add_education_built_in", False) \
+        else _pk("add_education_parking_places")
+    _poly_standalone = 0.0 if getattr(tep, "polyclinic_built_in", False) \
+        else _pk("polyclinic_parking_places")
+    cost_soc_park = 0.0
+    for _places, _key, _inc in (
+        (_pk("social_parking_kindergarten"), "kindergarten", "include_kindergarten"),
+        (_pk("social_parking_school"), "school", "include_school"),
+        (_ae_standalone, "add_education", "include_add_education"),
+        (_poly_standalone, "polyclinic", "include_polyclinic"),
+    ):
+        if _places <= 0 or not getattr(options, _inc, True):
+            continue
+        _m, _ = resolve_funding(options, _key, norms)
+        if _m != "not_developer":
+            cost_soc_park += _places * _m2_pp * c_surface
 
     # --- Спортивные сооружения (P0-6): плоскостные, ВРИ 5.1.3. ---
     # Берём ту же удельную стоимость, что у парковки surface — это

@@ -262,11 +262,14 @@ def _funding_exceptions(o) -> list[tuple[str, str]]:
     _spec = getattr(o, "object_funding", None) or {}
     _RU = {"developer": "застройщик", "compensated": "компенсация {p:.0f}%",
            "not_developer": "не за счёт застройщика"}
+    from urban_model.models.funding import FUNDING_INCLUDE_FLAGS
     for key in FUNDING_KEYS:
         sp = _spec.get(key)
         if sp is None or sp.mode == "default":
             continue
-        if key in ("sport", "social_parking", "engineering") and sp.mode == "developer":
+        if not getattr(o, FUNDING_INCLUDE_FLAGS[key], True):
+            continue    # объект не участвует в расчёте
+        if key in ("sport", "engineering") and sp.mode == "developer":
             continue    # это и есть их значение по умолчанию
         _share = (sp.compensation_share
                   if sp.compensation_share is not None
@@ -514,10 +517,8 @@ def _economy_slide(deck, name: str, tep: TEPResult, options, v_index: int,
     buf = C.chart_economy_structure(tep)
     if buf is not None:
         T.section_label(s, _MARGIN, y, 6.2, "Себестоимость и выручка, усл. баллы")
-        # Ширина подобрана так, чтобы диаграмма (аспект 6.4×4.2) закончилась
-        # выше строки «за чей счёт»: 5.8 × 4.2/6.4 ≈ 3.81 → низ ≈ 6.16.
-        s.shapes.add_picture(buf, int((_MARGIN + 0.2) * T.EMU),
-                             int((y + 0.4) * T.EMU), width=int(5.8 * T.EMU))
+        s.shapes.add_picture(buf, int(_MARGIN * T.EMU),
+                             int((y + 0.4) * T.EMU), width=int(6.3 * T.EMU))
 
     _x = _MARGIN + 6.6
     _w = _CONTENT_W - 6.6
@@ -542,8 +543,13 @@ def _economy_slide(deck, name: str, tep: TEPResult, options, v_index: int,
         ("— Соц. нагрузка (нетто)", _fmt_u(e.net_social_burden)),
     ]
     T.section_label(s, _x, y, _w, "Показатели")
-    T.table(s, _x, y + 0.4, _w, ["Показатель", "Знач."], rows,
+    T.table(s, _x, y + 0.46, _w, ["Показатель", "Усл. баллы"], rows,
             col_ratios=[2.3, 1.0], fsize=9)
+    # v0.19.3 (п.6): пояснить, что за цифры в таблице. Кладём ПОД шапку
+    # секции (над таблицей) — снизу места нет, там колонтитул.
+    T.text(s, _x, y + 0.14, _w, 0.28,
+           "усл. баллы: 1.0 ≈ м² жилья 9-эт. монолита, не рубли",
+           size=7, color=T.SOFT)
 
     # «За чей счёт» — только отличия от общей настройки (v0.19). Компактной
     # строкой ПОД диаграммой: таблица показателей справа занимает всю высоту.

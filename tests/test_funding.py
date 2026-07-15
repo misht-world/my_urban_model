@@ -128,8 +128,7 @@ class TestPerObjectModes:
             e.cost.polyclinic * 0.5, rel=1e-6)
 
     @pytest.mark.parametrize("key,field", [
-        ("sport", "sport"), ("social_parking", "social_parking"),
-        ("engineering", "engineering"),
+        ("sport", "sport"), ("engineering", "engineering"),
     ])
     def test_not_developer_zeroes_each(self, norms, key, field):
         base = getattr(_econ(norms).cost, field)
@@ -137,6 +136,34 @@ class TestPerObjectModes:
         off = getattr(_econ(norms, object_funding={
             key: ObjectFunding(mode="not_developer")}).cost, field)
         assert off == 0
+
+
+class TestSocialParkingInherits:
+    """v0.19.3: парковка соцобъекта наследует режим своего объекта —
+    отдельной настройки у неё нет (строка убрана из карточки)."""
+
+    def test_not_a_funding_key(self):
+        assert "social_parking" not in FUNDING_KEYS
+
+    def test_sum_matches_area_when_all_developer(self, norms):
+        """Пока все на застройщике — как раньше: вся площадь × ставку."""
+        r = solve_max_kit(SITE, CalculationOptions(
+            floors=12, planning_doc=True, social_funding="developer"), norms)
+        c_surf = norms.resolve("economy.construction.parking_surface")
+        expected = (r.social_parking_area.value or 0) * c_surf
+        assert r.economy.cost.social_parking == pytest.approx(expected, rel=1e-6)
+
+    def test_follows_kindergarten(self, norms):
+        base = _econ(norms).cost.social_parking
+        off = _econ(norms, object_funding={
+            "kindergarten": ObjectFunding(mode="not_developer")}).cost.social_parking
+        assert 0 < off < base, "парковка ДОО должна уйти вместе с ДОО"
+
+    def test_all_social_not_developer_zeroes(self, norms):
+        e = _econ(norms, object_funding={
+            k: ObjectFunding(mode="not_developer")
+            for k in ("kindergarten", "school", "add_education", "polyclinic")})
+        assert e.cost.social_parking == 0
 
 
 class TestDuplicateWarning:

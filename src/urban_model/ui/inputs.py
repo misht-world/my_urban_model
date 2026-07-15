@@ -15,7 +15,13 @@ from urban_model.calculations.vpp import VppMode
 from urban_model.models import CalculationOptions, FloorCluster, Site
 from urban_model.models.built_in import BuiltInArea
 from urban_model.models.custom_object import CustomObject
-from urban_model.models.funding import FUNDING_KEYS, FUNDING_LABELS, ObjectFunding
+from urban_model.models.funding import (
+    FUNDING_FOLLOW_GLOBAL,
+    FUNDING_INCLUDE_FLAGS,
+    FUNDING_KEYS,
+    FUNDING_LABELS,
+    ObjectFunding,
+)
 from urban_model.models.engineering import (
     ENGINEERING_KEYS,
     ENGINEERING_LABELS,
@@ -371,7 +377,8 @@ def render_params_tab() -> UserInputs:
             # v0.10.18: «широкие» плитки (parking + custom_objects) рендерятся
             # на ВСЮ ширину правой колонки — там много контролов, в 2-кол
             # сетке они сжимаются. Остальные — стандартная 2-кол сетка.
-            WIDE_KEYS = {"parking", "custom", "vpp", "engineering"}
+            # v0.19.3 (п.1): «economy» — широкая: в ней матрица «объект × режим».
+            WIDE_KEYS = {"parking", "custom", "vpp", "engineering", "economy"}
             narrow = [(k, fn) for k, fn in active_tiles if k not in WIDE_KEYS]
             wide = [(k, fn) for k, fn in active_tiles if k in WIDE_KEYS]
             results: dict[str, object] = {}
@@ -1721,47 +1728,80 @@ def _render_parking_custom() -> ParkingConfig:
         return ParkingConfig(mode="min_open")
 
 
-def _render_funding_grid() -> dict[str, ObjectFunding]:
-    """Сетка «за чей счёт» по каждому объекту (v0.19.0).
+# v0.19.3: матрица «объект × режим» — строки объектов, столбцы режимов,
+# выбор одним кликом. Чекбоксы с radio-семантикой (см. _fund_pick).
+_FUND_MODES: list[tuple[str, str]] = [
+    ("default", "Как общий"),
+    ("developer", "Застройщик"),
+    ("compensated", "Компенсация"),
+    ("not_developer", "Не за счёт застройщика"),
+]
+_FUND_COLS = [1.7, 0.9, 1.0, 1.1, 0.7, 1.6]
 
-    Сделана обычными виджетами со стабильными ключами (а не data_editor):
-    выглядит таблицей, но не подвержена проблемам табличного редактора
-    (см. правило про seed-паттерн в проекте).
+
+def _fund_pick(obj_key: str, mode: str) -> None:
+    """Radio-семантика строки: включаем один режим, остальные гасим.
+
+    Снятие единственной галочки возвращает её — «без режима» быть не может.
+    """
+    for m, _ in _FUND_MODES:
+        st.session_state[f"fund_{obj_key}_{m}"] = (m == mode)
+
+
+def _render_funding_grid(active_keys: list[str]) -> dict[str, ObjectFunding]:
+    """Матрица «за чей счёт» (v0.19.3): строки — только реально участвующие
+    объекты, столбцы — режимы. Обычные виджеты со стабильными ключами
+    (не data_editor) — надёжнее и предсказуемее.
     """
     st.markdown("**За чей счёт объекты**")
     st.caption(
-        "«Как общий» — по настройке выше (для спортплощадок, парковок "
-        "соцобъектов и инженерии это «застройщик»). «Не за счёт застройщика» "
-        "— строит город или другой инвестор либо объект уже существует: "
-        "ни затрат, ни выручки. Режим «только потребность» на экономику "
-        "больше не влияет — он лишь выносит объект за баланс территории."
+        "«Как общий» — по настройке выше. «Не за счёт застройщика» — строит "
+        "город или другой инвестор либо объект уже существует: ни затрат, ни "
+        "выручки. Парковки соцобъекта наследуют режим своего объекта. "
+        "Режим «только потребность» экономику НЕ отключает — он лишь выносит "
+        "объект за баланс территории."
     )
-    _MODE_RU = {
-        "default": "Как общий",
-        "developer": "Застройщик",
-        "compensated": "Компенсация %",
-        "not_developer": "Не за счёт застройщика",
-    }
+    if not active_keys:
+        st.caption("Нет включённых объектов — нечего настраивать.")
+        return {}
+
+    hdr = st.columns(_FUND_COLS, vertical_alignment="bottom")
+    hdr[0].markdown(
+        "<div style='font-size:0.72rem;color:#8A8A8A;text-transform:uppercase;'>"
+        "Объект</div>", unsafe_allow_html=True)
+    for i, (_, lbl) in enumerate(_FUND_MODES):
+        _c = hdr[i + 1] if i < 2 else hdr[i + 2]   # 4-я колонка — поле «%»
+        _c.markdown(
+            f"<div style='font-size:0.72rem;color:#8A8A8A;"
+            f"text-transform:uppercase;'>{lbl}</div>", unsafe_allow_html=True)
+    hdr[4].markdown(
+        "<div style='font-size:0.72rem;color:#8A8A8A;'>%</div>",
+        unsafe_allow_html=True)
+
     out: dict[str, ObjectFunding] = {}
-    for key in FUNDING_KEYS:
-        c_name, c_mode, c_share = st.columns([1.3, 1.2, 0.9],
-                                             vertical_alignment="center")
-        c_name.markdown(
-            f"<div style='font-size:0.86rem;padding-top:6px;'>"
+    for key in active_keys:
+        cols = st.columns(_FUND_COLS, vertical_alignment="center")
+        cols[0].markdown(
+            f"<div style='font-size:0.86rem;padding-top:4px;'>"
             f"{FUNDING_LABELS[key]}</div>", unsafe_allow_html=True)
-        # Спорт/соц-парковки/инженерия до v0.19 всегда были на застройщике —
-        # оставляем это их значением по умолчанию (индекс 1), соцобъекты НГП
-        # следуют общей настройке (индекс 0).
-        _default_idx = 0 if key in ("kindergarten", "school",
-                                    "add_education", "polyclinic") else 1
-        mode = c_mode.selectbox(
-            FUNDING_LABELS[key], list(_MODE_RU.keys()), index=_default_idx,
-            format_func=lambda v: _MODE_RU[v],
-            key=f"fund_mode_{key}", label_visibility="collapsed",
-        )
+        for i, (m, lbl) in enumerate(_FUND_MODES):
+            ck = f"fund_{key}_{m}"
+            if ck not in st.session_state:
+                # v0.19.3 (п.4): по умолчанию всё на застройщике. Соцобъекты
+                # НГП — через «Как общий» (общая настройка по умолчанию =
+                # «Полностью застройщик»); спорт и инженерия общей настройке
+                # не подчиняются, поэтому им «Застройщик» отмечается явно.
+                _dflt = ("default" if key in FUNDING_FOLLOW_GLOBAL
+                         else "developer")
+                st.session_state[ck] = (m == _dflt)
+            _c = cols[i + 1] if i < 2 else cols[i + 2]
+            _c.checkbox(lbl, key=ck, on_change=_fund_pick, args=(key, m),
+                        label_visibility="collapsed")
+        mode = next((m for m, _ in _FUND_MODES
+                     if st.session_state.get(f"fund_{key}_{m}")), "default")
         share = None
         if mode == "compensated":
-            share = c_share.number_input(
+            share = cols[4].number_input(
                 "%", min_value=0, max_value=100, value=70, step=5,
                 key=f"fund_share_{key}", label_visibility="collapsed",
                 help="Доля себестоимости, которую компенсирует город",
@@ -1794,9 +1834,12 @@ def _render_economy_tile() -> tuple[str, str, float | None, dict[str, ObjectFund
             ),
         )
         # v0.12.27: за чей счёт соцобъекты (ДОО/СОШ/доп.обр здания).
+        # v0.19.3 (п.4): порядок начинается с «Полностью застройщик» — это
+        # значение по умолчанию (index=0). Строки матрицы ниже по умолчанию
+        # стоят на «Как общий» → без настройки всё на застройщике.
         _FUND_RU = {
-            "compensated": "Город компенсирует %",
             "developer": "Полностью застройщик",
+            "compensated": "Город компенсирует %",
             "city": "Полностью город",
             "at_cost": "Передача по себестоимости",
         }
@@ -1819,7 +1862,11 @@ def _render_economy_tile() -> tuple[str, str, float | None, dict[str, ObjectFund
                 help="Какую долю себестоимости соц-зданий компенсирует город.",
             ) / 100.0
         st.markdown("")
-        obj_funding = _render_funding_grid()
+        # v0.19.3 (п.3): строки только для реально участвующих объектов —
+        # выключенный из расчёта объект в экономике не показываем.
+        _active = [k for k in FUNDING_KEYS
+                   if st.session_state.get(FUNDING_INCLUDE_FLAGS[k], True)]
+        obj_funding = _render_funding_grid(_active)
         st.caption(
             ":material/info: Дополнительные объекты (офис, ФОК, торговля) "
             "настраиваются в своей карточке — колонка «Экономика»."

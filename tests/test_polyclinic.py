@@ -127,7 +127,10 @@ class TestIntegration:
 
     def test_economy_cost_and_compensation(self, spb):
         site = Site(area_m2=300_000)
-        e = solve_max_kit(site, CalculationOptions(floors=18, planning_doc=True), spb).economy
+        # v0.19.3: режим компенсации задаём ЯВНО — дефолт сменился на
+        # «застройщик» (по умолчанию компенсации нет).
+        e = solve_max_kit(site, CalculationOptions(
+            floors=18, planning_doc=True, social_funding="compensated"), spb).economy
         assert e.cost.polyclinic > 0
         comp_share = spb.resolve("economy.social_compensation.share")
         c_poly = spb.resolve("economy.construction.polyclinic")

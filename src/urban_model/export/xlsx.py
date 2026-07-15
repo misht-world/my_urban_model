@@ -251,8 +251,14 @@ def _funding_rows(options) -> list[tuple[str, str]]:
     def _fmt(mode: str, share: float) -> str:
         return _FUND_MODE_RU.get(mode, mode).format(share=share * 100)
 
+    # v0.19.3: только реально участвующие объекты (выключенный из расчёта
+    # объект в экономике не показываем — это путало).
+    from urban_model.models.funding import FUNDING_INCLUDE_FLAGS
+
     rows: list[tuple[str, str]] = []
     for key in FUNDING_KEYS:
+        if not getattr(options, FUNDING_INCLUDE_FLAGS[key], True):
+            continue
         mode, share = resolve_funding(options, key, norms)
         rows.append((FUNDING_LABELS[key], _fmt(mode, share)))
     for obj in (getattr(options, "custom_objects", None) or []):

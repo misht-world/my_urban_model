@@ -166,8 +166,10 @@ class CalculationOptions(BaseModel):
     #   developer   — полностью застройщик (компенсация 0);
     #   city        — полностью город (себестоимость соц-зданий = 0 у застройщика);
     #   at_cost     — передача по себестоимости (компенсация = 100%, нейтрально).
+    # v0.19.3: дефолт — «застройщик» (было «compensated»): по умолчанию всё за
+    # счёт застройщика, компенсация — осознанный выбор. UI и модель совпадают.
     social_funding: Literal["compensated", "developer", "city", "at_cost"] = Field(
-        default="compensated",
+        default="developer",
         description="За чей счёт соцобъекты: город % / застройщик / город / по себестоимости",
     )
     # Доля компенсации города для режима 'compensated'. None → норматив из YAML (0.7).

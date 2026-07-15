@@ -23,13 +23,15 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 # Ключи объектов с настраиваемым финансированием.
+# v0.19.3: «social_parking» УБРАН — парковки соцобъекта наследуют режим своего
+# объекта (парковка ДОО — за счёт того же, за чей счёт ДОО). Отдельная строка
+# только путала: она агрегировала парковки разных объектов.
 FUNDING_KEYS: tuple[str, ...] = (
     "kindergarten",
     "school",
     "add_education",
     "polyclinic",
     "sport",
-    "social_parking",
     "engineering",
 )
 
@@ -40,8 +42,18 @@ FUNDING_LABELS: dict[str, str] = {
     "add_education": "Доп. образование",
     "polyclinic": "Поликлиника",
     "sport": "Спортплощадки",
-    "social_parking": "Парковки соцобъектов",
     "engineering": "Инженерная инфраструктура",
+}
+
+# Флаг «учитывать в расчёте» для каждого объекта — UI показывает только
+# реально участвующие строки (v0.19.3).
+FUNDING_INCLUDE_FLAGS: dict[str, str] = {
+    "kindergarten": "include_kindergarten",
+    "school": "include_school",
+    "add_education": "include_add_education",
+    "polyclinic": "include_polyclinic",
+    "sport": "include_sport_facilities",
+    "engineering": "include_engineering",
 }
 
 # Объекты, которые по умолчанию следуют ГЛОБАЛЬНОМУ режиму (соцобъекты НГП).
@@ -50,6 +62,11 @@ FUNDING_LABELS: dict[str, str] = {
 _FOLLOW_GLOBAL: frozenset[str] = frozenset(
     {"kindergarten", "school", "add_education", "polyclinic"}
 )
+# Публичный алиас для UI: только эти объекты подчиняются общей настройке —
+# у остальных режим «Как общий» = «Застройщик», поэтому UI по умолчанию
+# отмечает им «Застройщик» явно (иначе подпись «Как общий» вводила бы в
+# заблуждение).
+FUNDING_FOLLOW_GLOBAL = _FOLLOW_GLOBAL
 
 # Режимы (эффективные, после разрешения `default`).
 EffectiveMode = Literal["developer", "compensated", "not_developer"]

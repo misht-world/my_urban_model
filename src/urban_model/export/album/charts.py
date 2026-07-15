@@ -169,9 +169,12 @@ def chart_social_provision(tep: TEPResult) -> BytesIO | None:
 
 
 def chart_economy_structure(tep: TEPResult) -> BytesIO | None:
-    """Структура экономики варианта (v0.19.1): две стек-колонки —
-    себестоимость по статьям и выручка по источникам, в одном масштабе.
-    Сразу видно, чем покрываются затраты и где перекос."""
+    """Структура экономики варианта (v0.19.1; v0.19.3 — горизонтальные бары).
+
+    Два блока в общем масштабе: себестоимость по статьям и выручка по
+    источникам. Стек-колонки (v0.19.1) не читались — мелкие статьи налезали
+    друг на друга; тот же приём, что спас диаграмму баланса.
+    """
     e = getattr(tep, "economy", None)
     if e is None or e.cost.total <= 0:
         return None
@@ -199,30 +202,37 @@ def chart_economy_structure(tep: TEPResult) -> BytesIO | None:
     ]
     cost_items = [i for i in cost_items if i[1] > 0]
     rev_items = [i for i in rev_items if i[1] > 0]
+    if not cost_items:
+        return None
     plt = _mpl()
-    fig, ax = plt.subplots(figsize=(6.4, 4.2))
+    n = len(cost_items) + len(rev_items)
+    fig, (ax1, ax2) = plt.subplots(
+        2, 1, figsize=(7.0, 1.1 + 0.34 * n), sharex=True,
+        gridspec_kw={"height_ratios": [len(cost_items), max(1, len(rev_items))],
+                     "hspace": 0.45},
+    )
     _top = max(c.total, rv.total)
-    for x, items, total in ((0, cost_items, c.total), (1, rev_items, rv.total)):
-        bottom = 0.0
-        for lbl, val, col in items:
-            ax.bar(x, val, bottom=bottom, color=col, width=0.5,
-                   edgecolor="white", linewidth=1)
-            if val / _top >= 0.05:      # подпись только для заметных долей
-                ax.text(x, bottom + val / 2, f"{lbl}\n{val / total * 100:.0f}%",
-                        ha="center", va="center", fontsize=7.5, color="white")
-            bottom += val
-        ax.text(x, total + _top * 0.02, f"{total:,.0f}".replace(",", " "),
-                ha="center", va="bottom", fontsize=10, color=_CC["ink"])
-    ax.set_xticks([0, 1])
-    ax.set_xticklabels(["Себестоимость", "Выручка"], fontsize=9.5)
-    ax.set_ylim(0, _top * 1.12)
-    ax.set_yticks([])
-    ax.set_xlim(-0.55, 1.55)
-    # Индекс — подпись между колонками.
-    ax.text(0.5, _top * 0.5, f"индекс\n{e.economy_index:.0f}",
-            ha="center", va="center", fontsize=13, color=_CC["ink"])
-    _style(ax)
-    ax.spines["left"].set_visible(False)
+
+    def _block(ax, items, total, title):
+        labels = [i[0] for i in items][::-1]
+        vals = [i[1] for i in items][::-1]
+        cols = [i[2] for i in items][::-1]
+        bars = ax.barh(labels, vals, color=cols, height=0.62)
+        for bar, v in zip(bars, vals):
+            ax.text(bar.get_width() + _top * 0.012,
+                    bar.get_y() + bar.get_height() / 2,
+                    f"{v:,.0f} · {v / total * 100:.0f}%".replace(",", " "),
+                    va="center", fontsize=8, color=_CC["ink"])
+        ax.set_title(f"{title}  {total:,.0f}".replace(",", " "),
+                     loc="left", fontsize=9.5, color=_CC["ink"], pad=4)
+        ax.set_xlim(0, _top * 1.30)
+        ax.set_xticks([])
+        ax.tick_params(axis="y", labelsize=8)
+        _style(ax)
+        ax.spines["bottom"].set_visible(False)
+
+    _block(ax1, cost_items, c.total, "Себестоимость")
+    _block(ax2, rev_items, rv.total, "Выручка")
     return _save(fig, plt)
 
 

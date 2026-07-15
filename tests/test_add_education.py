@@ -161,8 +161,10 @@ class TestIntegration:
         """Доп. обр. симметричен ДОО/СОШ: входит и в соцнагрузку, и в
         компенсацию города (v0.12.19)."""
         site = Site(area_m2=200_000)
+        # v0.19.3: компенсацию включаем ЯВНО — дефолт сменился на «застройщик».
         e = solve_max_kit(
-            site, CalculationOptions(floors=18, planning_doc=True), spb
+            site, CalculationOptions(floors=18, planning_doc=True,
+                                     social_funding="compensated"), spb
         ).economy
         cb, rb = e.cost, e.revenue
         # net_social_burden включает cost.add_education (и поликлинику, v0.12.28)
