@@ -172,3 +172,58 @@ def test_apply_reproduces_recommendation_with_vpp(site_large, norms):
     assert applied.apartments_area.value == pytest.approx(
         rec.tep.apartments_area.value, rel=1e-3
     )
+
+
+class TestEconomyDisabled:
+    """v0.19.2: при include_economy=False индекса нет — карточки по индексу
+    не строятся (раньше молча вырождались в копии «Максимума площади»,
+    а фильтр реалистичных парковок отключался вместе с экономикой)."""
+
+    @pytest.fixture(scope="class")
+    def bundle_no_econ(self, site_large, norms):
+        opts = CalculationOptions(floors=12, planning_doc=True,
+                                  include_economy=False)
+        base = solve_max_kit(site_large, opts, norms)
+        assert base.economy is None
+        return generate_pareto_recommendations(
+            site_large, opts, norms, base, n_trials=60, seed=42), base
+
+    def test_only_two_cards(self, bundle_no_econ):
+        b, _ = bundle_no_econ
+        labels = [r.label for r in b.recommendations]
+        assert labels == ["Максимум площади", "Девелоперский"], labels
+
+    def test_no_economy_labels(self, bundle_no_econ):
+        b, _ = bundle_no_econ
+        labels = {r.label for r in b.recommendations}
+        assert "Максимум эконом-индекса" not in labels
+        assert "Пороговый" not in labels
+
+    def test_developer_differs_from_max_area(self, bundle_no_econ):
+        """«Девелоперский» не обязан совпадать с «Максимумом площади» —
+        он учитывает рациональность парковок и устойчивость."""
+        b, _ = bundle_no_econ
+        by = {r.label: r for r in b.recommendations}
+        assert by["Девелоперский"].tep is not by["Максимум площади"].tep
+
+    def test_developer_respects_parking_caps(self, bundle_no_econ, norms):
+        """Фильтр потолков класса работает и без экономики."""
+        from urban_model.optimize.pareto import _violates_parking_caps
+        b, _ = bundle_no_econ
+        caps = norms.resolve("economy.parking_caps", residential_class="comfort")
+        dev = next(r for r in b.recommendations if r.label == "Девелоперский")
+        assert not _violates_parking_caps(dev.tep, caps)
+
+    def test_deltas_have_no_index(self, bundle_no_econ):
+        b, _ = bundle_no_econ
+        for r in b.recommendations:
+            assert r.delta_vs_base.d_index_abs is None
+            assert r.delta_vs_base.d_profit_abs is None
+
+
+class TestEconomyEnabledStillFour:
+    def test_four_cards_with_economy(self, bundle):
+        """Регрессия: с экономикой карточек по-прежнему до 4."""
+        labels = [r.label for r in bundle.recommendations]
+        assert "Максимум площади" in labels
+        assert len(labels) >= 2

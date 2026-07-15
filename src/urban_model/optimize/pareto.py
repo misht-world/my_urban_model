@@ -527,26 +527,43 @@ def _select_three(
         if with_econ else apt_sorted
     )
 
+    # v0.19.2: экономика может быть ОТКЛЮЧЕНА (include_economy=False) — тогда
+    # индекса нет вовсе. Карточки «Максимум эконом-индекса» и «Пороговый» без
+    # него бессмысленны (раньше молча вырождались в копии «Максимума площади»),
+    # поэтому не строятся. «Девелоперский» остаётся — его не-экономические
+    # составляющие (рациональность парковок, устойчивость, инженерка, соц,
+    # ЗНОП) считаются и без экономики; вес индекса перераспределяется.
+    has_econ = bool(with_econ)
+    # Пул для Девелоперского: реалистичный (с потолками класса). Без экономики
+    # берём pool_capped напрямую — иначе фильтр потолков молча отключался
+    # вместе с экономикой и карточка предлагала нереальные миксы парковок.
+    dev_pool = with_econ_real if has_econ else pool_capped
+
     # Нормировки apt и economy_index (min-max по пулу) — для blended-скоров.
     # v0.12.26: Пороговый/Девелоперский считаются по РЕАЛИСТИЧНОМУ пулу
     # (с потолками класса), поэтому нормировки — по нему же.
-    if with_econ_real and len(with_econ_real) >= 2:
-        apts = [r.apartments_area for r in with_econ_real]
-        idxs = [r.tep.economy.economy_index for r in with_econ_real]
+    if dev_pool and len(dev_pool) >= 2:
+        apts = [r.apartments_area for r in dev_pool]
         apt_min, apt_max = min(apts), max(apts)
-        i_min, i_max = min(idxs), max(idxs)
         apt_range = apt_max - apt_min if apt_max > apt_min else 1.0
-        i_range = i_max - i_min if i_max > i_min else 1.0
 
         def _apt_n(r: OptimizationResult) -> float:
             return (r.apartments_area - apt_min) / apt_range
 
-        def _idx_n(r: OptimizationResult) -> float:
-            return (r.tep.economy.economy_index - i_min) / i_range
+        if has_econ:
+            idxs = [r.tep.economy.economy_index for r in dev_pool]
+            i_min, i_max = min(idxs), max(idxs)
+            i_range = i_max - i_min if i_max > i_min else 1.0
+
+            def _idx_n(r: OptimizationResult) -> float:
+                return (r.tep.economy.economy_index - i_min) / i_range
+        else:
+            def _idx_n(r: OptimizationResult) -> float:
+                return 0.0
 
         # v0.12.4: соц-эффективность (ЗУ/место) — нормировка по пулу для
         # тай-брейка в developer_score (ниже ЗУ/место → лучше → меньше штраф).
-        _spps = [_social_plot_per_place(r.tep) for r in with_econ_real]
+        _spps = [_social_plot_per_place(r.tep) for r in dev_pool]
         _spp_min, _spp_max = min(_spps), max(_spps)
         _spp_range = _spp_max - _spp_min if _spp_max > _spp_min else 1.0
 
@@ -558,7 +575,7 @@ def _select_three(
         # Малый положительный вес как тай-брейк в developer_score.
         def _znop_pp(r: OptimizationResult) -> float:
             return float(r.tep.znop_per_person.value or 0.0)
-        _znops = [_znop_pp(r) for r in with_econ_real]
+        _znops = [_znop_pp(r) for r in dev_pool]
         _znop_min, _znop_max = min(_znops), max(_znops)
         _znop_range = _znop_max - _znop_min if _znop_max > _znop_min else 1.0
 
@@ -567,15 +584,23 @@ def _select_three(
 
         # Пороговый (v0.12.3): вариант на пороге окупаемости — эконом-индекс
         # ближе всего к 100 (выручка ≈ себестоимость). Это «потолок застройки
-        # при нулевом запасе экономики».
-        threshold_sorted = sorted(
-            with_econ_real, key=lambda r: abs(r.tep.economy.economy_index - 100.0)
+        # при нулевом запасе экономики». Без экономики карточка не строится.
+        threshold_sorted = (
+            sorted(with_econ_real,
+                   key=lambda r: abs(r.tep.economy.economy_index - 100.0))
+            if has_econ else []
         )
         # Девелоперский (v0.12.2) — полноценный developer_score (аудит-формула):
         #   0.50·эконом-индекс + 0.25·площадь + 0.15·парк.рациональность
         #   + 0.10·robustness − риск(крупная инженерка)
         # Парк.рациональность учитывает класс жилья (матрица пригодности).
         _res_class = getattr(base_options, "residential_class", "comfort")
+
+        # v0.19.2: без экономики вес индекса (0.50) перераспределяется на
+        # остальные слагаемые пропорционально — карточка остаётся осмысленной
+        # («максимум площади, но без перекосов парковок и хрупких решений»)
+        # и отличается от чистого «Максимума площади».
+        _w = (0.25, 0.15, 0.10) if has_econ else (0.50, 0.30, 0.20)
 
         def _dev_score(r: OptimizationResult) -> float:
             rationality = (
@@ -590,25 +615,32 @@ def _select_three(
             # v0.12.11: малый бонус за ЗНОП/чел (качество среды, продаваемость).
             znop_bonus = 0.04 * _znop_n(r)
             return (
-                0.50 * _idx_n(r)
-                + 0.25 * _apt_n(r)
-                + 0.15 * rationality
-                + 0.10 * robustness
+                (0.50 * _idx_n(r) if has_econ else 0.0)
+                + _w[0] * _apt_n(r)
+                + _w[1] * rationality
+                + _w[2] * robustness
                 - risk
                 - social_penalty
                 + znop_bonus
             )
 
-        developer_sorted = sorted(with_econ_real, key=_dev_score, reverse=True)
+        developer_sorted = sorted(dev_pool, key=_dev_score, reverse=True)
     else:
-        threshold_sorted = apt_sorted
-        developer_sorted = apt_sorted
+        threshold_sorted = apt_sorted if has_econ else []
+        developer_sorted = dev_pool or apt_sorted
 
     rationales = {
         "Максимум площади": "Наибольшая площадь квартир — максимальный выход ТЭП.",
         "Максимум эконом-индекса": "Наивысший экономический индекс (выручка ÷ себестоимость).",
         "Пороговый": "На пороге окупаемости (эконом-индекс ≈ 100): предельная застройка при нулевом запасе экономики.",
-        "Девелоперский": "Практичный вариант для дальнейшей проработки: уклон в экономику, без перекосов парковок и спорных решений.",
+        "Девелоперский": (
+            "Практичный вариант для дальнейшей проработки: уклон в экономику, "
+            "без перекосов парковок и спорных решений."
+            if has_econ else
+            "Практичный вариант для дальнейшей проработки: близко к максимуму "
+            "площади, но без перекосов парковок и хрупких решений. "
+            "Экономика отключена — карточки по эконом-индексу не строятся."
+        ),
     }
 
     def _pick(
@@ -643,13 +675,15 @@ def _select_three(
     recs: list[Recommendation] = []
     seen_fps: set[tuple] = set()
     seen_ids: set[int] = set()
-    _index_top_id = id(index_sorted[0]) if index_sorted else None
-    for i, (label, pool) in enumerate([
-        ("Максимум площади", apt_sorted),
-        ("Максимум эконом-индекса", index_sorted),
-        ("Пороговый", threshold_sorted),
-        ("Девелоперский", developer_sorted),
-    ]):
+    _index_top_id = id(index_sorted[0]) if (has_econ and index_sorted) else None
+    # v0.19.2: без экономики строим только «Максимум площади» + «Девелоперский».
+    _cards: list[tuple[str, list[OptimizationResult]]] = [
+        ("Максимум площади", apt_sorted)]
+    if has_econ:
+        _cards += [("Максимум эконом-индекса", index_sorted),
+                   ("Пороговый", threshold_sorted)]
+    _cards.append(("Девелоперский", developer_sorted))
+    for i, (label, pool) in enumerate(_cards):
         if label == "Пороговый" and pool:
             # v0.12.26: «Пороговый» — ЧЕСТНО ближайший к 100, БЕЗ дедупа.
             # Может совпасть с «Макс. индекса», если проект сабокупаемый (макс.
