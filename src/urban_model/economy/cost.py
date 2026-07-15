@@ -22,6 +22,7 @@
 from __future__ import annotations
 
 from urban_model.economy.result import CostBreakdown
+from urban_model.models.funding import resolve_funding, resolve_funding_spec
 from urban_model.normatives import Normatives
 
 
@@ -182,21 +183,21 @@ def calc_cost(tep, options, norms: Normatives) -> CostBreakdown:
     cost_vpp = bi_area * c_vpp
 
     # --- ДОО / СОШ ---
-    # v0.9.14: при only_demand=True объект размещается ВНЕ квартала и НЕ
-    # строится застройщиком — его строит город или другой инвестор.
-    # Поэтому себестоимость не должна попадать в наш cost. Раньше cost
-    # продолжал считаться даже при only_demand, что давало системный
-    # «фантомный убыток» от объекта, который мы не строим.
+    # v0.19.0: себестоимость соцобъекта определяет РЕЖИМ ФИНАНСИРОВАНИЯ
+    # (resolve_funding), а НЕ `only_demand`.
+    # Раньше only_demand обнулял cost — считалось, что объект вне квартала
+    # строит кто-то другой. Это неверно: объект может строиться застройщиком
+    # за пределами площадки. Теперь only_demand влияет только на баланс
+    # территории; «не за счёт застройщика» задаётся явно (режим not_developer).
+    # Компонент выключен целиком (include_*=False) → площадь здания 0 → cost 0.
     kg_bld = (tep.kindergarten_building_area.value or 0.0)
     sch_bld = (tep.school_building_area.value or 0.0)
-    # kg_only_demand уже вычислен выше (для вычета здания встроенного ДОО).
-    sch_only_demand = bool(getattr(options.school, "only_demand", False)) \
-        if getattr(options, "include_school", True) else True
-    # v0.12.27: режим «полностью город» — соц-здания строит город, их
-    # себестоимость у застройщика = 0 (компенсация в revenue тоже 0).
-    _city_funded = getattr(options, "social_funding", "compensated") == "city"
-    cost_kg = 0.0 if (kg_only_demand or _city_funded) else kg_bld * c_kg
-    cost_sch = 0.0 if (sch_only_demand or _city_funded) else sch_bld * c_sch
+    _kg_mode, _ = resolve_funding(options, "kindergarten", norms)
+    _sch_mode, _ = resolve_funding(options, "school", norms)
+    cost_kg = 0.0 if (_kg_mode == "not_developer"
+                      or not getattr(options, "include_kindergarten", True)) else kg_bld * c_kg
+    cost_sch = 0.0 if (_sch_mode == "not_developer"
+                       or not getattr(options, "include_school", True)) else sch_bld * c_sch
 
     # --- Доп. образование (ВРИ 3.5.1, v0.12.15) ---
     # Здание строит застройщик (и для ВПП, и для отд. стоящего), кроме режима
@@ -204,24 +205,26 @@ def calc_cost(tep, options, norms: Normatives) -> CostBreakdown:
     # forward.py → двойного счёта нет (здесь добавляем спец-ставку доп. обр.).
     ae_bld = float(getattr(tep, "add_education_building_area", None).value or 0.0) \
         if getattr(tep, "add_education_building_area", None) is not None else 0.0
-    ae_only_demand = bool(getattr(options.add_education, "only_demand", False)) \
-        if getattr(options, "include_add_education", True) else True
     try:
         c_add_edu = float(norms.resolve("economy.construction.add_education"))
     except KeyError:
         c_add_edu = c_sch
-    cost_add_edu = 0.0 if (ae_only_demand or _city_funded) else ae_bld * c_add_edu
+    _ae_mode, _ = resolve_funding(options, "add_education", norms)
+    cost_add_edu = 0.0 if (_ae_mode == "not_developer"
+                           or not getattr(options, "include_add_education", True)) \
+        else ae_bld * c_add_edu
 
     # --- Поликлиника (ВРИ 3.4.1, v0.12.28) ---
     poly_bld = float(getattr(tep, "polyclinic_building_area", None).value or 0.0) \
         if getattr(tep, "polyclinic_building_area", None) is not None else 0.0
-    poly_only_demand = bool(getattr(options.polyclinic, "only_demand", False)) \
-        if getattr(options, "include_polyclinic", True) else True
     try:
         c_poly = float(norms.resolve("economy.construction.polyclinic"))
     except KeyError:
         c_poly = c_sch
-    cost_poly = 0.0 if (poly_only_demand or _city_funded) else poly_bld * c_poly
+    _poly_mode, _ = resolve_funding(options, "polyclinic", norms)
+    cost_poly = 0.0 if (_poly_mode == "not_developer"
+                        or not getattr(options, "include_polyclinic", True)) \
+        else poly_bld * c_poly
 
     # --- Парковки ---
     n_open = int(tep.parking_open_places.value or 0)
@@ -243,21 +246,27 @@ def calc_cost(tep, options, norms: Normatives) -> CostBreakdown:
     # --- Парковки соцобъектов (P0-6): открытые на ЗУ соцобъекта, та же ---
     # удельная стоимость, что у обычных открытых парковок (c_surface).
     soc_park_area = float(tep.social_parking_area.value or 0.0)
-    cost_soc_park = soc_park_area * c_surface
+    _sp_mode, _ = resolve_funding(options, "social_parking", norms)
+    cost_soc_park = 0.0 if _sp_mode == "not_developer" else soc_park_area * c_surface
 
     # --- Спортивные сооружения (P0-6): плоскостные, ВРИ 5.1.3. ---
     # Берём ту же удельную стоимость, что у парковки surface — это
     # покрытие/благоустройство без капитальных конструкций. Подходящего
     # отдельного норматива в economy/* пока нет; уточним при v0.9.
     sport_area = float(tep.sport_facilities_area.value or 0.0)
-    cost_sport = sport_area * c_surface
+    _sport_mode, _ = resolve_funding(options, "sport", norms)
+    cost_sport = 0.0 if _sport_mode == "not_developer" else sport_area * c_surface
 
     # --- Кастомные объекты (P0-6): площадь × коммерческая ставка ВПП. ---
     # Кастомные объекты бывают коммерческими (офис, торговля) и социальными
-    # (поликлиника, ФОК). На v0.8 различаем по флагу `is_commercial` если
-    # есть, иначе считаем коммерческими по умолчанию.
+    # (поликлиника, ФОК). Ставка — по ВРИ; v0.19.0: режим финансирования
+    # задаётся на самом объекте (`CustomObject.funding`, дефолт — застройщик).
     cost_custom = 0.0
     for obj in (getattr(options, "custom_objects", None) or []):
+        _mode, _ = resolve_funding_spec(
+            getattr(obj, "funding", None), options, norms)
+        if _mode == "not_developer":
+            continue  # строит город / другой инвестор / уже существует
         floor_area = float(obj.floor_area_m2 or obj.plot_area_m2 or 0.0)
         # Коммерческие → как ВПП commercial; некоммерческие → как ДОО.
         # Эвристика по ВРИ: 3.x = соц (медицина/спорт), 4.x = коммерция.
@@ -270,12 +279,16 @@ def calc_cost(tep, options, norms: Normatives) -> CostBreakdown:
             cost_custom += floor_area * c_vpp  # по умолчанию — коммерция
 
     # --- Инженерная инфраструктура (v0.12) ---
-    # Себестоимость по объектам (ориентиры в у.е., уточнить по НЦС). Объекты
-    # «только потребность» (in_balance=False) строит город/иной инвестор —
-    # симметрично ДОО/СОШ only_demand, их себестоимость к нам не относится.
+    # Себестоимость по объектам (ориентиры в у.е., уточнить по НЦС).
+    # v0.19.0: `in_balance=False` («только потребность») означает лишь то, что
+    # ЗУ объекта вне баланса квартала, — себестоимость при этом остаётся на
+    # застройщике (объект может строиться за пределами площадки). Кто платит,
+    # решает режим финансирования строки «Инженерная инфраструктура».
     cost_engineering = 0.0
     eng = getattr(tep, "engineering", None)
-    if eng is not None:
+    _eng_mode, _ = resolve_funding(options, "engineering", norms)
+    if eng is not None and _eng_mode != "not_developer" \
+            and getattr(options, "include_engineering", True):
         _ec = "economy.engineering_cost"
         rate_tp = float(norms.resolve(f"{_ec}.tp_per_object"))
         rate_rtp = float(norms.resolve(f"{_ec}.rtp_per_object"))
@@ -284,8 +297,6 @@ def calc_cost(tep, options, norms: Normatives) -> CostBreakdown:
         rate_osps = float(norms.resolve(f"{_ec}.osps_per_m3day"))
         rate_pump = float(norms.resolve(f"{_ec}.pump_per_object"))
         for o in eng.objects:
-            if not o.in_balance:
-                continue  # объект вне квартала — строит не застройщик
             if o.key == "tp":
                 cost_engineering += o.count * rate_tp
             elif o.key == "rtp":

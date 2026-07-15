@@ -15,6 +15,7 @@ from urban_model.calculations.vpp import VppMode
 from urban_model.models import CalculationOptions, FloorCluster, Site
 from urban_model.models.built_in import BuiltInArea
 from urban_model.models.custom_object import CustomObject
+from urban_model.models.funding import FUNDING_KEYS, FUNDING_LABELS, ObjectFunding
 from urban_model.models.engineering import (
     ENGINEERING_KEYS,
     ENGINEERING_LABELS,
@@ -56,6 +57,16 @@ class UserInputs:
 
 # Допустимые ВРИ для произвольных объектов
 _VRI_OPTIONS = ["3.4", "3.5", "3.6", "3.7", "4.0", "4.1", "4.4", "4.5", "4.6", "5.1"]
+
+# v0.19.0: режимы финансирования пользовательских объектов (колонка «Экономика»
+# в их таблице). «Как общий» для них = «Застройщик» — общая настройка карточки
+# «Экономика» распространяется только на соцобъекты НГП.
+_CO_FUND_RU: dict[str, str] = {
+    "default": "Застройщик",
+    "compensated": "Компенсация %",
+    "not_developer": "Не за счёт застройщика",
+}
+_CO_FUND_BY_LABEL: dict[str, str] = {v: k for k, v in _CO_FUND_RU.items()}
 
 
 def _close_tile_cb(include_key: str) -> None:
@@ -319,6 +330,7 @@ def render_params_tab() -> UserInputs:
     residential_class = "economy"
     social_funding = "compensated"
     social_comp_share = None
+    object_funding: dict = {}     # v0.19.0: режимы финансирования по объектам
     phasing_spec = None
 
     # Активные тайлы: (key, render-callable). Раскладываются по 2 столбцам.
@@ -385,7 +397,8 @@ def render_params_tab() -> UserInputs:
             phasing_spec = results.get("phasing", phasing_spec)
             custom_objects_list = results.get("custom", custom_objects_list)
             if "economy" in results:
-                residential_class, social_funding, social_comp_share = results["economy"]
+                (residential_class, social_funding, social_comp_share,
+                 object_funding) = results["economy"]
 
     # ==================================================================
     # Сборка опций
@@ -422,6 +435,7 @@ def render_params_tab() -> UserInputs:
         residential_class=residential_class,
         social_funding=social_funding,
         social_compensation_share=social_comp_share,
+        object_funding=object_funding,
         enforce_quarter_greening_norm=enforce_greening_norm,
         enforce_density_norm=enforce_density_norm,
         phasing=phasing_spec,
@@ -1707,10 +1721,60 @@ def _render_parking_custom() -> ParkingConfig:
         return ParkingConfig(mode="min_open")
 
 
-def _render_economy_tile() -> tuple[str, str, float | None]:
-    """Плитка экономических параметров (v0.8.0).
+def _render_funding_grid() -> dict[str, ObjectFunding]:
+    """Сетка «за чей счёт» по каждому объекту (v0.19.0).
 
-    Возвращает (residential_class, social_funding, social_compensation_share).
+    Сделана обычными виджетами со стабильными ключами (а не data_editor):
+    выглядит таблицей, но не подвержена проблемам табличного редактора
+    (см. правило про seed-паттерн в проекте).
+    """
+    st.markdown("**За чей счёт объекты**")
+    st.caption(
+        "«Как общий» — по настройке выше (для спортплощадок, парковок "
+        "соцобъектов и инженерии это «застройщик»). «Не за счёт застройщика» "
+        "— строит город или другой инвестор либо объект уже существует: "
+        "ни затрат, ни выручки. Режим «только потребность» на экономику "
+        "больше не влияет — он лишь выносит объект за баланс территории."
+    )
+    _MODE_RU = {
+        "default": "Как общий",
+        "developer": "Застройщик",
+        "compensated": "Компенсация %",
+        "not_developer": "Не за счёт застройщика",
+    }
+    out: dict[str, ObjectFunding] = {}
+    for key in FUNDING_KEYS:
+        c_name, c_mode, c_share = st.columns([1.3, 1.2, 0.9],
+                                             vertical_alignment="center")
+        c_name.markdown(
+            f"<div style='font-size:0.86rem;padding-top:6px;'>"
+            f"{FUNDING_LABELS[key]}</div>", unsafe_allow_html=True)
+        # Спорт/соц-парковки/инженерия до v0.19 всегда были на застройщике —
+        # оставляем это их значением по умолчанию (индекс 1), соцобъекты НГП
+        # следуют общей настройке (индекс 0).
+        _default_idx = 0 if key in ("kindergarten", "school",
+                                    "add_education", "polyclinic") else 1
+        mode = c_mode.selectbox(
+            FUNDING_LABELS[key], list(_MODE_RU.keys()), index=_default_idx,
+            format_func=lambda v: _MODE_RU[v],
+            key=f"fund_mode_{key}", label_visibility="collapsed",
+        )
+        share = None
+        if mode == "compensated":
+            share = c_share.number_input(
+                "%", min_value=0, max_value=100, value=70, step=5,
+                key=f"fund_share_{key}", label_visibility="collapsed",
+                help="Доля себестоимости, которую компенсирует город",
+            ) / 100.0
+        out[key] = ObjectFunding(mode=mode, compensation_share=share)
+    return out
+
+
+def _render_economy_tile() -> tuple[str, str, float | None, dict[str, ObjectFunding]]:
+    """Плитка экономических параметров (v0.8.0; v0.19.0 — режимы по объектам).
+
+    Возвращает (residential_class, social_funding, social_compensation_share,
+    object_funding).
     """
     with st.container(border=True):
         _tile_header(":material/payments: Экономика (условные единицы)", "include_economy")
@@ -1737,14 +1801,14 @@ def _render_economy_tile() -> tuple[str, str, float | None]:
             "at_cost": "Передача по себестоимости",
         }
         fund = st.selectbox(
-            "Соцобъекты — за чей счёт",
+            "Соцобъекты — общая настройка",
             list(_FUND_RU.keys()), index=0,
             format_func=lambda v: _FUND_RU[v],
             key="social_funding",
             help=(
-                "Как учитывать ДОО/СОШ/доп.образование в экономике: "
-                "город компенсирует долю себестоимости / целиком застройщик / "
-                "целиком город (себест. соц = 0) / передача по себестоимости (нейтрально)."
+                "Значение по умолчанию для соцобъектов НГП (ДОО, СОШ, "
+                "доп. образование, поликлиника). Ниже можно переопределить "
+                "по каждому объекту отдельно."
             ),
         )
         comp_share: float | None = None
@@ -1754,7 +1818,13 @@ def _render_economy_tile() -> tuple[str, str, float | None]:
                 key="social_comp_share_pct",
                 help="Какую долю себестоимости соц-зданий компенсирует город.",
             ) / 100.0
-    return cls_label, fund, comp_share
+        st.markdown("")
+        obj_funding = _render_funding_grid()
+        st.caption(
+            ":material/info: Дополнительные объекты (офис, ФОК, торговля) "
+            "настраиваются в своей карточке — колонка «Экономика»."
+        )
+    return cls_label, fund, comp_share, obj_funding
 
 
 def _render_custom_objects_tile() -> list[CustomObject]:
@@ -1812,10 +1882,16 @@ def _render_custom_objects_tile() -> list[CustomObject]:
                     if obj.get("floor_area_m2") is not None
                     else float(obj.get("plot_area_m2", 1000.0))
                 ),
+                # v0.19.0: режим финансирования живёт вместе с объектом —
+                # переживает удаление/перестановку строк.
+                "Экономика": _CO_FUND_RU.get(
+                    (obj.get("funding") or {}).get("mode", "default"),
+                    _CO_FUND_RU["default"]),
             })
         df = pd.DataFrame(
             rows,
-            columns=["Название", "Площадь ЗУ, м²", "ВРИ-код", "Общая площадь, м²"],
+            columns=["Название", "Площадь ЗУ, м²", "ВРИ-код", "Общая площадь, м²",
+                     "Экономика"],
         )
 
         edited_df = st.data_editor(
@@ -1844,6 +1920,18 @@ def _render_custom_objects_tile() -> list[CustomObject]:
                     step=100.0, format="%.0f",
                     help="Сумма площадей этажных перекрытий объекта",
                 ),
+                "Экономика": st.column_config.SelectboxColumn(
+                    "Экономика",
+                    options=list(_CO_FUND_RU.values()),
+                    required=False,
+                    help=(
+                        "За чей счёт объект. «Застройщик» — затраты на нас, "
+                        "выручка по ВРИ (кроме 3.x — соцнагрузка). "
+                        "«Не за счёт застройщика» — строит город/другой "
+                        "инвестор либо объект существует: ни затрат, ни "
+                        "выручки."
+                    ),
+                ),
             },
             key=f"objects_editor_{abs(hash(_co_ed_seed)) % 10**8}",
         )
@@ -1861,6 +1949,9 @@ def _render_custom_objects_tile() -> list[CustomObject]:
                 vri = str(vri_raw).strip() if pd.notna(vri_raw) and str(vri_raw).strip() else "4.0"
                 if not name or name == "None" or plot <= 0:
                     continue
+                _fund_raw = row.get("Экономика")
+                _fund_mode = _CO_FUND_BY_LABEL.get(
+                    str(_fund_raw).strip() if pd.notna(_fund_raw) else "", "default")
                 new_list.append({
                     "name": name,
                     "plot_area_m2": plot,
@@ -1869,6 +1960,7 @@ def _render_custom_objects_tile() -> list[CustomObject]:
                         float(row["Общая площадь, м²"])
                         if pd.notna(row["Общая площадь, м²"]) else None
                     ),
+                    "funding": {"mode": _fund_mode, "compensation_share": None},
                 })
             except (ValueError, TypeError, KeyError):
                 continue

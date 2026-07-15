@@ -10,6 +10,7 @@ from urban_model.models.built_in import BuiltInArea
 from urban_model.models.cluster import FloorCluster
 from urban_model.models.custom_object import CustomObject
 from urban_model.models.engineering import EngineeringSpec
+from urban_model.models.funding import ObjectFunding
 from urban_model.models.parking import ParkingConfig
 from urban_model.models.phasing import PhasingSpec
 from urban_model.models.social import (
@@ -173,6 +174,15 @@ class CalculationOptions(BaseModel):
     social_compensation_share: float | None = Field(
         default=None, ge=0.0, le=1.0,
         description="Доля компенсации города (режим compensated); None = норматив YAML",
+    )
+    # v0.19.0: режим финансирования ПО КАЖДОМУ объекту. Ключи — FUNDING_KEYS
+    # (kindergarten/school/add_education/polyclinic/sport/social_parking/
+    # engineering). Отсутствующий ключ или mode="default" → соцобъекты НГП
+    # следуют `social_funding`, остальные — за счёт застройщика (как до v0.19).
+    # Финансирование пользовательских объектов живёт в самом CustomObject.
+    object_funding: dict[str, ObjectFunding] = Field(
+        default_factory=dict,
+        description="Режим финансирования по объектам (переопределяет social_funding)",
     )
 
     # Бисекция КИТ

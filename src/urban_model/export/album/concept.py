@@ -236,9 +236,46 @@ def _territory_rows(site_area: float, o) -> list[tuple[str, str]]:
             _mode += " · инженерия автономно по лотам"
         rows.append(("Очерёдность застройки", _mode))
     if getattr(o, "include_economy", True):
-        rows.append(("Соцобъекты (финансирование)",
+        rows.append(("Соцобъекты (общая настройка)",
                      _FUND_RU.get(getattr(o, "social_funding", "compensated"), "—")))
+        # v0.19.0: объекты с режимом, отличным от общей настройки, — явно.
+        for _lbl, _txt in _funding_exceptions(o):
+            rows.append((f"    — {_lbl}", _txt))
     return rows
+
+
+def _funding_exceptions(o) -> list[tuple[str, str]]:
+    """Объекты, чьё финансирование отличается от «как общий» (v0.19.0).
+
+    Спорт/соц-парковки/инженерия по умолчанию на застройщике — их не
+    показываем, если режим не менялся; пользовательские объекты — только
+    когда они не за счёт застройщика."""
+    from urban_model.models.funding import (
+        FUNDING_KEYS,
+        FUNDING_LABELS,
+        resolve_funding_spec,
+    )
+    out: list[tuple[str, str]] = []
+    _spec = getattr(o, "object_funding", None) or {}
+    _RU = {"developer": "застройщик", "compensated": "компенсация {p:.0f}%",
+           "not_developer": "не за счёт застройщика"}
+    for key in FUNDING_KEYS:
+        sp = _spec.get(key)
+        if sp is None or sp.mode == "default":
+            continue
+        if key in ("sport", "social_parking", "engineering") and sp.mode == "developer":
+            continue    # это и есть их значение по умолчанию
+        _share = (sp.compensation_share
+                  if sp.compensation_share is not None
+                  else getattr(o, "social_compensation_share", None) or 0.0)
+        out.append((FUNDING_LABELS[key], _RU.get(sp.mode, sp.mode).format(p=_share * 100)))
+    for obj in (getattr(o, "custom_objects", None) or []):
+        sp = getattr(obj, "funding", None)
+        if sp is None or sp.mode in ("default", "developer"):
+            continue
+        _share = sp.compensation_share or 0.0
+        out.append((obj.name, _RU.get(sp.mode, sp.mode).format(p=_share * 100)))
+    return out
 
 
 def _composition_rows(o) -> list[tuple[str, str]]:

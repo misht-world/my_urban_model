@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 from urban_model.economy.result import RevenueBreakdown
+from urban_model.models.funding import resolve_funding, resolve_funding_spec
 from urban_model.normatives import Normatives
 
 
@@ -52,59 +53,43 @@ def calc_revenue(tep, options, norms: Normatives) -> RevenueBreakdown:
     r_styl = n_styl * p_styl * park_sale_rate
     r_vpp = bi_area * p_vpp
 
-    # v0.9.14: компенсация ДОО/СОШ городом — в реальности застройщик
-    # передаёт соцобъекты по бюджетной цене либо получает компенсацию
-    # затрат через КОТ-соглашения. Без этого расчёт всегда даёт убыток
-    # (соцнагрузка), что не соответствует практике рынка.
-    # При `only_demand=True` объект НЕ строится застройщиком — компенсация
-    # не применяется (как и cost этого объекта).
-    try:
-        _norm_share = float(norms.resolve("economy.social_compensation.share"))
-    except (KeyError, TypeError, ValueError):
-        _norm_share = 0.0
-    # v0.12.27: доля компенсации зависит от режима финансирования соцобъектов.
-    _funding = getattr(options, "social_funding", "compensated")
-    if _funding == "developer":
-        comp_share = 0.0
-    elif _funding == "at_cost":
-        comp_share = 1.0
-    elif _funding == "city":
-        comp_share = 0.0   # соц строит город → себестоимость соц у застройщика 0 (cost.py)
-    else:  # compensated
-        _user = getattr(options, "social_compensation_share", None)
-        comp_share = float(_user) if _user is not None else _norm_share
+    # Компенсация соцобъектов городом — застройщик передаёт объекты по
+    # бюджетной цене либо возвращает затраты через КОТ-соглашения.
+    #
+    # v0.19.0: доля компенсации считается ПО КАЖДОМУ объекту (свой режим
+    # финансирования), а не одной глобальной ставкой. `only_demand` больше не
+    # влияет: объект вне квартала может строиться застройщиком и точно так же
+    # компенсироваться. Компенсируется только то, что застройщик оплатил →
+    # база = та же, что в cost.py (режим not_developer → 0).
     c_kg = float(norms.resolve("economy.construction.kindergarten"))
     c_sch = float(norms.resolve("economy.construction.school"))
-    kg_bld = float(tep.kindergarten_building_area.value or 0.0)
-    sch_bld = float(tep.school_building_area.value or 0.0)
-    kg_only_demand = bool(getattr(options.kindergarten, "only_demand", False)) \
-        if getattr(options, "include_kindergarten", True) else True
-    sch_only_demand = bool(getattr(options.school, "only_demand", False)) \
-        if getattr(options, "include_school", True) else True
-    kg_billable = 0.0 if kg_only_demand else kg_bld * c_kg
-    sch_billable = 0.0 if sch_only_demand else sch_bld * c_sch
-    # v0.12.19: доп. образование (ВРИ 3.5.1) — соцобъект, компенсируется городом
-    # симметрично ДОО/СОШ (иначе его здание было чистой соцнагрузкой без зачёта).
-    ae_bld = float(getattr(tep, "add_education_building_area", None).value or 0.0) \
-        if getattr(tep, "add_education_building_area", None) is not None else 0.0
-    ae_only_demand = bool(getattr(options.add_education, "only_demand", False)) \
-        if getattr(options, "include_add_education", True) else True
     try:
         c_add_edu = float(norms.resolve("economy.construction.add_education"))
     except (KeyError, TypeError, ValueError):
         c_add_edu = c_sch
-    ae_billable = 0.0 if ae_only_demand else ae_bld * c_add_edu
-    # v0.12.28: поликлиника — соцобъект, компенсируется симметрично ДОО/СОШ.
-    poly_bld = float(getattr(tep, "polyclinic_building_area", None).value or 0.0) \
-        if getattr(tep, "polyclinic_building_area", None) is not None else 0.0
-    poly_only_demand = bool(getattr(options.polyclinic, "only_demand", False)) \
-        if getattr(options, "include_polyclinic", True) else True
     try:
         c_poly = float(norms.resolve("economy.construction.polyclinic"))
     except (KeyError, TypeError, ValueError):
         c_poly = c_sch
-    poly_billable = 0.0 if poly_only_demand else poly_bld * c_poly
-    r_social_comp = (kg_billable + sch_billable + ae_billable + poly_billable) * comp_share
+
+    def _fld(name: str) -> float:
+        f = getattr(tep, name, None)
+        return float(f.value or 0.0) if f is not None else 0.0
+
+    _soc = [
+        ("kindergarten", _fld("kindergarten_building_area"), c_kg, "include_kindergarten"),
+        ("school", _fld("school_building_area"), c_sch, "include_school"),
+        ("add_education", _fld("add_education_building_area"), c_add_edu,
+         "include_add_education"),
+        ("polyclinic", _fld("polyclinic_building_area"), c_poly, "include_polyclinic"),
+    ]
+    r_social_comp = 0.0
+    for _key, _bld, _rate, _inc in _soc:
+        if not getattr(options, _inc, True):
+            continue
+        _mode, _share = resolve_funding(options, _key, norms)
+        if _mode == "compensated":
+            r_social_comp += _bld * _rate * _share
 
     # v0.9.8 (AUDIT P0-2): кастомные объекты дают выручку по любому
     # ВРИ КРОМЕ 3.x (социальные — поликлиника/ФОК — соцнагрузка, 0).
@@ -112,8 +97,13 @@ def calc_revenue(tep, options, norms: Normatives) -> RevenueBreakdown:
     # non-(3.x) как commercial — это создавало системный убыток для
     # объектов с ВРИ 5.x (спорт), 2.x и т.п. Симметричная логика
     # с cost.py: 3.x → 0, остальное → коммерческая ставка.
+    # v0.19.0: объект в режиме «не за счёт застройщика» не даёт ни затрат,
+    # ни выручки — его строит город/другой инвестор либо он уже существует.
     r_custom = 0.0
     for obj in (getattr(options, "custom_objects", None) or []):
+        _mode, _ = resolve_funding_spec(getattr(obj, "funding", None), options, norms)
+        if _mode == "not_developer":
+            continue
         vri = (obj.vri_code or "").strip()
         floor_area = float(obj.floor_area_m2 or obj.plot_area_m2 or 0.0)
         if not vri.startswith("3."):

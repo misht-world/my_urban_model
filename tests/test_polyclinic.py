@@ -86,6 +86,12 @@ class TestIntegration:
         assert "polyclinic_plot" not in r.balance.components
 
     def test_only_demand(self, spb):
+        """«Только потребность» = объект вне БАЛАНСА территории.
+
+        v0.19.0: экономику этот режим больше НЕ обнуляет — объект может
+        строиться застройщиком за пределами площадки. За чей счёт — задаёт
+        режим финансирования (см. test_only_demand_economy_by_funding).
+        """
         site = Site(area_m2=300_000)
         r = solve_max_kit(
             site,
@@ -95,7 +101,24 @@ class TestIntegration:
         )
         assert r.polyclinic_visits_accepted.value > 0
         assert "polyclinic_plot" not in r.balance.components
-        assert r.economy.cost.polyclinic == 0.0
+        assert r.economy.cost.polyclinic > 0.0   # платит застройщик
+
+    def test_only_demand_economy_by_funding(self, spb):
+        """v0.19.0: обнуляет экономику режим «не за счёт застройщика»,
+        а не «только потребность»."""
+        from urban_model.models.funding import ObjectFunding
+        site = Site(area_m2=300_000)
+        r = solve_max_kit(
+            site,
+            CalculationOptions(
+                floors=18, planning_doc=True,
+                polyclinic=PolyclinicSpec(only_demand=True),
+                object_funding={"polyclinic": ObjectFunding(mode="not_developer")}),
+            spb,
+        )
+        assert r.polyclinic_visits_accepted.value > 0      # потребность считается
+        assert "polyclinic_plot" not in r.balance.components
+        assert r.economy.cost.polyclinic == 0.0            # но платит не застройщик
 
     def test_not_in_mandatory_vpp(self, spb):
         from urban_model.calculations import vpp

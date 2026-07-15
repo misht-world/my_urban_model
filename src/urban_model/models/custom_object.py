@@ -17,6 +17,8 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from urban_model.models.funding import ObjectFunding
+
 
 class CustomObject(BaseModel):
     """Произвольный объект на территории квартала."""
@@ -40,6 +42,9 @@ class CustomObject(BaseModel):
             "Если не задано — приравнивается к plot_area_m2 (одноэтажный объект)."
         ),
     )
+    # v0.19.0: режим финансирования объекта. `default` = за счёт застройщика
+    # (как было до v0.19); `not_developer` → ни затрат, ни выручки.
+    funding: ObjectFunding = Field(default_factory=ObjectFunding)
 
     @model_validator(mode="after")
     def _default_floor_area(self) -> "CustomObject":

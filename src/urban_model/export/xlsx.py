@@ -228,6 +228,40 @@ def _num(v, nd: int = 0) -> str:
     return f"{fv:,.{nd}f}".replace(",", " ")
 
 
+_FUND_MODE_RU = {
+    "developer": "застройщик",
+    "compensated": "компенсация {share:.0f}%",
+    "not_developer": "не за счёт застройщика",
+}
+
+
+def _funding_rows(options) -> list[tuple[str, str]]:
+    """Строки «за чей счёт» по каждому объекту (v0.19.0), включая
+    пользовательские. Читаются те же режимы, что применяет экономика."""
+    from urban_model.models.funding import (
+        FUNDING_KEYS,
+        FUNDING_LABELS,
+        resolve_funding,
+        resolve_funding_spec,
+    )
+    from urban_model.normatives import load_normatives
+
+    norms = load_normatives(getattr(options, "profile", None) or "spb")
+
+    def _fmt(mode: str, share: float) -> str:
+        return _FUND_MODE_RU.get(mode, mode).format(share=share * 100)
+
+    rows: list[tuple[str, str]] = []
+    for key in FUNDING_KEYS:
+        mode, share = resolve_funding(options, key, norms)
+        rows.append((FUNDING_LABELS[key], _fmt(mode, share)))
+    for obj in (getattr(options, "custom_objects", None) or []):
+        mode, share = resolve_funding_spec(
+            getattr(obj, "funding", None), options, norms)
+        rows.append((f"Доп. объект: {obj.name}", _fmt(mode, share)))
+    return rows
+
+
 def _buckets(formula: str | None) -> list[int]:
     if not formula or "[" not in formula:
         return []
@@ -390,7 +424,7 @@ def _variant_sections(result: TEPResult, options) -> list[tuple[str, list[tuple[
         _fund = getattr(options, "social_funding", "compensated") if options else "compensated"
         secs.append(("Экономика (условные баллы)", [
             ("Эконом-индекс (100 = окупаемость)", _num(e.economy_index)),
-            ("Соцобъекты — финансирование", _FUND_RU.get(_fund, _fund)),
+            ("Соцобъекты — общая настройка", _FUND_RU.get(_fund, _fund)),
             ("Выход жилья, %", _num(e.sellable_ratio * 100, 1)),
             ("Себестоимость итого", _num(e.cost.total)),
             ("Выручка итого", _num(e.revenue.total)),
@@ -399,6 +433,9 @@ def _variant_sections(result: TEPResult, options) -> list[tuple[str, list[tuple[
             ("ROI, %", _num(e.roi * 100, 1)),
             ("Соц. нагрузка (нетто)", _num(e.net_social_burden)),
         ]))
+        # v0.19.0: за чей счёт КАЖДЫЙ объект (режимы могут различаться).
+        if options is not None:
+            secs.append(("За чей счёт объекты", _funding_rows(options)))
     return secs
 
 
