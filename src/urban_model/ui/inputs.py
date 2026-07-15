@@ -1736,7 +1736,10 @@ _FUND_MODES: list[tuple[str, str]] = [
     ("compensated", "Компенсация"),
     ("not_developer", "Не за счёт застройщика"),
 ]
-_FUND_COLS = [1.7, 0.9, 1.0, 1.1, 0.7, 1.6]
+# Колонки: Объект | 4 режима | «%». Поле «%» — В КОНЦЕ (v0.19.4): раньше оно
+# делило колонку с галочкой «Компенсация», из-за чего заголовок сжимался.
+# Теперь режимы ложатся на cols[1..4] подряд, без смещений.
+_FUND_COLS = [1.7, 0.95, 1.05, 1.15, 1.75, 0.75]
 
 
 def _fund_pick(obj_key: str, mode: str) -> None:
@@ -1765,18 +1768,13 @@ def _render_funding_grid(active_keys: list[str]) -> dict[str, ObjectFunding]:
         st.caption("Нет включённых объектов — нечего настраивать.")
         return {}
 
+    _HDR = ("<div style='font-size:0.72rem;color:#8A8A8A;line-height:1.15;"
+            "text-transform:uppercase;'>{}</div>")
     hdr = st.columns(_FUND_COLS, vertical_alignment="bottom")
-    hdr[0].markdown(
-        "<div style='font-size:0.72rem;color:#8A8A8A;text-transform:uppercase;'>"
-        "Объект</div>", unsafe_allow_html=True)
+    hdr[0].markdown(_HDR.format("Объект"), unsafe_allow_html=True)
     for i, (_, lbl) in enumerate(_FUND_MODES):
-        _c = hdr[i + 1] if i < 2 else hdr[i + 2]   # 4-я колонка — поле «%»
-        _c.markdown(
-            f"<div style='font-size:0.72rem;color:#8A8A8A;"
-            f"text-transform:uppercase;'>{lbl}</div>", unsafe_allow_html=True)
-    hdr[4].markdown(
-        "<div style='font-size:0.72rem;color:#8A8A8A;'>%</div>",
-        unsafe_allow_html=True)
+        hdr[i + 1].markdown(_HDR.format(lbl), unsafe_allow_html=True)
+    hdr[5].markdown(_HDR.format("Компенс., %"), unsafe_allow_html=True)
 
     out: dict[str, ObjectFunding] = {}
     for key in active_keys:
@@ -1794,14 +1792,13 @@ def _render_funding_grid(active_keys: list[str]) -> dict[str, ObjectFunding]:
                 _dflt = ("default" if key in FUNDING_FOLLOW_GLOBAL
                          else "developer")
                 st.session_state[ck] = (m == _dflt)
-            _c = cols[i + 1] if i < 2 else cols[i + 2]
-            _c.checkbox(lbl, key=ck, on_change=_fund_pick, args=(key, m),
-                        label_visibility="collapsed")
+            cols[i + 1].checkbox(lbl, key=ck, on_change=_fund_pick,
+                                 args=(key, m), label_visibility="collapsed")
         mode = next((m for m, _ in _FUND_MODES
                      if st.session_state.get(f"fund_{key}_{m}")), "default")
         share = None
         if mode == "compensated":
-            share = cols[4].number_input(
+            share = cols[5].number_input(
                 "%", min_value=0, max_value=100, value=70, step=5,
                 key=f"fund_share_{key}", label_visibility="collapsed",
                 help="Доля себестоимости, которую компенсирует город",
