@@ -1001,12 +1001,18 @@ def render_comparison_tab() -> None:
     def _clean(nm: str) -> str:
         return str(nm).removeprefix("opt:").strip()
 
-    clean_pairs = [(_clean(name), tep) for name, tep in pairs]
+    # v0.18.1: одинаковые имена различаем суффиксом «(2)», «(3)»… — иначе
+    # колонки сводной таблицы неуникальны и pandas Styler падает с KeyError.
+    # Список внизу показывает те же имена, что и таблица.
+    from urban_model.export.table import dedupe_scenario_names
+
+    clean_pairs = dedupe_scenario_names(
+        [(_clean(name), tep) for name, tep in pairs])
 
     # Список с кнопками удаления
-    for idx, (name, _) in enumerate(pairs):
+    for idx, (name, _) in enumerate(clean_pairs):
         c1, c2 = st.columns([10, 1])
-        c1.write(f"**{idx + 1}.** {_clean(name)}")
+        c1.write(f"**{idx + 1}.** {name}")
         if c2.button(":material/delete:", key=f"del_{idx}",
                      help="Удалить из сравнения"):
             st.session_state.scenarios.pop(idx)

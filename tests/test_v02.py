@@ -188,6 +188,30 @@ class TestResultsToDataframe:
         assert "КИТ" in df.index
         assert "Статус баланса территории" in df.index
 
+    def test_duplicate_names_are_deduped(self, spb, site_medium):
+        """v0.18.1: одинаковые имена сценариев («База» дважды) различаются
+        суффиксом — иначе колонки неуникальны и pandas Styler на вкладке
+        «Сравнение» падает с KeyError."""
+        res = solve_max_kit(site_medium, norms=spb)
+        df = results_to_dataframe([("База", res), ("База", res), ("Б", res)])
+        assert list(df.columns) == ["База", "База (2)", "Б"]
+        assert df.columns.is_unique
+        # значение доступно однозначно (df.loc → скаляр, не Series)
+        assert isinstance(df.loc["КИТ", "База (2)"], (int, float))
+
+    def test_styler_works_with_duplicate_names(self, spb, site_medium):
+        """Регрессия: Styler секций применим к таблице с повторами имён."""
+        from urban_model.export.table import KPI_SECTION_LABELS
+        res = solve_max_kit(site_medium, norms=spb)
+        df = results_to_dataframe([("База", res), ("База", res)])
+
+        def _sec(row):
+            if row.name in KPI_SECTION_LABELS:
+                return ["font-weight:700;"] * len(row)
+            return [""] * len(row)
+
+        df.style.apply(_sec, axis=1)._compute()  # не должно бросать KeyError
+
 
 # ---------------------------------------------------------------------------
 # xlsx-экспорт

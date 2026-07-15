@@ -103,18 +103,39 @@ def result_to_dict(name: str, result: TEPResult) -> OrderedDict:
     return d
 
 
+def dedupe_scenario_names(
+    pairs: list[tuple[str, TEPResult]],
+) -> list[tuple[str, TEPResult]]:
+    """Сделать имена сценариев уникальными: «База», «База (2)», «База (3)»…
+
+    v0.18.1: одинаковые имена (пользователь дважды добавил «Базу» с разными
+    параметрами) давали неуникальные колонки DataFrame. Это ломало pandas
+    Styler («not compatible with non-unique index or columns») на вкладке
+    «Сравнение» и делало неоднозначным `df.loc[label, name]` в альбоме.
+    """
+    seen: dict[str, int] = {}
+    out: list[tuple[str, TEPResult]] = []
+    for name, res in pairs:
+        n = seen.get(name, 0) + 1
+        seen[name] = n
+        out.append((name if n == 1 else f"{name} ({n})", res))
+    return out
+
+
 def results_to_dataframe(
     pairs: list[tuple[str, TEPResult]],
 ) -> pd.DataFrame:
     """Сводная таблица: строки — КПЭ, столбцы — сценарии.
 
     Args:
-        pairs: список (название_сценария, TEPResult).
+        pairs: список (название_сценария, TEPResult). Одинаковые имена
+            автоматически различаются суффиксом «(2)», «(3)»… — иначе
+            колонки неуникальны (см. dedupe_scenario_names).
 
     Returns:
-        DataFrame с мультиколоночным заголовком по сценариям.
+        DataFrame с колонкой на сценарий.
     """
-    rows = [result_to_dict(name, res) for name, res in pairs]
+    rows = [result_to_dict(name, res) for name, res in dedupe_scenario_names(pairs)]
     df = pd.DataFrame(rows).set_index("сценарий").T
     df.index.name = "показатель"
     return df

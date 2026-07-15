@@ -74,7 +74,9 @@ def _write_comparison_sheet(wb: Workbook, pairs: list[tuple[str, TEPResult]]) ->
     ws.title = "Сравнение"
 
     df = results_to_dataframe(pairs)
-    scenario_names = [name for name, _ in pairs]
+    # v0.18.1: имена берём из df — они уже различены суффиксами при повторах
+    # (иначе шапка xlsx показывала бы два одинаковых «База»).
+    scenario_names = list(df.columns)
 
     # --- Заголовок ---
     ws.append(["Показатель"] + scenario_names)
