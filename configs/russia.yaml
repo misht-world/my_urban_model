@@ -38,19 +38,18 @@ social_objects:
 
   school:
     plot_area_per_place:
+      # СП 42.13330.2026 «Градостроительство», Приложение Л (заменил табл. 10.2
+      # редакции 2016): укрупнённая шкала для полнокомплектной ОО.
       type: piecewise
       argument: capacity
       breakpoints:
         - { up_to: 170, value: 80 }
-        - { up_to: 340, value: 55 }
-        - { up_to: 510, value: 40 }
-        - { up_to: 660, value: 35 }
-        - { up_to: 1000, value: 28 }
-        - { up_to: 1500, value: 24 }
+        - { up_to: 550, value: 35 }
+        - { up_to: 1100, value: 28 }
         - { up_to: .inf, value: 22 }
       unit: "m2_per_place"
-      note: "св. 30 мест"
-      source: "СП 42.13330.2016"
+      note: "СП 42.13330.2026 Прил. Л: ≤170→80, ≤550→35, ≤1100→28, >1100→22"
+      source: "СП 42.13330.2026 «Градостроительство», Приложение Л"
     pool_extra_area:
       type: scalar
       value: 2000

@@ -56,16 +56,17 @@ def test_allowed_n_snaps_to_typical():
 
 def test_allowed_n_minimizes_zu_with_cost_fn():
     """v0.12.22: при cost_fn (ЗУ) выбирается комбинация с МИНИМУМОМ ЗУ, а не
-    профицита. Спрос 2500, 2 СОШ: ЗУ-минимум [1650,1100] (1650 в ступени
-    22 м²/место) лучше [1375,1375] (обе в 24)."""
+    профицита. Спрос 2200, 2 СОШ (шкала СП 42.13330.2026): ЗУ-минимум
+    [1375,825] (1375 в ступени 22 м²/место) лучше равномерного [1100,1100]
+    (обе в 28) — обе комбинации покрывают спрос ровно, профицит 0."""
     spb = load_normatives("spb")
     from urban_model.calculations import school as S
     cost = lambda caps: sum(S.plot_area_with_extras(c, spb, True, True) for c in caps)
-    res = split_to_allowed_capacities_n(2500, SCH_TYPICAL, 2, 550, cost_fn=cost)
-    assert sorted(res, reverse=True) == [1650, 1100]
-    # без cost_fn — минимум профицита/равномернее → [1375, 1375]
-    res2 = split_to_allowed_capacities_n(2500, SCH_TYPICAL, 2, 550)
-    assert sorted(res2, reverse=True) == [1375, 1375]
+    res = split_to_allowed_capacities_n(2200, SCH_TYPICAL, 2, 550, cost_fn=cost)
+    assert sorted(res, reverse=True) == [1375, 825]
+    # без cost_fn — минимум профицита/равномернее → [1100, 1100]
+    res2 = split_to_allowed_capacities_n(2200, SCH_TYPICAL, 2, 550)
+    assert sorted(res2, reverse=True) == [1100, 1100]
     # ЗУ выбранной комбинации действительно меньше
     assert cost(res) < cost(res2)
 

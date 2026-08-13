@@ -89,6 +89,13 @@ class _Evaluator:
         if not self._has_clusters and floors is not None:
             opts.floors = int(floors)
         o, m, u, s = shares
+        # v0.20.0: доли из `_set_share` округлены до 4 знаков — их сумма может
+        # оказаться 0.9990/1.0010 и упереться в допуск валидатора ParkingConfig
+        # (0.1%). Нормализуем к сумме 1.0 перед созданием (латентный баг
+        # округления, всплыл при сдвиге площадей от нового СП 42 по школам).
+        _tot = o + m + u + s
+        if _tot > 0:
+            o, m, u, s = o / _tot, m / _tot, u / _tot, s / _tot
         opts.parking = ParkingConfig(
             mode="custom", open_share=o, multilevel_share=m,
             underground_share=u, stylobate_share=s,

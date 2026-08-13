@@ -49,13 +49,20 @@ class TestPiecewise:
         assert spb.resolve("social_objects.school.building_area_per_place", capacity=2475) == 25
 
     def test_school_plot_per_place(self, spb):
-        # spb-переопределение для СОШ: II→35, III→28, IV/V→24, VI–IX→22
-        assert spb.resolve("social_objects.school.plot_area_per_place", capacity=550) == 35
-        assert spb.resolve("social_objects.school.plot_area_per_place", capacity=825) == 28
-        assert spb.resolve("social_objects.school.plot_area_per_place", capacity=1100) == 24
-        assert spb.resolve("social_objects.school.plot_area_per_place", capacity=1375) == 24
-        assert spb.resolve("social_objects.school.plot_area_per_place", capacity=1650) == 22
-        assert spb.resolve("social_objects.school.plot_area_per_place", capacity=2475) == 22
+        # СП 42.13330.2026 Прил. Л: ≤170→80, ≤550→35, ≤1100→28, >1100→22
+        _pp = lambda c: spb.resolve(  # noqa: E731
+            "social_objects.school.plot_area_per_place", capacity=c)
+        assert _pp(150) == 80       # малая (нетиповая) школа
+        assert _pp(170) == 80       # граница включительно
+        assert _pp(171) == 35
+        assert _pp(550) == 35
+        assert _pp(551) == 28
+        assert _pp(825) == 28
+        assert _pp(1100) == 28      # было 24 → стало 28 (СП 2026)
+        assert _pp(1101) == 22
+        assert _pp(1375) == 22      # было 24 → стало 22 (СП 2026)
+        assert _pp(1650) == 22
+        assert _pp(2475) == 22
 
     def test_school_allowed_capacities(self, spb):
         caps = spb.resolve("social_objects.school.allowed_capacities")
