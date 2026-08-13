@@ -1213,12 +1213,12 @@ def compute_tep_for_kit(
             normative=density_max,
             status=density_status,
             formula=(
-                "Формальная плотность по СП 42.13330.2016: "
-                "S_квартир / 20 м²/чел / (S_квартала / 10000). "
+                f"Формальная плотность по СП 42.13330: "
+                f"S_квартир / {hp_check:g} м²/чел / (S_квартала / 10000) "
                 f"= {pop_check_v:.0f} / {site.area_m2/10000:.2f} га. "
-                "Не должна превышать 450 чел/га для многоэтажной застройки."
+                f"Не должна превышать {density_max:g} чел/га."
             ),
-            source="СП 42.13330.2016 (расчётная плотность)",
+            source=norms.source_of("population_density_max"),
         ),
         kindergarten_places_required=_F(
             kg_required_raw,

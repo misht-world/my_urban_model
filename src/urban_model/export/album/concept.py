@@ -309,7 +309,7 @@ def _composition_rows(o) -> list[tuple[str, str]]:
         ("Экономика (усл. баллы)", yn(getattr(o, "include_economy", True))),
         ("Норматив озеленения 25%",
          "контролируется" if o.enforce_quarter_greening_norm else "справочно"),
-        ("Норматив плотности 450 чел/га",
+        ("Норматив плотности 300 чел/га",
          "контролируется" if o.enforce_density_norm else "справочно"),
     ]
     if getattr(o, "custom_objects", None):

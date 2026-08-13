@@ -631,7 +631,7 @@ def _render_engineering_tile() -> EngineeringSpec:
 def _render_essentials() -> tuple[Site, int, bool, "float | None", bool, bool, list]:
     """Общие сведения о территории + нормативы-ограничения.
 
-    v0.8.8: блок свёртываемый (st.expander), нормативы 25%/450 чел/га
+    v0.8.8: блок свёртываемый (st.expander), нормативы 25%/300 чел/га
     встроены сюда же. Возвращает
     (site, floors, planning_doc, lot_override, enforce_greening, enforce_density,
      floor_clusters).
@@ -710,11 +710,12 @@ def _render_essentials() -> tuple[Site, int, bool, "float | None", bool, bool, l
             ),
         )
         enforce_density = st.checkbox(
-            ":material/groups: Соблюдать норматив 450 чел/га",
+            ":material/groups: Соблюдать норматив 300 чел/га",
             value=True, key="enforce_density_norm",
             help=(
-                "СП 42.13330: предельная плотность населения для многоэтажной "
-                "застройки. Выключите для физического максимума КИТ."
+                "СП 42.13330.2026 п. 6.2.16: предельная плотность населения "
+                "микрорайона 300 чел/га при обеспеченности 30 м²/чел. "
+                "Выключите для физического максимума КИТ."
             ),
         )
 
