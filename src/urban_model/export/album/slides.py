@@ -242,7 +242,7 @@ def slide_open_spaces(deck, tep: TEPResult, name: str):
         T.kpi_card(s, 0.6 + i * (cw + gx), 1.6, cw, ch, v, lbl)
     b = tep.balance
     gr_ok = b.greening_actual + 1e-6 >= b.greening_required
-    T.section_label(s, 0.6, 3.3, 12.1, "Норматив озеленения квартала")
+    T.section_label(s, 0.6, 3.3, 12.1, "Озеленение ТОП (≥ 6 м²/чел)")
     T.text(s, 0.6, 3.75, 12.1, 0.6,
            [(f"Требуется ≥ {_fmt(b.greening_required)} м², "
              f"факт {_fmt(b.greening_actual)} м² — "

@@ -307,7 +307,7 @@ def _composition_rows(o) -> list[tuple[str, str]]:
         ("Внутриквартальные проезды", yn(o.include_intra_driveways)),
         ("Инженерная инфраструктура", yn(getattr(o, "include_engineering", True))),
         ("Экономика (усл. баллы)", yn(getattr(o, "include_economy", True))),
-        ("Норматив озеленения 25%",
+        ("Озеленение ТОП ≥ 6 м²/чел",
          "контролируется" if o.enforce_quarter_greening_norm else "справочно"),
         ("Норматив плотности 300 чел/га",
          "контролируется" if o.enforce_density_norm else "справочно"),

@@ -251,29 +251,31 @@ def build_variant_table_blocks(result: TEPResult) -> list[TableBlock]:
             rows, summary=_sum_sport))
 
     # 🌳 ЗНОП и озеленение
-    # v0.17.3 (п.4 Михаила): показываем ФАКТ суммарного озеленения и явный
-    # статус соблюдения норматива (раньше был виден только минимум).
+    # v0.20.2: контроль озеленения — по нормативу СП 2026 (ТОП ≥ 6 м²/чел),
+    # в зачёт ЗНОП + свободный резерв квартала (balance.greening_actual).
+    # Озеленение жилого ЗУ — придомовое (не ТОП), показано справочно.
     _b = result.balance
-    _green_fact = float(getattr(_b, "greening_actual", 0.0) or 0.0)
-    _green_req = float(result.greening_quarter_required.value or 0.0)
-    _green_diff = _green_fact - _green_req
-    _green_status = (
-        f"выполняется (+{fmt_m2(_green_diff)} сверх минимума)"
-        if _green_diff >= -1e-6 else f"ДЕФИЦИТ {fmt_m2(-_green_diff)}"
+    _top_fact = float(getattr(_b, "greening_actual", 0.0) or 0.0)   # ЗНОП + резерв
+    _top_req = float(result.greening_quarter_required.value or 0.0)  # 6 м²/чел × нас.
+    _top_diff = _top_fact - _top_req
+    _top_status = (
+        f"выполняется (+{fmt_m2(_top_diff)} сверх минимума)"
+        if _top_diff >= -1e-6 else f"ДЕФИЦИТ {fmt_m2(-_top_diff)}"
     )
     rows = [
         _row("ЗНОП на человека", result.znop_per_person, fmt_float, " м²/чел"),
         _row("Площадь ЗНОП", result.znop_area, fmt_m2),
-        _row("Озеленение жилья", result.greening_housing_area, fmt_m2),
-        _text_row("Озеленение всего (факт: ЗНОП + жильё + ВПП)",
-                  fmt_m2(_green_fact)),
-        _row("Минимум озеленения квартала (норматив)", result.greening_quarter_required, fmt_m2),
-        _text_row("Норматив озеленения", _green_status),
+        _row("Озеленение жилья (придомовое, справочно)",
+             result.greening_housing_area, fmt_m2),
+        _row("Озеленение ТОП требуется (6 м²/чел)",
+             result.greening_quarter_required, fmt_m2),
+        _text_row("Озеленение ТОП факт (ЗНОП + резерв)", fmt_m2(_top_fact)),
+        _text_row("Норматив озеленения ТОП", _top_status),
     ]
     _sum_znop = (
         f"ЗНОП {result.znop_per_person.value or 0:.1f} м²/чел, всего "
-        f"{fmt_m2(result.znop_area.value)}; озеленение всего {fmt_m2(_green_fact)} "
-        f"при минимуме {fmt_m2(_green_req)} — норматив {_green_status}."
+        f"{fmt_m2(result.znop_area.value)}; озеленённые ТОП {fmt_m2(_top_fact)} "
+        f"при минимуме {fmt_m2(_top_req)} (6 м²/чел) — {_top_status}."
     )
     blocks.append(TableBlock("znop", "ЗНОП и озеленение", "park", rows, summary=_sum_znop))
 

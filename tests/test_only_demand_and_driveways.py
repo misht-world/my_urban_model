@@ -103,9 +103,11 @@ class TestOnlyDemand:
         assert res_out.kindergarten_plot_area.value > 0
         assert res_out.school_plot_area.value > 0
 
-    def test_quarter_greening_uses_in_balance_plot(self, spb, site):
-        """Норматив озеленения квартала: «25% от площади за вычетом ДОО/СОШ».
-        При only_demand эти объекты не вычитаются → требование выше."""
+    def test_top_greening_required_depends_on_population(self, spb, site):
+        """v0.20.2: норматив озеленения — ТОП ≥ 6 м²/чел (СП 42.13330.2026),
+        зависит ТОЛЬКО от населения, а не от того, в балансе ли ЗУ соцобъекта.
+        Раньше (метрика «25% от площади за вычетом ДОО/СОШ») only_demand менял
+        знаменатель; теперь при равном КИТ/населении требование одинаково."""
         res_in = verify_kit(1.5, site, CalculationOptions(floors=12), spb)
         res_out = verify_kit(
             1.5, site,
@@ -116,8 +118,13 @@ class TestOnlyDemand:
             ),
             spb,
         )
-        # При only_demand знаменатель больше → требование озеленения больше
-        assert res_out.balance.greening_required > res_in.balance.greening_required
+        floor = spb.resolve("greening.znop_top_min_per_person")
+        # население одинаково (КИТ тот же) → требование ТОП одинаково
+        assert res_in.population.value == pytest.approx(res_out.population.value)
+        assert res_out.balance.greening_required == pytest.approx(
+            res_in.balance.greening_required)
+        assert res_in.balance.greening_required == pytest.approx(
+            floor * res_in.population.value, rel=1e-6)
 
 
 # ---------------------------------------------------------------------------

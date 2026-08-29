@@ -398,7 +398,7 @@ def _variant_sections(result: TEPResult, options) -> list[tuple[str, list[tuple[
         ("ЗНОП, м²/чел", _num(r.znop_per_person.value, 1)),
         ("ЗНОП всего, м²", _num(r.znop_area.value)),
         ("Озеленение жилья, м²", _num(r.greening_housing_area.value)),
-        ("Требуемое озеленение квартала (норма), м²", _num(r.greening_quarter_required.value)),
+        ("Озеленение ТОП требуется (6 м²/чел), м²", _num(r.greening_quarter_required.value)),
     ]))
     secs.append(("Проезды", [
         ("Внутриквартальные, м²", _num(r.driveways_intra_quarter_area.value)),
@@ -541,12 +541,12 @@ def _write_variant_balance(wb: Workbook, result: TEPResult) -> None:
 
     # Контроль озеленения
     ws.append([])
-    ws.append(["Контроль озеленения 25%", "Факт, м²", "Требуется, м²", "Дефицит, м²"])
+    ws.append(["Контроль озеленения ТОП (6 м²/чел)", "Факт, м²", "Требуется, м²", "Дефицит, м²"])
     for cell in ws[ws.max_row]:
         cell.fill, cell.font = _FILL_HEADER, _FONT_HEADER
         cell.border = _BORDER
-    ws.append(["Озеленение квартала", _num(b.greening_actual), _num(b.greening_required),
-               _num(b.greening_deficit)])
+    ws.append(["Озеленённые ТОП (ЗНОП + резерв)", _num(b.greening_actual),
+               _num(b.greening_required), _num(b.greening_deficit)])
     for cell in ws[ws.max_row]:
         cell.font = _FONT_BODY
         cell.border = _BORDER

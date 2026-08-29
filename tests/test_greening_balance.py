@@ -1,6 +1,7 @@
-"""Тесты норматива озеленения квартала (25% от площади за вычетом ДОО/СОШ).
+"""Тесты норматива озеленения ТОП (≥ 6 м²/чел, СП 42.13330.2026, прим. 4
+табл. М.1; с v0.20.2 заменил контроль «25% площади квартала» ред. 2016).
 
-С v0.5.1 норматив озеленения — обязательная часть `BalanceCheck.is_feasible`.
+Норматив озеленения — обязательная часть `BalanceCheck.is_feasible`.
 Это меняет физику обратной задачи: feasibility не монотонна по КИТ
 (низкий КИТ → озеленения мало → infeasible; высокий → территории мало).
 Бисекция должна корректно находить верхний край feasible-окна даже когда
@@ -19,6 +20,35 @@ from urban_model.normatives import load_normatives
 @pytest.fixture(scope="module")
 def spb():
     return load_normatives("spb")
+
+
+class TestTopGreeningNorm:
+    """v0.20.2: контроль озеленения общего пользования ≥ 6 м²/чел."""
+
+    def test_required_is_6_per_capita(self, spb):
+        opts = CalculationOptions(floors=12, planning_doc=True)
+        r = solve_max_kit(Site(area_m2=100_000), opts, spb)
+        pop = r.population.value or 0
+        floor = spb.resolve("greening.znop_top_min_per_person")
+        assert floor == 6
+        assert r.balance.greening_required == pytest.approx(floor * pop, rel=1e-6)
+
+    def test_znop_counts_toward_top(self, spb):
+        """ЗНОП (ТОП) + резерв покрывают норматив на feasible-варианте."""
+        opts = CalculationOptions(floors=12, planning_doc=True)
+        r = solve_max_kit(Site(area_m2=100_000), opts, spb)
+        assert r.balance.is_feasible
+        assert (r.znop_area.value or 0) <= r.balance.greening_actual + 1e-6
+
+    def test_disabled_lifts_control(self, spb):
+        """Выключенная галочка снимает норматив (required = 0) и повышает КИТ."""
+        site = Site(area_m2=100_000)
+        r_on = solve_max_kit(site, CalculationOptions(
+            floors=12, planning_doc=True, enforce_quarter_greening_norm=True), spb)
+        r_off = solve_max_kit(site, CalculationOptions(
+            floors=12, planning_doc=True, enforce_quarter_greening_norm=False), spb)
+        assert r_off.balance.greening_required == 0
+        assert r_off.apartments_area.value >= r_on.apartments_area.value - 1.0
 
 
 # ---------------------------------------------------------------------------

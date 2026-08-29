@@ -101,8 +101,13 @@ class TestParkingAndGreening:
         r_with = compute_tep_for_kit(1.0, site, opts_with, spb)
         assert r_with.parking_required_places.value > r_no.parking_required_places.value
 
-    def test_object_contributes_to_greening(self, spb, site):
-        """Кастомный объект даёт озеленение по ВРИ-нормативу."""
+    def test_object_occupies_land_not_top_greening(self, spb, site):
+        """v0.20.2: кастомный объект занимает ЗУ квартала (компонент баланса),
+        но его придомовое озеленение НЕ входит в озеленение ТОП (общего
+        пользования). Раньше (контроль «25% всего озеленения») озеленение
+        объекта капало в greening_actual; теперь метрика — только ТОП
+        (ЗНОП + резерв), поэтому объект резерв УМЕНЬШАЕТ, а не увеличивает
+        ТОП-озеленение."""
         opts_with = CalculationOptions(
             floors=12, planning_doc=True,
             custom_objects=[
@@ -112,8 +117,10 @@ class TestParkingAndGreening:
         opts_no = CalculationOptions(floors=12, planning_doc=True)
         r_with = compute_tep_for_kit(1.0, site, opts_with, spb)
         r_no = compute_tep_for_kit(1.0, site, opts_no, spb)
-        # greening_actual в r_with должен быть строго больше (за счёт +floor_area * ratio)
-        assert r_with.balance.greening_actual > r_no.balance.greening_actual
+        # объект занимает ЗУ квартала (компонент баланса)
+        assert r_with.balance.components.get("custom_objects", 0) == pytest.approx(5_000)
+        # его ЗУ съедает резерв → ТОП-озеленение (ЗНОП + резерв) не растёт
+        assert r_with.balance.greening_actual <= r_no.balance.greening_actual + 1e-6
 
 
 # ---------------------------------------------------------------------------

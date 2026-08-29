@@ -691,15 +691,6 @@ def compute_tep_for_kit(
     # === Озеленение жилого ЗУ (нужно до housing_lot) ===
     green_ratio = norms.resolve("greening.housing_per_apartments")
     green_housing_v = greening.housing_greening_area(apartments_area_v, green_ratio)
-    quarter_share = norms.resolve("greening.quarter_min_share")
-    # Из знаменателя 25%-норматива озеленения исключаем все «нежилые» ЗУ:
-    # ДОО, СОШ, спорт, парковки соцобъектов, инженерную инфраструктуру.
-    green_quarter_req_v = greening.quarter_greening_required(
-        site.area_m2,
-        kg_plot_in_balance + sch_plot_in_balance + sport_plot_in_balance
-        + ae_plot_in_balance + poly_plot_in_balance + soc_park_area + eng_plot_in_balance,
-        quarter_share,
-    )
 
     # === ВПП — парковки и озеленение по списку (v0.7.1.1: единый коэф) ===
     # Все ВПП считаются по среднему коэффициенту parking.vpp.m2_per_place
@@ -997,30 +988,25 @@ def compute_tep_for_kit(
     if custom_total_plot > 0:
         components["custom_objects"] = custom_total_plot
     # Фактическое озеленение квартала: ЗНОП + озеленение жилого ЗУ + ВПП + кастомные.
-    # ЗНОП учитывается, только если include_znop=True.
-    # Норматив (25% площади квартала за вычетом ДОО/СОШ) — обязательная проверка.
-    greening_actual_total = (
-        znop_in_balance + green_housing_v + bi_greening_v
-        + ae_greening_builtin + poly_greening_builtin + custom_total_greening
-    )
-    # v0.12.2: стилобатный двор (75% деки) над открытой землёй квартала, но по
-    # ПЗЗ озеленения на стилобате ≤70%. Земля под декой иначе зачлась бы как
-    # озеленение на 100% (через surplus); дека капает её на 70% → штраф 30%
-    # от дворовой части. Эти 30% должны компенсироваться озеленением на земле
-    # вне стилобата (предупреждение пользователю — косвенно через дефицит).
-    if stylobate_area_v > 0:
-        _under = norms.resolve("parking.stylobate_under_buildings_share")
-        styl_yard = (1.0 - _under) * stylobate_area_v   # дворовая дека
-        greening_actual_total -= 0.30 * styl_yard
-    # greening_required=0 — фактическое значение всё равно записывается
-    # в TEPResult для аудита, но feasible не блокируется.
+    # === Контроль озеленения ТОП (СП 42.13330.2026, прим. 4 табл. М.1) ===
+    # Требование: озеленённые территории ОБЩЕГО ПОЛЬЗОВАНИЯ ≥ 6 м²/чел.
+    # В зачёт идёт ЗНОП (это и есть ТОП) + свободный резерв квартала (его
+    # можно отвести под озеленённые ТОП — balance добавляет surplus). Придомовое
+    # озеленение жилого ЗУ, ВПП и озеленение на ЗУ доп. объектов — НЕ ТОП, в
+    # зачёт 6 м²/чел не входят. Региональный ЗНОП (ПЗЗ) считается как прежде.
+    # Стилобатный штраф касается придомового озеленения (не ТОП) — здесь не нужен.
+    top_greening_actual = znop_in_balance
+    _znop_top_min = norms.resolve("greening.znop_top_min_per_person")
+    green_quarter_req_v = _znop_top_min * pop_v      # 6 м²/чел × население
+    # greening_required=0 → фактическое значение записывается в TEPResult для
+    # аудита, но feasible не блокируется (галочка выключена).
     _greening_required_check = (
         green_quarter_req_v if options.enforce_quarter_greening_norm else 0.0
     )
     bal = balance.compute_balance(
         site.area_m2,
         components,
-        greening_actual=greening_actual_total,
+        greening_actual=top_greening_actual,
         greening_required=_greening_required_check,
     )
 
@@ -1587,8 +1573,8 @@ def compute_tep_for_kit(
         greening_quarter_required=_F(
             green_quarter_req_v,
             unit="m2",
-            formula=f"(S_квартала − S_ДОО − S_СОШ) × {quarter_share}",
-            source=norms.source_of("greening.quarter_min_share"),
+            formula=f"{_znop_top_min:g} м²/чел × {pop_v:.0f} чел (озеленённые ТОП)",
+            source=norms.source_of("greening.znop_top_min_per_person"),
         ),
         # --- Парковки ---
         parking_required_places=_F(

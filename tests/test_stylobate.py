@@ -58,15 +58,35 @@ def test_stylobate_taken_from_housing_pool(spb, site):
     assert o + u + s + ml == total  # стилобат — часть общего числа м/м
 
 
-def test_stylobate_reduces_apartments(spb, site):
-    """25% деки под домами → −1 этаж жилья → меньше квартир.
+def test_stylobate_reduces_apartments_at_fixed_kit(spb, site):
+    """25% деки под домами → −1 этаж жилья → меньше квартир ПРИ РАВНОМ КИТ.
 
-    include_add_education=False: изолируем эффект стилобата от доп. обр., иначе
-    при разном КИТ баланс с доп. обр. (отд. стоящее) смещает сравнение (v0.12.15).
+    v0.20.2: проверяем через verify_kit (фиксированный КИТ) — это «чистый»
+    эффект стилобата на жильё. В solve_max_kit нетто иной: стилобат не
+    занимает ЗУ квартала → освобождает поверхность → достижимый КИТ выше,
+    и этот выигрыш перекрывает потерю этажа (см.
+    test_stylobate_frees_land_raises_kit). Прежний тест на нетто-уменьшение
+    держался на штрафе озеленения стилобата, убранном вместе с контролем
+    «25% квартала» (заменён на озеленение ТОП 6 м²/чел, СП 42.13330.2026).
     """
+    base = verify_kit(1.8, site, _cfg(0.0, include_add_education=False), spb)
+    styl = verify_kit(1.8, site, _cfg(0.7, include_add_education=False), spb)
+    assert styl.parking_stylobate_area.value > 0
+    assert styl.apartments_area.value < base.apartments_area.value
+    # Потеря ровно = 25% площади деки × доля квартир в GFA.
+    under = spb.resolve("parking.stylobate_under_buildings_share")
+    apt_ratio = base.apartments_area.value / base.gfa.value
+    lost = base.apartments_area.value - styl.apartments_area.value
+    assert lost == pytest.approx(
+        under * styl.parking_stylobate_area.value * apt_ratio, rel=0.02)
+
+
+def test_stylobate_frees_land_raises_kit(spb, site):
+    """v0.20.2: стилобат не занимает ЗУ квартала → при максимизации КИТ
+    даёт КИТ не ниже варианта без него (освобождение поверхности)."""
     base = solve_max_kit(site, _cfg(0.0, include_add_education=False), spb)
     styl = solve_max_kit(site, _cfg(0.7, include_add_education=False), spb)
-    assert styl.apartments_area.value < base.apartments_area.value
+    assert styl.kit.value >= base.kit.value - 1e-6
 
 
 def test_stylobate_no_balance_component(spb, site):

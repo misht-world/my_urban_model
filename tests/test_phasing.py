@@ -102,7 +102,7 @@ class TestAutoMode:
         """Авто: число очередей = число корпусов ДОО; покрытие ≥95% на этапах."""
         o = CalculationOptions(floors=12, planning_doc=True,
                                phasing=PhasingSpec(mode="auto"))
-        r = solve_max_kit(Site(area_m2=200_000), o, norms)
+        r = solve_max_kit(Site(area_m2=300_000), o, norms)
         ph = r.phasing
         assert ph.mode == "auto"
         import re
@@ -117,7 +117,7 @@ class TestAutoMode:
     def test_auto_shares_sum_to_one(self, norms):
         o = CalculationOptions(floors=12, planning_doc=True,
                                phasing=PhasingSpec(mode="auto"))
-        r = solve_max_kit(Site(area_m2=200_000), o, norms)
+        r = solve_max_kit(Site(area_m2=300_000), o, norms)
         assert sum(s.share for s in r.phasing.stages) == pytest.approx(1.0)
 
     def test_auto_no_split_without_soc(self, norms):
@@ -160,7 +160,7 @@ class TestLots:
         """Одна СОШ вбирает всю потребность → все очереди в лоте 1."""
         o = CalculationOptions(floors=12, planning_doc=True,
                                phasing=PhasingSpec(mode="auto"))
-        r = solve_max_kit(Site(area_m2=200_000), o, norms)
+        r = solve_max_kit(Site(area_m2=300_000), o, norms)
         assert all(s.lot == 1 for s in r.phasing.stages)
 
     def test_second_school_opens_new_lot(self, norms):
@@ -251,7 +251,7 @@ class TestEngineeringByLots:
         """Без галочки лоты-агрегаты есть, но БЕЗ инженерных комплектов."""
         o = CalculationOptions(floors=12, planning_doc=True,
                                phasing=PhasingSpec(mode="auto"))
-        r = solve_max_kit(Site(area_m2=200_000), o, norms)
+        r = solve_max_kit(Site(area_m2=300_000), o, norms)
         assert r.phasing.lots  # агрегаты строятся всегда
         assert all(not lp.engineering for lp in r.phasing.lots)
         assert not any("— лот" in o2.label for o2 in r.engineering.objects)

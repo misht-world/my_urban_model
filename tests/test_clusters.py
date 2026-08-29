@@ -331,9 +331,16 @@ class TestClusterConsistencyAndZnopWall:
                 single.apartments_area.value, rel=1e-6)
             assert clustered.kit.value == pytest.approx(single.kit.value, rel=1e-6)
 
-    def test_znop_step_creates_interior_apt_peak(self, spb, site60):
-        """С ЗНОП максимум площади — на СРЕДНИХ этажах (не на максимуме),
-        и на пике ЗНОП=0 (КИТ ниже порога 1.6)."""
+    def test_znop_step_creates_plateau_not_peak(self, spb, site60):
+        """v0.20.2: ступени ЗНОП создают ПЛАТО по этажности, но не спад.
+
+        Прежний «пик площади на средних этажах» (v0.10.6) был артефактом
+        контроля «25% озеленения квартала»: он зажимал высокие КИТ. С новым
+        нормативом озеленения ТОП (6 м²/чел, СП 42.13330.2026) недостаток
+        покрывается свободным резервом, поэтому площадь квартир по этажности
+        МОНОТОННО НЕУБЫВАЮЩАЯ, а максимум — на максимальной этажности.
+        Ступени ЗНОП (0→3→4→6 при росте КИТ) лишь создают плато на переходе
+        (прирост этажа съедается ростом норматива ЗНОП)."""
         # include_add_education/polyclinic=False: изолируем эффект ступени ЗНОП
         # от шума встроенных соцобъектов, вычитающих GFA (v0.12.28).
         res = {
@@ -343,14 +350,19 @@ class TestClusterConsistencyAndZnopWall:
             for f in range(4, 16)
         }
         apts = {f: (r.apartments_area.value or 0.0) for f, r in res.items()}
-        best_f = max(apts, key=apts.get)
-        # пик внутри диапазона, не на максимуме
-        assert 4 < best_f < 15
-        # на пике ЗНОП ещё 0 (КИТ впритык под 1.6), а на высоких этажах ЗНОП>0
-        assert res[best_f].znop_per_person.value == 0
-        assert res[15].znop_per_person.value > 0
-        # площадь на пике выше, чем на максимальной этажности (контринтуитивно, но верно)
-        assert apts[best_f] > apts[15]
+        # монотонно неубывающая по этажности (нет внутреннего спада)
+        seq = [apts[f] for f in range(4, 16)]
+        assert all(b >= a - 1.0 for a, b in zip(seq, seq[1:])), seq
+        # максимум — на максимальной этажности (внутреннего пика больше нет)
+        assert max(apts, key=apts.get) == 15
+        # ступени ЗНОП создают плато: есть соседние этажи с равной площадью,
+        # но с разным ЗНОП (прирост этажа съеден ростом норматива ЗНОП)
+        plateau = any(
+            abs(apts[f] - apts[f + 1]) < 1.0
+            and res[f].znop_per_person.value != res[f + 1].znop_per_person.value
+            for f in range(4, 15)
+        )
+        assert plateau, "ожидалось плато на переходе ступени ЗНОП"
 
     def test_no_znop_apt_monotonic_in_floors(self, spb, site60):
         """Без ЗНОП «стены» нет — площадь не убывает с ростом этажности

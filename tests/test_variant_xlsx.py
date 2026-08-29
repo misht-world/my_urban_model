@@ -59,7 +59,7 @@ def test_balance_sheet_components(spb, tmp_path):
     text = "\n".join(cells)
     assert "ЗУ жилой застройки" in text
     assert "Резерв (surplus)" in text
-    assert "Контроль озеленения 25%" in text
+    assert "Контроль озеленения ТОП (6 м²/чел)" in text
     assert "Площадь квартала" in text
 
 
